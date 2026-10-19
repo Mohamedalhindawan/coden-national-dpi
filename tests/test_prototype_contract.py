@@ -29,6 +29,13 @@ class TamamPrototypeContractTests(unittest.TestCase):
         self.assertIn("بانتظار المراجعة", self.html)
         self.assertIn("humanReview", self.html)
         self.assertNotIn("eligible = true", self.html.lower())
+        self.assertIn("ليس قراراً رسمياً", self.html)
+
+    def test_demo_review_action_is_present_and_explained(self):
+        self.assertIn("markReviewed", self.html)
+        self.assertIn("تمت مراجعة تجريبية", self.html)
+        self.assertIn("مراجعة تجريبية فقط", self.html)
+        self.assertIn("ليس قراراً رسمياً", self.html)
 
     def test_has_basic_client_side_validation(self):
         self.assertIn("required", self.html)
