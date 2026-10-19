@@ -28,6 +28,7 @@
     .empty { border:1px dashed #b9c9c4; border-radius:12px; padding:14px; color:var(--muted); }
     .request { border:1px solid var(--line); border-radius:12px; padding:12px; margin-top:10px; }
     .status { color:var(--brand); font-weight:750; }
+    .review-button { margin-top:8px; background:#455b56; }
     footer { text-align:center; color:var(--muted); padding:24px; font-size:.85rem; }
     @media (max-width:700px) { .layout { grid-template-columns:1fr; } .card { padding:17px; } main { margin:18px auto; } }
   </style>
@@ -45,7 +46,7 @@
     <div class="layout">
       <section class="card" aria-labelledby="form-title">
         <h1 id="form-title">طلب مساعدة اجتماعية</h1>
-        <p class="muted">هذا النموذج لا يقرر الاستحقاق ولا يصرف أي مساعدة. كل طلب تجريبي يحتاج إلى مراجعة بشرية.</p>
+        <p class="muted">هذا النموذج لا يقرر الاستحقاق ولا يصرف أي مساعدة. كل طلب تجريبي يحتاج إلى مراجعة بشرية. المراجعة هنا محاكاة محلية وليست قراراً رسمياً.</p>
         <form id="requestForm">
           <label for="fullName">اسم تجريبي أو رمز الحالة</label>
           <input id="fullName" name="fullName" autocomplete="off" required maxlength="80" placeholder="مثال: أسرة تجريبية 001">
@@ -105,6 +106,14 @@
       form.reset();
     });
 
+    function markReviewed(reference) {
+      const request = requests.find((item) => item.reference === reference);
+      if (!request || request.reviewed) return;
+      request.reviewed = true;
+      request.status = "تمت مراجعة تجريبية — ليس قراراً رسمياً";
+      renderRequests();
+    }
+
     function renderRequests() {
       list.replaceChildren();
       if (requests.length === 0) {
@@ -125,6 +134,15 @@
         status.className = "status";
         status.textContent = request.status;
         article.append(heading, detail, status);
+        if (!request.reviewed) {
+          const reviewButton = document.createElement("button");
+          reviewButton.type = "button";
+          reviewButton.className = "review-button";
+          reviewButton.textContent = "تسجيل مراجعة تجريبية";
+          reviewButton.setAttribute("aria-label", "تسجيل مراجعة تجريبية للطلب " + request.reference);
+          reviewButton.addEventListener("click", () => markReviewed(request.reference));
+          article.append(reviewButton);
+        }
         list.append(article);
       });
     }
