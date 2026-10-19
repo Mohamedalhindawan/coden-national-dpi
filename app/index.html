@@ -74,6 +74,8 @@
       <aside class="card" aria-labelledby="requests-title">
         <h2 id="requests-title">الطلبات في هذه الجلسة</h2>
         <p class="muted">البيانات مؤقتة وتختفي عند تحديث الصفحة أو إغلاقها.</p>
+        <p id="feedback" class="muted" aria-live="polite" role="status"></p>
+        <button id="clearRequests" class="review-button" type="button" disabled>مسح الطلبات التجريبية</button>
         <div id="requests" aria-live="polite">
           <p class="empty">لم تتم إضافة طلبات تجريبية بعد.</p>
         </div>
@@ -85,6 +87,8 @@
     const form = document.getElementById("requestForm");
     const list = document.getElementById("requests");
     const requests = [];
+    const feedback = document.getElementById("feedback");
+    const clearRequestsButton = document.getElementById("clearRequests");
     const labels = { food: "مساعدة غذائية", cash: "مساعدة نقدية", health: "مساعدة صحية", other: "احتياج آخر" };
 
     form.addEventListener("submit", (event) => {
@@ -102,7 +106,7 @@
       };
       if (!request.fullName || !Number.isInteger(request.householdSize) || request.householdSize < 1 || request.householdSize > 30) return;
       requests.push(request);
-      document.getElementById("feedback").textContent = "تمت إضافة الطلب التجريبي " + request.reference + "؛ وهو بانتظار مراجعة بشرية.";
+      feedback.textContent = "تمت إضافة الطلب التجريبي " + request.reference + "؛ وهو بانتظار مراجعة بشرية.";
       renderRequests();
       form.reset();
     });
@@ -112,11 +116,20 @@
       if (!request || request.reviewed) return;
       request.reviewed = true;
       request.status = "تمت مراجعة تجريبية — ليس قراراً رسمياً";
-      document.getElementById("feedback").textContent = "تم تسجيل المراجعة التجريبية للطلب " + request.reference + "؛ هذا ليس قراراً رسمياً.";
+      feedback.textContent = "تم تسجيل المراجعة التجريبية للطلب " + request.reference + "؛ هذا ليس قراراً رسمياً.";
       renderRequests();
     }
 
+    clearRequestsButton.addEventListener("click", () => {
+      if (requests.length === 0) return;
+      requests.length = 0;
+      form.reset();
+      feedback.textContent = "تم مسح جميع الطلبات التجريبية من هذه الجلسة.";
+      renderRequests();
+    });
+
     function renderRequests() {
+      clearRequestsButton.disabled = requests.length === 0;
       list.replaceChildren();
       if (requests.length === 0) {
         const empty = document.createElement("p");
