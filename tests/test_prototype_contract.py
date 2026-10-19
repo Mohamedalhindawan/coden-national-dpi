@@ -37,6 +37,16 @@ class TamamPrototypeContractTests(unittest.TestCase):
         self.assertIn("مراجعة تجريبية فقط", self.html)
         self.assertIn("ليس قراراً رسمياً", self.html)
 
+    def test_user_input_is_rendered_without_html_injection(self):
+        self.assertIn("heading.textContent = request.reference +", self.html)
+        self.assertIn("detail.textContent =", self.html)
+        self.assertNotIn("innerHTML", self.html)
+
+    def test_submission_and_review_have_accessible_feedback(self):
+        self.assertIn('id="feedback" aria-live="polite"', self.html)
+        self.assertIn("تمت إضافة الطلب التجريبي", self.html)
+        self.assertIn("تم تسجيل المراجعة التجريبية", self.html)
+
     def test_has_basic_client_side_validation(self):
         self.assertIn("required", self.html)
         self.assertIn("min=", self.html)
