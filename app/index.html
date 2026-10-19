@@ -102,6 +102,7 @@
       };
       if (!request.fullName || !Number.isInteger(request.householdSize) || request.householdSize < 1 || request.householdSize > 30) return;
       requests.push(request);
+      document.getElementById("feedback").textContent = "تمت إضافة الطلب التجريبي " + request.reference + "؛ وهو بانتظار مراجعة بشرية.";
       renderRequests();
       form.reset();
     });
@@ -111,6 +112,7 @@
       if (!request || request.reviewed) return;
       request.reviewed = true;
       request.status = "تمت مراجعة تجريبية — ليس قراراً رسمياً";
+      document.getElementById("feedback").textContent = "تم تسجيل المراجعة التجريبية للطلب " + request.reference + "؛ هذا ليس قراراً رسمياً.";
       renderRequests();
     }
 
