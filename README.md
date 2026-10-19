@@ -27,3 +27,9 @@ A small Arabic RTL browser demo for a synthetic social-assistance application. I
 3. Start with a narrow workflow and synthetic data.
 4. Require human review for high-impact identity, financial and social-benefit decisions.
 5. Verify tests and security before claiming readiness.
+
+## API contract draft
+
+- [OpenAPI specification for the assistance workflow](api/openapi.yaml)
+
+This is a contract draft only. No backend is implemented by adding this file. The contract intentionally restricts the current prototype to synthetic records and requires server-side authentication, authorization, validation, and audit events before any real deployment.
