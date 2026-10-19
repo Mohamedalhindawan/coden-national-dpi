@@ -4,6 +4,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app" / "index.html"
+OPENAPI = ROOT / "api" / "openapi.yaml"
 
 
 class TamamPrototypeContractTests(unittest.TestCase):
@@ -55,6 +56,26 @@ class TamamPrototypeContractTests(unittest.TestCase):
     def test_has_basic_client_side_validation(self):
         self.assertIn("required", self.html)
         self.assertIn("min=", self.html)
+
+    def test_openapi_contract_is_synthetic_only_and_not_claimed_as_deployed(self):
+        spec = OPENAPI.read_text(encoding="utf-8")
+        self.assertIn("openapi: 3.1.0", spec)
+        self.assertIn("title: CODEN Assistance Applications API (Prototype Contract)", spec)
+        self.assertIn("demoRecord:", spec)
+        self.assertIn("const: true", spec)
+        self.assertIn("PENDING_REVIEW", spec)
+        self.assertIn("humanReview", spec)
+        self.assertIn("This specification is not a deployed API", spec)
+        self.assertIn("bearerAuth", spec)
+
+    def test_api_contract_has_consistent_error_schema_and_review_route(self):
+        spec = OPENAPI.read_text(encoding="utf-8")
+        self.assertIn("/applications/{applicationId}/reviews:", spec)
+        self.assertIn("operationId: recordReview", spec)
+        self.assertIn("ValidationError:", spec)
+        self.assertIn("Unauthorized:", spec)
+        self.assertIn("Forbidden:", spec)
+        self.assertIn("ApiError:", spec)
 
 
 if __name__ == "__main__":
