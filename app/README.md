@@ -8,8 +8,10 @@ Open `index.html` in a browser, or use a browser-based development environment t
 ## Current limits
 - No server, database, login, or external API.
 - Requests are held in memory only and disappear when the page is refreshed.
+- The list includes a demo-only button to mark a request as reviewed. This is a local UI simulation, not an official SFD review or benefit decision; the status disappears on refresh.
 - All entries must be synthetic. Do not enter real names, phone numbers, identity numbers, addresses, or other citizen information.
 - The prototype does not assess eligibility, approve benefits, or make payment decisions.
+- Do not interpret “تمت مراجعة تجريبية” as an official decision.
 - It is not ready for real users or production.
 
 ## Checks
