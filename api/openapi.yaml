@@ -1,0 +1,333 @@
+openapi: 3.1.0
+info:
+  title: CODEN Assistance Applications API (Prototype Contract)
+  version: 0.1.0
+  description: >
+    Contract-first draft for a synthetic-data-only social assistance workflow.
+    This specification is not a deployed API, not an eligibility engine, and
+    not authorization to process real personal data.
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Local development only
+tags:
+  - name: Applications
+  - name: Reviews
+paths:
+  /applications:
+    post:
+      tags: [Applications]
+      summary: Create a synthetic assistance application
+      operationId: createApplication
+      description: >
+        Prototype endpoint. A production implementation must authenticate the
+        caller, authorize the action, validate purpose/legal basis, minimize
+        data, and write an audit event. Do not send real personal data to the
+        current static prototype.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApplication'
+            examples:
+              synthetic:
+                value:
+                  demoRecord: true
+                  caseCode: DEMO-0001
+                  districtCode: ADEN-CRATER
+                  householdSize: 4
+                  needType: FOOD
+      responses:
+        '201':
+          description: Created; status must be PENDING_REVIEW
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Application'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Duplicate case or idempotency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    get:
+      tags: [Applications]
+      summary: List applications visible to the authenticated user
+      operationId: listApplications
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema:
+            $ref: '#/components/schemas/ApplicationStatus'
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: pageSize
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Paginated applications; only authorized fields are returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /applications/{applicationId}:
+    parameters:
+      - in: path
+        name: applicationId
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Applications]
+      summary: Read one authorized application
+      operationId: getApplication
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Application details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Application'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Not found or not visible to the caller
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /applications/{applicationId}/reviews:
+    post:
+      tags: [Reviews]
+      summary: Record a human review of an application
+      operationId: recordReview
+      description: >
+        Only an authenticated reviewer with an explicit review permission may
+        call this operation. The review is a workflow record, not an automatic
+        eligibility or payment decision. Production must enforce authorization
+        server-side and append an immutable audit event.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: applicationId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewInput'
+      responses:
+        '201':
+          description: Human review recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Application not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '409':
+          description: Application state does not allow review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    CreateApplication:
+      type: object
+      additionalProperties: false
+      required: [demoRecord, caseCode, districtCode, householdSize, needType]
+      properties:
+        demoRecord:
+          type: boolean
+          const: true
+          description: Must be true in this prototype contract; synthetic records only.
+        caseCode:
+          type: string
+          minLength: 1
+          maxLength: 40
+          pattern: '^[A-Za-z0-9-]+$'
+        districtCode:
+          type: string
+          minLength: 2
+          maxLength: 40
+          pattern: '^[A-Z0-9-]+$'
+        householdSize:
+          type: integer
+          minimum: 1
+          maximum: 40
+        needType:
+          type: string
+          enum: [FOOD, HEALTH, SHELTER, LIVELIHOOD, OTHER]
+    Application:
+      type: object
+      additionalProperties: false
+      required: [id, caseCode, districtCode, householdSize, needType, status, demoRecord, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        caseCode:
+          type: string
+        districtCode:
+          type: string
+        householdSize:
+          type: integer
+        needType:
+          type: string
+          enum: [FOOD, HEALTH, SHELTER, LIVELIHOOD, OTHER]
+        status:
+          $ref: '#/components/schemas/ApplicationStatus'
+        demoRecord:
+          type: boolean
+          const: true
+        createdAt:
+          type: string
+          format: date-time
+    ApplicationStatus:
+      type: string
+      enum: [PENDING_REVIEW, UNDER_REVIEW, REVIEW_RECORDED, NEEDS_CORRECTION]
+    ApplicationPage:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Application'
+        pagination:
+          type: object
+          required: [page, pageSize, totalItems, totalPages]
+          properties:
+            page:
+              type: integer
+            pageSize:
+              type: integer
+            totalItems:
+              type: integer
+            totalPages:
+              type: integer
+    ReviewInput:
+      type: object
+      additionalProperties: false
+      required: [reviewOutcome, note]
+      properties:
+        reviewOutcome:
+          type: string
+          enum: [NEEDS_CORRECTION, REVIEW_RECORDED]
+        note:
+          type: string
+          maxLength: 500
+          description: Do not include unnecessary sensitive personal information.
+    Review:
+      type: object
+      additionalProperties: false
+      required: [id, applicationId, reviewOutcome, reviewerId, reviewedAt, humanReview]
+      properties:
+        id:
+          type: string
+          format: uuid
+        applicationId:
+          type: string
+          format: uuid
+        reviewOutcome:
+          type: string
+          enum: [NEEDS_CORRECTION, REVIEW_RECORDED]
+        reviewerId:
+          type: string
+        reviewedAt:
+          type: string
+          format: date-time
+        humanReview:
+          type: boolean
+          const: true
+    ApiError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
+  responses:
+    BadRequest:
+      description: Malformed request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Forbidden:
+      description: Authenticated but not authorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    ValidationError:
+      description: Request failed semantic validation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
