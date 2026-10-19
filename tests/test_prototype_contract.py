@@ -47,6 +47,11 @@ class TamamPrototypeContractTests(unittest.TestCase):
         self.assertIn("تمت إضافة الطلب التجريبي", self.html)
         self.assertIn("تم تسجيل المراجعة التجريبية", self.html)
 
+    def test_demo_requests_can_be_cleared_from_the_current_session(self):
+        self.assertIn('id="clearRequests"', self.html)
+        self.assertIn("requests.length = 0", self.html)
+        self.assertIn("تم مسح جميع الطلبات التجريبية", self.html)
+
     def test_has_basic_client_side_validation(self):
         self.assertIn("required", self.html)
         self.assertIn("min=", self.html)
