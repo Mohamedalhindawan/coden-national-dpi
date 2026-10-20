@@ -1,10 +1,34 @@
 """Contract checks for the static Tamam prototype; no real data or services."""
+from html.parser import HTMLParser
 from pathlib import Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app" / "index.html"
 OPENAPI = ROOT / "api" / "openapi.yaml"
+
+
+class ElementAttributesFinder(HTMLParser):
+    """Collects the attributes of the first element with a given id."""
+
+    def __init__(self, element_id):
+        super().__init__()
+        self.element_id = element_id
+        self.attributes = None
+
+    def handle_starttag(self, tag, attrs):
+        if self.attributes is not None:
+            return
+        attributes = dict(attrs)
+        if attributes.get("id") == self.element_id:
+            self.attributes = attributes
+
+
+def element_attributes(markup, element_id):
+    """Return the attributes of an element by id, independent of attribute order."""
+    finder = ElementAttributesFinder(element_id)
+    finder.feed(markup)
+    return finder.attributes or {}
 
 
 class TamamPrototypeContractTests(unittest.TestCase):
@@ -44,7 +68,9 @@ class TamamPrototypeContractTests(unittest.TestCase):
         self.assertNotIn("innerHTML", self.html)
 
     def test_submission_and_review_have_accessible_feedback(self):
-        self.assertIn('id="feedback" aria-live="polite"', self.html)
+        feedback = element_attributes(self.html, "feedback")
+        self.assertEqual(feedback.get("aria-live"), "polite")
+        self.assertEqual(feedback.get("role"), "status")
         self.assertIn("تمت إضافة الطلب التجريبي", self.html)
         self.assertIn("تم تسجيل المراجعة التجريبية", self.html)
 

@@ -1,6 +1,8 @@
 # CODEN Free-First AI Agent Roadmap
 
 **Status:** Proposed implementation plan — agents are not yet deployed or running autonomously.
+
+> **Current operational guide (2026-10-20):** The verified phone-first workflow, including confirmed and unverified capabilities, is documented in [CODEN Free-First AI Agent Workflow](AGENT_WORKFLOW.md). This roadmap remains a planning document.
 **Cost policy:** $0 initial spend. Paid services may be introduced later only after explicit approval.
 **Scope:** CODEN national DPI and the Tamam prototype. This roadmap does not authorize production use or processing real citizen data.
 

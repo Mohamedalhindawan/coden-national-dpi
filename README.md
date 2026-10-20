@@ -11,6 +11,7 @@ CODEN / YDS / Tamam is a proposal and prototype, not an approved national produc
 - [Project overview](docs/PROJECT_OVERVIEW.md)
 - [Open-source reuse assessment](docs/OPEN_SOURCE_REUSE_ASSESSMENT.md)
 - [Open-source reuse register and integration gates](docs/OPEN_SOURCE_REUSE_REGISTER.md)
+- [Free-first AI agent workflow](docs/AGENT_WORKFLOW.md)
 - [Free-first agent roadmap](docs/FREE_FIRST_AGENT_ROADMAP.md)
 - [AI agent toolchain](docs/AI_AGENT_TOOLCHAIN.md)
 - [First coding agent setup](docs/FIRST_CODING_AGENT_SETUP.md)
