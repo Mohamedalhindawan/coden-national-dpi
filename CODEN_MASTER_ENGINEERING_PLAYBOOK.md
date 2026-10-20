@@ -39,8 +39,8 @@ Build reusable, secure, open-source digital foundations for Yemen that help citi
 ### Architecture (Current State)
 - **Frontend (current):** Static HTML/CSS/JS in `app/index.html` (Tamam prototype). Arabic RTL, browser-only, in-memory storage.
 - **API Contract:** OpenAPI draft in `api/openapi.yaml` (contract-first). No backend implemented.
-- **Tests:** Contract tests in `tests/`, agent workflow tests, preflight tests.
-- **CI:** GitHub Actions workflow `.github/workflows/prototype-checks.yml` with preflight gate.
+- **Tests:** Contract tests in `tests/`. Dedicated agent-workflow tests and a preflight script are not present on `main` as of this version.
+- **CI:** GitHub Actions workflow `.github/workflows/prototype-checks.yml` directly runs the contract test suite and OpenAPI validation.
 - **Docs:** Comprehensive documentation in `docs/` and root.
 
 See [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) for full project context.
@@ -96,8 +96,8 @@ Current implementation: `app/index.html`, `app/README.md`. Tests in `tests/test_
 
 ## 5. Agent Roles and Task Coordination
 
-### Available Roles (Single-agent staged model)
-Per [docs/AGENT_WORKFLOW.md](docs/AGENT_WORKFLOW.md):
+### Suggested Roles (Single-agent staged model)
+These are proposed responsibilities for the current repository; follow [AGENTS.md](AGENTS.md) and the current [AI Agent Toolchain](docs/AI_AGENT_TOOLCHAIN.md).
 
 | Role | Responsibility | Output |
 |---|---|---|
@@ -138,14 +138,16 @@ Per [docs/AGENT_WORKFLOW.md](docs/AGENT_WORKFLOW.md):
 - No merge without human review
 - No modifying repo settings/permissions/secrets
 
-### Preflight Gate (Required)
+### Current CI Checks
+The current workflow runs these checks:
 ```bash
-python -m pip install -r requirements-dev.txt
-python tools/agent_preflight.py
+python -m unittest discover -s tests -v
+python -m pip install openapi-spec-validator==0.7.2
+python -m openapi_spec_validator api/openapi.yaml
 ```
-Runs secret scan, full test suite, OpenAPI validation. Fails if anything fails/cannot run. Never prints secret values.
+A dedicated preflight/secret-scan script is a potential future improvement; it is not present on `main` as of this version. Do not assume `requirements-dev.txt` or `tools/agent_preflight.py` exists until those files are added and verified.
 
-See [docs/AGENT_WORKFLOW.md](docs/AGENT_WORKFLOW.md) for full Android runbook.
+See [AGENTS.md](AGENTS.md), [docs/AI_AGENT_TOOLCHAIN.md](docs/AI_AGENT_TOOLCHAIN.md), and [docs/FREE_FIRST_AGENT_ROADMAP.md](docs/FREE_FIRST_AGENT_ROADMAP.md) for current instructions and plans.
 
 ---
 
@@ -307,12 +309,12 @@ A change is complete only when:
 
 | Component | Status | Evidence | Notes |
 |-----------|--------|----------|-------|
-| Tamam prototype (static) | Implemented/Tested | `app/index.html`, `app/README.md`, tests pass | No-JS leak fixed; HTML/a11y validated |
-| API contract (OpenAPI) | Implemented (draft) | `api/openapi.yaml`, validated | No backend yet |
-| Contract tests | Tested | `tests/test_prototype_contract.py` (16 tests) | All pass |
-| Agent workflow docs | Implemented | `docs/AGENT_WORKFLOW.md`, etc. | Comprehensive |
-| Preflight gate | Implemented/Tested | `tools/agent_preflight.py`, tests pass | Secret scan + tests + OpenAPI |
-| CI workflow | Implemented | `.github/workflows/prototype-checks.yml` | Uses preflight |
+| Tamam prototype (static) | Implemented (prototype) | `app/index.html`, `app/README.md` | Browser-only demo; current CI status must be checked separately |
+| API contract (OpenAPI) | Draft present | `api/openapi.yaml` | No backend yet; validate in CI |
+| Contract tests | Present | `tests/test_prototype_contract.py` | Current base CI has one known brittle assertion failure; see verification notes below |
+| Agent workflow docs | Partially documented | `AGENTS.md`, `docs/AI_AGENT_TOOLCHAIN.md`, `docs/FREE_FIRST_AGENT_ROADMAP.md` | No `docs/AGENT_WORKFLOW.md` on `main` as of this version |
+| Preflight gate | Proposed | Not present on `main` | Consider a separate scoped change after baseline tests are green |
+| CI workflow | Implemented | `.github/workflows/prototype-checks.yml` | Runs unittest discovery and OpenAPI validation directly |
 | 31-sector inventory | **Planned/Blocked** | **GAP** | Not found in repo - needs official list |
 | DPI backend/services | **Planned** | Docs only | No implementation |
 | X-Road integration | **Planned/Blocked** | Under evaluation | Needs validation |
@@ -334,7 +336,7 @@ A change is complete only when:
 2. **[HIGH/MED]** Obtain and document the authoritative 31-sector inventory with traceability.
 3. **[MED/MED]** Consider compatible integration of improved validation UX from `feat/tamam-form-validation-feedback` branch without breaking security.
 4. **[MED/MED]** Address OpenAPI contract review items as backend design progresses.
-5. **[MED/LOW]** Enhance preflight with optional dependency scanning if needed.
+5. **[MED/LOW]** Consider a dedicated preflight/secret-scan tool in a separate PR after the baseline checks are reliable.
 
 ---
 
@@ -342,10 +344,9 @@ A change is complete only when:
 - [README](README.md)
 - [AGENTS.md](AGENTS.md)
 - [Project Overview](docs/PROJECT_OVERVIEW.md)
-- [Agent Workflow](docs/AGENT_WORKFLOW.md)
+- [AI Agent Toolchain](docs/AI_AGENT_TOOLCHAIN.md)
 - [AI Agent Toolchain](docs/AI_AGENT_TOOLCHAIN.md)
 - [Free-First Roadmap](docs/FREE_FIRST_AGENT_ROADMAP.md)
 - [OpenAPI Contract](api/openapi.yaml)
 - [OpenAPI Contract Review](docs/OPENAPI_CONTRACT_REVIEW.md)
 - [Prototype Checks Workflow](.github/workflows/prototype-checks.yml)
-- [Preflight Tool](tools/agent_preflight.py)
