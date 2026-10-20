@@ -44,14 +44,25 @@ class TamamPrototypeContractTests(unittest.TestCase):
         self.assertNotIn("innerHTML", self.html)
 
     def test_submission_and_review_have_accessible_feedback(self):
-        self.assertIn('id="feedback" aria-live="polite"', self.html)
+        self.assertIn('id="feedback" class="muted" aria-live="polite"', self.html)
         self.assertIn("تمت إضافة الطلب التجريبي", self.html)
         self.assertIn("تم تسجيل المراجعة التجريبية", self.html)
 
-    def test_demo_requests_can_be_cleared_from_the_current_session(self):
+    def test_demo_requests_persist_only_in_current_browser_session(self):
+        self.assertIn('const STORAGE_KEY = "tamam.demoRequests"', self.html)
+        self.assertIn("sessionStorage.getItem(STORAGE_KEY)", self.html)
+        self.assertIn("sessionStorage.setItem(STORAGE_KEY", self.html)
+        self.assertNotIn("localStorage", self.html)
+
+    def test_clearing_demo_requests_requires_explicit_confirmation(self):
         self.assertIn('id="clearRequests"', self.html)
+        self.assertIn("window.confirm(", self.html)
         self.assertIn("requests.length = 0", self.html)
         self.assertIn("تم مسح جميع الطلبات التجريبية", self.html)
+        self.assertIn("تم إلغاء مسح الطلبات التجريبية", self.html)
+
+    def test_session_storage_failure_does_not_break_demo(self):
+        self.assertIn("تعذر حفظ الجلسة", self.html)
 
     def test_has_basic_client_side_validation(self):
         self.assertIn("required", self.html)
