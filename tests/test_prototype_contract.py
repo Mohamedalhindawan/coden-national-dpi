@@ -44,7 +44,9 @@ class TamamPrototypeContractTests(unittest.TestCase):
         self.assertNotIn("innerHTML", self.html)
 
     def test_submission_and_review_have_accessible_feedback(self):
-        self.assertIn('id="feedback" aria-live="polite"', self.html)
+        self.assertIn('id="feedback"', self.html)
+        self.assertIn('aria-live="polite"', self.html)
+        self.assertIn('role="status"', self.html)
         self.assertIn("تمت إضافة الطلب التجريبي", self.html)
         self.assertIn("تم تسجيل المراجعة التجريبية", self.html)
 
