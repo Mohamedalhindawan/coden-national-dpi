@@ -44,7 +44,9 @@ class TamamPrototypeContractTests(unittest.TestCase):
         self.assertNotIn("innerHTML", self.html)
 
     def test_submission_and_review_have_accessible_feedback(self):
-        self.assertIn('id="feedback" aria-live="polite"', self.html)
+        self.assertIn('id="feedback"', self.html)
+        self.assertIn('aria-live="polite"', self.html)
+        self.assertIn('role="status"', self.html)
         self.assertIn("تمت إضافة الطلب التجريبي", self.html)
         self.assertIn("تم تسجيل المراجعة التجريبية", self.html)
 
@@ -56,6 +58,44 @@ class TamamPrototypeContractTests(unittest.TestCase):
     def test_has_basic_client_side_validation(self):
         self.assertIn("required", self.html)
         self.assertIn("min=", self.html)
+
+    def test_single_demo_request_can_be_removed_from_the_session(self):
+        self.assertIn("function removeRequest(reference)", self.html)
+        self.assertIn("requests.splice(index, 1)", self.html)
+        self.assertIn("removeRequest(request.reference)", self.html)
+        self.assertIn("حذف الطلب التجريبي", self.html)
+        self.assertIn('removeButton.type = "button"', self.html)
+        self.assertIn('removeButton.setAttribute("aria-label"', self.html)
+
+    def test_demo_reference_numbers_stay_unique_after_removal(self):
+        self.assertIn("nextReference", self.html)
+        self.assertIn('String(nextReference).padStart(3, "0")', self.html)
+        self.assertIn("nextReference += 1", self.html)
+        self.assertNotIn('String(requests.length + 1).padStart(3, "0")', self.html)
+
+    def test_removal_is_explained_as_session_only_and_not_official(self):
+        self.assertIn("الحذف هنا محلي فقط", self.html)
+        self.assertIn("لا يمس أي سجل رسمي", self.html)
+        self.assertIn("تم حذف الطلب التجريبي", self.html)
+
+    def test_removal_moves_focus_to_a_predictable_target(self):
+        self.assertIn('empty.tabIndex = -1', self.html)
+        self.assertIn("empty.focus()", self.html)
+        self.assertIn('list.querySelectorAll(".request")', self.html)
+        self.assertIn("target.focus()", self.html)
+
+    def test_only_the_status_message_is_a_live_region(self):
+        self.assertIn(
+            'id="feedback" class="muted" aria-live="polite" role="status"', self.html
+        )
+        self.assertIn('<div id="requests">', self.html)
+        self.assertNotIn('<div id="requests" aria-live', self.html)
+        self.assertNotIn('id="feedback" aria-live', self.html)
+
+    def test_each_demo_request_card_is_a_labelled_heading_section(self):
+        self.assertIn('document.createElement("h3")', self.html)
+        self.assertIn('article.setAttribute("aria-labelledby"', self.html)
+        self.assertIn("heading.id = ", self.html)
 
     def test_openapi_contract_is_synthetic_only_and_not_claimed_as_deployed(self):
         spec = OPENAPI.read_text(encoding="utf-8")

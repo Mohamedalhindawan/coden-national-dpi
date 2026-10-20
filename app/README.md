@@ -10,6 +10,8 @@ Open `index.html` in a browser, or use a browser-based development environment t
 - Requests are held in memory only and disappear when the page is refreshed.
 - The interface announces successful demo submission and review through an accessible status message, and offers a button to clear all demo requests from the current browser session. User-provided demo text is rendered as text, not interpreted as HTML.
 - The list includes a demo-only button to mark a request as reviewed. This is a local UI simulation, not an official SFD review or benefit decision; the status disappears on refresh.
+- Each demo request can be deleted on its own ("حذف الطلب التجريبي") without clearing the rest of the session. References are taken from a counter, so removing a request never reuses its reference. Deletion is local to the page, is announced through the status message, and is explicitly labelled as not affecting any official record.
+- The request list itself is not a live region; only the status message announces changes, so screen readers do not re-read the whole list on every update.
 - All entries must be synthetic. Do not enter real names, phone numbers, identity numbers, addresses, or other citizen information.
 - The prototype does not assess eligibility, approve benefits, or make payment decisions.
 - Do not interpret “تمت مراجعة تجريبية” as an official decision.

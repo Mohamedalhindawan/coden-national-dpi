@@ -27,8 +27,13 @@
     .muted { color:var(--muted); font-size:.92rem; }
     .empty { border:1px dashed #b9c9c4; border-radius:12px; padding:14px; color:var(--muted); }
     .request { border:1px solid var(--line); border-radius:12px; padding:12px; margin-top:10px; }
+    .request h3 { font-size:1rem; margin:0 0 4px; }
+    .request p { margin:4px 0; }
     .status { color:var(--brand); font-weight:750; }
-    .review-button { margin-top:8px; background:#455b56; }
+    .review-button { margin-top:10px; background:#455b56; }
+    .remove-button { margin-top:10px; background:#fff; color:#7c2d20; border:1px solid #dcc3bd; }
+    .remove-button:hover { filter:none; background:#fdf2ef; }
+    .empty:focus { outline:3px solid #9bd8c8; outline-offset:2px; }
     footer { text-align:center; color:var(--muted); padding:24px; font-size:.85rem; }
     @media (max-width:700px) { .layout { grid-template-columns:1fr; } .card { padding:17px; } main { margin:18px auto; } }
   </style>
@@ -73,10 +78,10 @@
       </section>
       <aside class="card" aria-labelledby="requests-title">
         <h2 id="requests-title">الطلبات في هذه الجلسة</h2>
-        <p class="muted">البيانات مؤقتة وتختفي عند تحديث الصفحة أو إغلاقها.</p>
+        <p class="muted">البيانات مؤقتة وتختفي عند تحديث الصفحة أو إغلاقها. يمكن حذف أي طلب تجريبي خاطئ على حدة دون التأثير على بقية الطلبات؛ الحذف هنا محلي فقط ولا يمس أي سجل رسمي.</p>
         <p id="feedback" class="muted" aria-live="polite" role="status"></p>
         <button id="clearRequests" class="review-button" type="button" disabled>مسح الطلبات التجريبية</button>
-        <div id="requests" aria-live="polite">
+        <div id="requests">
           <p class="empty">لم تتم إضافة طلبات تجريبية بعد.</p>
         </div>
       </aside>
@@ -90,13 +95,20 @@
     const feedback = document.getElementById("feedback");
     const clearRequestsButton = document.getElementById("clearRequests");
     const labels = { food: "مساعدة غذائية", cash: "مساعدة نقدية", health: "مساعدة صحية", other: "احتياج آخر" };
+    let nextReference = 1;
+
+    // تُولَّد المراجع من عدّاد متزايد حتى تبقى فريدة بعد حذف طلب من منتصف القائمة.
+    function createReference() {
+      const reference = "DEMO-" + String(nextReference).padStart(3, "0");
+      nextReference += 1;
+      return reference;
+    }
 
     form.addEventListener("submit", (event) => {
       event.preventDefault();
       if (!form.reportValidity()) return;
       const data = new FormData(form);
       const request = {
-        reference: "DEMO-" + String(requests.length + 1).padStart(3, "0"),
         fullName: String(data.get("fullName")).trim(),
         district: String(data.get("district")),
         householdSize: Number(data.get("householdSize")),
@@ -105,19 +117,33 @@
         humanReview: true
       };
       if (!request.fullName || !Number.isInteger(request.householdSize) || request.householdSize < 1 || request.householdSize > 30) return;
+      request.reference = createReference();
       requests.push(request);
       feedback.textContent = "تمت إضافة الطلب التجريبي " + request.reference + "؛ وهو بانتظار مراجعة بشرية.";
       renderRequests();
       form.reset();
     });
 
+    function findRequestIndex(reference) {
+      return requests.findIndex((item) => item.reference === reference);
+    }
+
     function markReviewed(reference) {
-      const request = requests.find((item) => item.reference === reference);
+      const index = findRequestIndex(reference);
+      const request = index === -1 ? undefined : requests[index];
       if (!request || request.reviewed) return;
       request.reviewed = true;
       request.status = "تمت مراجعة تجريبية — ليس قراراً رسمياً";
       feedback.textContent = "تم تسجيل المراجعة التجريبية للطلب " + request.reference + "؛ هذا ليس قراراً رسمياً.";
-      renderRequests();
+      renderRequests(index);
+    }
+
+    function removeRequest(reference) {
+      const index = findRequestIndex(reference);
+      if (index === -1) return;
+      const [removed] = requests.splice(index, 1);
+      feedback.textContent = "تم حذف الطلب التجريبي " + removed.reference + " من هذه الجلسة. الحذف هنا محلي فقط ولا يمس أي سجل رسمي.";
+      renderRequests(index);
     }
 
     clearRequestsButton.addEventListener("click", () => {
@@ -125,24 +151,29 @@
       requests.length = 0;
       form.reset();
       feedback.textContent = "تم مسح جميع الطلبات التجريبية من هذه الجلسة.";
-      renderRequests();
+      renderRequests(0);
     });
 
-    function renderRequests() {
+    // focusIndex: بعد حذف أو مراجعة ينتقل التركيز إلى بطاقة مجاورة بدل أن يضيع.
+    function renderRequests(focusIndex) {
       clearRequestsButton.disabled = requests.length === 0;
       list.replaceChildren();
       if (requests.length === 0) {
         const empty = document.createElement("p");
         empty.className = "empty";
+        empty.tabIndex = -1;
         empty.textContent = "لم تتم إضافة طلبات تجريبية بعد.";
         list.append(empty);
+        if (typeof focusIndex === "number") empty.focus();
         return;
       }
       requests.forEach((request) => {
         const article = document.createElement("article");
         article.className = "request";
-        const heading = document.createElement("strong");
+        const heading = document.createElement("h3");
+        heading.id = "request-" + request.reference;
         heading.textContent = request.reference + " · " + request.fullName;
+        article.setAttribute("aria-labelledby", heading.id);
         const detail = document.createElement("p");
         detail.textContent = request.district + " · أفراد الأسرة: " + request.householdSize + " · " + labels[request.needType];
         const status = document.createElement("p");
@@ -158,8 +189,21 @@
           reviewButton.addEventListener("click", () => markReviewed(request.reference));
           article.append(reviewButton);
         }
+        const removeButton = document.createElement("button");
+        removeButton.type = "button";
+        removeButton.className = "remove-button";
+        removeButton.textContent = "حذف الطلب التجريبي";
+        removeButton.setAttribute("aria-label", "حذف الطلب التجريبي " + request.reference + " من هذه الجلسة");
+        removeButton.addEventListener("click", () => removeRequest(request.reference));
+        article.append(removeButton);
         list.append(article);
       });
+      if (typeof focusIndex === "number") {
+        const cards = Array.from(list.querySelectorAll(".request"));
+        const card = cards[Math.min(focusIndex, cards.length - 1)];
+        const target = card && card.querySelector("button");
+        if (target) target.focus();
+      }
     }
   </script>
 </body>
