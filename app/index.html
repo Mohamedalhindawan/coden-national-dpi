@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="utf-8">
@@ -22,6 +22,8 @@
     label { display:block; font-weight:650; margin:14px 0 5px; }
     input,select { width:100%; padding:12px; border:1px solid #b9c9c4; border-radius:10px; background:#fff; color:inherit; font:inherit; }
     input:focus,select:focus,button:focus { outline:3px solid #9bd8c8; outline-offset:2px; }
+    input:disabled,select:disabled { background:#eef2f0; color:#5c6b68; cursor:not-allowed; }
+    button:disabled { background:#dfe7e4; color:#5c6b68; cursor:not-allowed; }
     button { width:100%; margin-top:20px; border:0; border-radius:11px; padding:13px 16px; background:var(--brand); color:white; font:inherit; font-weight:750; cursor:pointer; }
     button:hover { filter:brightness(.94); }
     .muted { color:var(--muted); font-size:.92rem; }
@@ -43,15 +45,21 @@
       <strong>بيانات تجريبية — نموذج أولي فقط.</strong>
       لا تُدخل بيانات حقيقية أو معلومات حساسة. لا تُرسل البيانات إلى أي خادم؛ تحفظ هذه التجربة الطلبات مؤقتاً في الصفحة فقط.
     </div>
+    <noscript>
+      <div class="notice" role="note">
+        <strong>يحتاج هذا النموذج إلى JavaScript.</strong>
+        مع تعطيل JavaScript تبقى حقول النموذج معطّلة ولا يمكن إرسال أي شيء، ولا تُرسل البيانات إلى أي خادم في هذه الحالة. فعّل JavaScript في المتصفح ثم أعد تحميل الصفحة.
+      </div>
+    </noscript>
     <div class="layout">
       <section class="card" aria-labelledby="form-title">
         <h1 id="form-title">طلب مساعدة اجتماعية</h1>
         <p class="muted">هذا النموذج لا يقرر الاستحقاق ولا يصرف أي مساعدة. كل طلب تجريبي يحتاج إلى مراجعة بشرية. المراجعة هنا محاكاة محلية (مراجعة تجريبية فقط)، وليست قراراً رسمياً.</p>
         <form id="requestForm">
           <label for="fullName">اسم تجريبي أو رمز الحالة</label>
-          <input id="fullName" name="fullName" autocomplete="off" required maxlength="80" placeholder="مثال: أسرة تجريبية 001">
+          <input id="fullName" name="fullName" autocomplete="off" required type="text" disabled maxlength="80" placeholder="مثال: أسرة تجريبية 001">
           <label for="district">المديرية</label>
-          <select id="district" name="district" required>
+          <select id="district" name="district" required disabled>
             <option value="">اختر المديرية التجريبية</option>
             <option>صيرة (تجريبي)</option>
             <option>المعلا (تجريبي)</option>
@@ -59,16 +67,16 @@
             <option>مديرية تجريبية أخرى</option>
           </select>
           <label for="householdSize">عدد أفراد الأسرة (تجريبي)</label>
-          <input id="householdSize" name="householdSize" type="number" min="1" max="30" required>
+          <input id="householdSize" name="householdSize" type="number" min="1" max="30" required disabled>
           <label for="needType">نوع الاحتياج</label>
-          <select id="needType" name="needType" required>
+          <select id="needType" name="needType" required disabled>
             <option value="">اختر نوعاً</option>
             <option value="food">مساعدة غذائية</option>
             <option value="cash">مساعدة نقدية</option>
             <option value="health">مساعدة صحية</option>
             <option value="other">احتياج آخر</option>
           </select>
-          <button type="submit">إضافة طلب تجريبي</button>
+          <button type="submit" id="submitRequest" disabled>إضافة طلب تجريبي</button>
         </form>
       </section>
       <aside class="card" aria-labelledby="requests-title">
@@ -90,6 +98,12 @@
     const feedback = document.getElementById("feedback");
     const clearRequestsButton = document.getElementById("clearRequests");
     const labels = { food: "مساعدة غذائية", cash: "مساعدة نقدية", health: "مساعدة صحية", other: "احتياج آخر" };
+
+    // تُفتح الحقول فقط عند تشغيل JavaScript؛ بدونها تبقى معطّلة فلا تُرسل بيانات إلى عنوان الصفحة.
+    ["fullName", "district", "householdSize", "needType"].forEach((id) => {
+      document.getElementById(id).disabled = false;
+    });
+    document.getElementById("submitRequest").disabled = false;
 
     form.addEventListener("submit", (event) => {
       event.preventDefault();

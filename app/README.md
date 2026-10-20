@@ -7,6 +7,7 @@ Open `index.html` in a browser, or use a browser-based development environment t
 
 ## Current limits
 - No server, database, login, or external API.
+- Without JavaScript the form fields stay disabled and a short Arabic notice explains why, so a request can never be submitted into the page URL; enabling JavaScript unlocks the form, and the disabled fields and button are visibly greyed out.
 - Requests are held in memory only and disappear when the page is refreshed.
 - The interface announces successful demo submission and review through an accessible status message, and offers a button to clear all demo requests from the current browser session. User-provided demo text is rendered as text, not interpreted as HTML.
 - The list includes a demo-only button to mark a request as reviewed. This is a local UI simulation, not an official SFD review or benefit decision; the status disappears on refresh.

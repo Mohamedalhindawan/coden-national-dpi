@@ -1,10 +1,34 @@
 """Contract checks for the static Tamam prototype; no real data or services."""
+from html.parser import HTMLParser
 from pathlib import Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app" / "index.html"
 OPENAPI = ROOT / "api" / "openapi.yaml"
+
+
+class ElementAttributesFinder(HTMLParser):
+    """Collects the attributes of the first element with a given id."""
+
+    def __init__(self, element_id):
+        super().__init__()
+        self.element_id = element_id
+        self.attributes = None
+
+    def handle_starttag(self, tag, attrs):
+        if self.attributes is not None:
+            return
+        attributes = dict(attrs)
+        if attributes.get("id") == self.element_id:
+            self.attributes = attributes
+
+
+def element_attributes(markup, element_id):
+    """Return the attributes of an element by id, independent of attribute order."""
+    finder = ElementAttributesFinder(element_id)
+    finder.feed(markup)
+    return finder.attributes or {}
 
 
 class TamamPrototypeContractTests(unittest.TestCase):
@@ -16,6 +40,32 @@ class TamamPrototypeContractTests(unittest.TestCase):
         self.assertIn('<html lang="ar" dir="rtl">', self.html)
         self.assertIn('name="viewport"', self.html)
         self.assertIn("@media", self.html)
+
+    def test_static_document_is_html_conformant(self):
+        self.assertTrue(self.html.startswith("<!DOCTYPE html>"))
+        self.assertIn('name="fullName" autocomplete="off" required type="text"', self.html)
+
+    def test_form_stays_inert_without_javascript(self):
+        for field_id in ("fullName", "district", "householdSize", "needType"):
+            with self.subTest(field_id=field_id):
+                self.assertIn("disabled", element_attributes(self.html, field_id))
+        submit = element_attributes(self.html, "submitRequest")
+        self.assertIn("disabled", submit)
+
+    def test_no_script_explanation_is_arabic_and_states_nothing_is_sent(self):
+        self.assertIn("<noscript>", self.html)
+        self.assertIn("يحتاج هذا النموذج إلى JavaScript", self.html)
+        self.assertIn("تبقى حقول النموذج معطّلة", self.html)
+        self.assertIn("لا تُرسل البيانات إلى أي خادم", self.html)
+
+    def test_disabled_state_is_visually_distinct(self):
+        self.assertIn("input:disabled,select:disabled", self.html)
+        self.assertIn("button:disabled", self.html)
+
+    def test_javascript_enables_the_disabled_form_controls(self):
+        self.assertIn('document.getElementById("submitRequest").disabled = false', self.html)
+        self.assertIn('document.getElementById(id).disabled = false', self.html)
+        self.assertIn('"fullName", "district", "householdSize", "needType"', self.html)
 
     def test_request_form_has_minimum_fields(self):
         for field in ('name="fullName"', 'name="district"', 'name="householdSize"', 'name="needType"'):
@@ -44,7 +94,9 @@ class TamamPrototypeContractTests(unittest.TestCase):
         self.assertNotIn("innerHTML", self.html)
 
     def test_submission_and_review_have_accessible_feedback(self):
-        self.assertIn('id="feedback" aria-live="polite"', self.html)
+        feedback = element_attributes(self.html, "feedback")
+        self.assertEqual(feedback.get("aria-live"), "polite")
+        self.assertEqual(feedback.get("role"), "status")
         self.assertIn("تمت إضافة الطلب التجريبي", self.html)
         self.assertIn("تم تسجيل المراجعة التجريبية", self.html)
 
