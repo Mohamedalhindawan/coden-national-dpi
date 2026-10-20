@@ -25,6 +25,9 @@
     button { width:100%; margin-top:20px; border:0; border-radius:11px; padding:13px 16px; background:var(--brand); color:white; font:inherit; font-weight:750; cursor:pointer; }
     button:hover { filter:brightness(.94); }
     .muted { color:var(--muted); font-size:.92rem; }
+    .hint { margin:0 0 6px; }
+    .field-error { background:#fdf2ef; border:1px solid #dcc3bd; border-radius:10px; color:#7c2d20; font-weight:650; margin:6px 0 0; padding:8px 10px; }
+    input[aria-invalid="true"],select[aria-invalid="true"] { border-color:#a13a28; }
     .empty { border:1px dashed #b9c9c4; border-radius:12px; padding:14px; color:var(--muted); }
     .request { border:1px solid var(--line); border-radius:12px; padding:12px; margin-top:10px; }
     .status { color:var(--brand); font-weight:750; }
@@ -47,27 +50,32 @@
       <section class="card" aria-labelledby="form-title">
         <h1 id="form-title">طلب مساعدة اجتماعية</h1>
         <p class="muted">هذا النموذج لا يقرر الاستحقاق ولا يصرف أي مساعدة. كل طلب تجريبي يحتاج إلى مراجعة بشرية. المراجعة هنا محاكاة محلية (مراجعة تجريبية فقط)، وليست قراراً رسمياً.</p>
-        <form id="requestForm">
+        <form id="requestForm" novalidate>
           <label for="fullName">اسم تجريبي أو رمز الحالة</label>
-          <input id="fullName" name="fullName" autocomplete="off" required maxlength="80" placeholder="مثال: أسرة تجريبية 001">
+          <p class="muted hint" id="fullNameHint">استخدم رمزاً تجريبياً فقط، مثل: أسرة تجريبية 001.</p>
+          <input id="fullName" name="fullName" autocomplete="off" required maxlength="80" aria-describedby="fullNameHint fullNameError" placeholder="مثال: أسرة تجريبية 001">
+          <p class="field-error" id="fullNameError" role="alert" hidden></p>
           <label for="district">المديرية</label>
-          <select id="district" name="district" required>
+          <select id="district" name="district" required aria-describedby="districtError">
             <option value="">اختر المديرية التجريبية</option>
             <option>صيرة (تجريبي)</option>
             <option>المعلا (تجريبي)</option>
             <option>خور مكسر (تجريبي)</option>
             <option>مديرية تجريبية أخرى</option>
           </select>
+          <p class="field-error" id="districtError" role="alert" hidden></p>
           <label for="householdSize">عدد أفراد الأسرة (تجريبي)</label>
-          <input id="householdSize" name="householdSize" type="number" min="1" max="30" required>
+          <input id="householdSize" name="householdSize" type="number" min="1" max="30" required aria-describedby="householdSizeError">
+          <p class="field-error" id="householdSizeError" role="alert" hidden></p>
           <label for="needType">نوع الاحتياج</label>
-          <select id="needType" name="needType" required>
+          <select id="needType" name="needType" required aria-describedby="needTypeError">
             <option value="">اختر نوعاً</option>
             <option value="food">مساعدة غذائية</option>
             <option value="cash">مساعدة نقدية</option>
             <option value="health">مساعدة صحية</option>
             <option value="other">احتياج آخر</option>
           </select>
+          <p class="field-error" id="needTypeError" role="alert" hidden></p>
           <button type="submit">إضافة طلب تجريبي</button>
         </form>
       </section>
@@ -90,11 +98,77 @@
     const feedback = document.getElementById("feedback");
     const clearRequestsButton = document.getElementById("clearRequests");
     const labels = { food: "مساعدة غذائية", cash: "مساعدة نقدية", health: "مساعدة صحية", other: "احتياج آخر" };
+    // التحقق يجري هنا لأن رسائل المتصفح الأصلية لا تأتي دائماً بالعربية.
+    const fields = {
+      fullName: {
+        input: document.getElementById("fullName"),
+        message: document.getElementById("fullNameError"),
+        text: "أدخل اسماً تجريبياً أو رمز حالة؛ لا يمكن أن يكون الحقل فارغاً.",
+        isValid: (value) => value.trim().length > 0
+      },
+      district: {
+        input: document.getElementById("district"),
+        message: document.getElementById("districtError"),
+        text: "اختر المديرية التجريبية من القائمة.",
+        isValid: (value) => value !== ""
+      },
+      householdSize: {
+        input: document.getElementById("householdSize"),
+        message: document.getElementById("householdSizeError"),
+        text: "أدخل عدداً صحيحاً لأفراد الأسرة بين 1 و30.",
+        isValid: (value) => {
+          const text = value.trim();
+          if (!/^\d+$/.test(text)) return false;
+          const size = Number(text);
+          return size >= 1 && size <= 30;
+        }
+      },
+      needType: {
+        input: document.getElementById("needType"),
+        message: document.getElementById("needTypeError"),
+        text: "اختر نوع الاحتياج من القائمة.",
+        isValid: (value) => value !== ""
+      }
+    };
+
+    // رسائل التحقق تُكتب كنص فقط؛ لا تُستخدم HTML لذلك.
+    function showFieldError(field) {
+      field.message.textContent = field.text;
+      field.message.hidden = false;
+      field.input.setAttribute("aria-invalid", "true");
+    }
+
+    function clearFieldError(field) {
+      field.message.textContent = "";
+      field.message.hidden = true;
+      field.input.removeAttribute("aria-invalid");
+    }
+
+    Object.values(fields).forEach((field) => {
+      field.input.addEventListener("input", () => clearFieldError(field));
+      field.input.addEventListener("change", () => clearFieldError(field));
+    });
 
     form.addEventListener("submit", (event) => {
       event.preventDefault();
-      if (!form.reportValidity()) return;
       const data = new FormData(form);
+      let firstInvalid = null;
+
+      Object.values(fields).forEach((field) => {
+        const value = String(data.get(field.input.name) ?? "");
+        if (field.isValid(value)) {
+          clearFieldError(field);
+        } else {
+          showFieldError(field);
+          if (!firstInvalid) firstInvalid = field;
+        }
+      });
+
+      if (firstInvalid) {
+        firstInvalid.input.focus();
+        return;
+      }
+
       const request = {
         reference: "DEMO-" + String(requests.length + 1).padStart(3, "0"),
         fullName: String(data.get("fullName")).trim(),
@@ -104,7 +178,6 @@
         status: "بانتظار المراجعة",
         humanReview: true
       };
-      if (!request.fullName || !Number.isInteger(request.householdSize) || request.householdSize < 1 || request.householdSize > 30) return;
       requests.push(request);
       feedback.textContent = "تمت إضافة الطلب التجريبي " + request.reference + "؛ وهو بانتظار مراجعة بشرية.";
       renderRequests();
