@@ -8,6 +8,7 @@ WORKFLOW = ROOT / "docs" / "AGENT_WORKFLOW.md"
 PR_TEMPLATE = ROOT / ".github" / "pull_request_template.md"
 README = ROOT / "README.md"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "prototype-checks.yml"
+REQUIREMENTS = ROOT / "requirements-dev.txt"
 
 SECRET_PATTERNS = (
     r"sk-[A-Za-z0-9]{16,}",
@@ -27,6 +28,7 @@ class AgentWorkflowDocsTests(unittest.TestCase):
         cls.pr_template = PR_TEMPLATE.read_text(encoding="utf-8")
         cls.readme = README.read_text(encoding="utf-8")
         cls.ci = CI_WORKFLOW.read_text(encoding="utf-8")
+        cls.requirements = REQUIREMENTS.read_text(encoding="utf-8")
 
     def test_workflow_includes_existing_tooling_audit(self):
         self.assertIn("Audit of existing repository tooling", self.workflow)
@@ -105,11 +107,17 @@ class AgentWorkflowDocsTests(unittest.TestCase):
                 with self.subTest(document=name, pattern=pattern):
                     self.assertIsNone(re.search(pattern, text))
 
-    def test_ci_workflow_still_runs_tests_and_openapi_validation(self):
-        self.assertIn("python -m unittest discover -s tests -v", self.ci)
-        self.assertIn("openapi-spec-validator==0.7.2", self.ci)
+    def test_workflow_documents_the_executable_gate(self):
+        self.assertIn("python tools/agent_preflight.py", self.workflow)
+        self.assertIn("--secrets-only", self.workflow)
+        self.assertIn("requirements-dev.txt", self.workflow)
+
+    def test_ci_runs_the_same_preflight_gate_with_read_only_permissions(self):
+        self.assertIn("python -m pip install -r requirements-dev.txt", self.ci)
+        self.assertIn("python tools/agent_preflight.py", self.ci)
         self.assertIn("workflow_dispatch:", self.ci)
         self.assertIn("contents: read", self.ci)
+        self.assertIn("openapi-spec-validator==0.7.2", self.requirements)
 
     def test_readme_links_the_operational_workflow(self):
         self.assertIn("[Free-first AI agent workflow](docs/AGENT_WORKFLOW.md)", self.readme)

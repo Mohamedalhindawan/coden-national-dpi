@@ -15,8 +15,8 @@ Increase reliable delivery speed without pretending that unavailable automation 
 | Area | What exists today | Finding |
 |---|---|---|
 | Agent rules | [AGENTS.md](../AGENTS.md): synthetic data, tests first, approval gates, completion report | Sound; this workflow follows it rather than replacing it |
-| CI | [Prototype checks](../.github/workflows/prototype-checks.yml): Python 3.12, contract tests, pinned OpenAPI validator, read-only permissions, manual dispatch | Useful baseline; no dependency or secret scanning; run status not verified from this workspace |
-| Tests | `tests/test_prototype_contract.py` and `tests/test_agent_workflow_docs.py` | Static contract checks; they do not prove runtime behaviour or that a human followed a checklist |
+| CI | [Prototype checks](../.github/workflows/prototype-checks.yml): Python 3.12, contract tests, pinned OpenAPI validator, read-only permissions, manual dispatch | Now runs the secret scan through the preflight tool; dependency scanning is still missing; run status not verified from this workspace |
+| Tests | `tests/test_prototype_contract.py`, `tests/test_agent_workflow_docs.py`, and `tests/test_agent_preflight.py` | Mostly static contract checks; they do not prove runtime behaviour or that a human followed a checklist |
 | API contract | [OpenAPI draft](../api/openapi.yaml) | Parses with the pinned validator; no backend is implemented and none is implied |
 | Existing AI docs | Five overlapping notes covering ChatGPT, Codex, Replit, Aider, Ollama | Historical planning; none described the verified Freebuff workflow or an Android runbook |
 | Pull-request process | No PR template before this change | Review evidence and approval gates were not prompted consistently |
@@ -83,14 +83,14 @@ Issue (acceptance criteria)
   -> Human merge
 ```
 
-Commands used in this repository:
+Run the preflight gate before every push:
 
 ```sh
-python -m unittest discover -s tests -v
-python -m openapi_spec_validator api/openapi.yaml
+python -m pip install -r requirements-dev.txt   # once in a disposable virtual environment
+python tools/agent_preflight.py
 ```
 
-CI installs `openapi-spec-validator==0.7.2`; install the same pin in a disposable virtual environment when validating locally. Do not add it to repository requirements unless the project adopts a dependency file.
+The same command runs in CI. It scans tracked and untracked non-ignored files for common secret shapes and for `.env` files, runs the full test suite, and validates the OpenAPI contract. It exits non-zero if any check fails or cannot run, and it never prints a matched secret value. `--secrets-only` scans files without running tests or the validator.
 
 ### Branch and commit rules
 
@@ -184,5 +184,5 @@ This workflow requires no paid service, API key, or subscription. GitHub Actions
 
 - CI run status and pull-request creation are manual on the phone because GitHub API credentials are not exposed to the agent.
 - The documentation tests in `tests/test_agent_workflow_docs.py` are contract checks: they prove required sections exist, not that a human followed them.
-- There is no automated dependency or secret scanner in CI yet. Adding one is a separate, reviewable security task.
+- CI now runs a stdlib secret scan through the preflight tool. Dependency and vulnerability scanning is still missing; adding one is a separate, reviewable security task.
 - Measure one improvement before adding agents: track tasks completed, rework, and check failures per week.

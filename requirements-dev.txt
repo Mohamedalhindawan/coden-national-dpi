@@ -1,0 +1,2 @@
+# Test-only tooling for local preflight and CI. Not a runtime dependency.
+openapi-spec-validator==0.7.2
