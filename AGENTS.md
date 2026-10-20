@@ -3,6 +3,8 @@
 ## Project context
 CODEN is a proposed Yemeni GovTech / Digital Public Infrastructure project. Tamam is a prototype citizen-facing super-app. This repository is a prototype and planning workspace, not an approved government production system.
 
+**Master guide:** See [CODEN_MASTER_ENGINEERING_PLAYBOOK.md](CODEN_MASTER_ENGINEERING_PLAYBOOK.md) for the complete vision, 31-sector/DPI scope, agent workflow, safety gates, and implementation status.
+
 ## Rules
 - Start by reading `README.md`, relevant files under `docs/`, the target code, and tests.
 - Work on one small, clearly scoped task at a time.
