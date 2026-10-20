@@ -1,6 +1,8 @@
 # Instructions for AI coding agents working in CODEN
 
 ## Project context
+**Master guide:** See [CODEN_MASTER_ENGINEERING_PLAYBOOK.md](CODEN_MASTER_ENGINEERING_PLAYBOOK.md) for the complete vision, 31-sector/DPI scope, agent workflow, safety gates, and implementation status.
+
 CODEN is a proposed Yemeni GovTech / Digital Public Infrastructure project. Tamam is a prototype citizen-facing super-app. This repository is a prototype and planning workspace, not an approved government production system.
 
 ## Rules
