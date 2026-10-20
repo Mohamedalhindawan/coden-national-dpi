@@ -1,5 +1,7 @@
 # CODEN AI Agent & Toolchain Plan
 
+> **Operational note (2026-10-20):** The verified phone-first workflow is documented in [CODEN Free-First AI Agent Workflow](AGENT_WORKFLOW.md). The tool list below is historical planning; verify current availability and cost before relying on any item.
+
 ## Goal
 Use AI agents to accelerate design, implementation, testing, documentation, and maintenance of the proposed CODEN / Tamam platform. AI-generated work must be reviewed; this plan does not imply that agents are already running autonomously.
 

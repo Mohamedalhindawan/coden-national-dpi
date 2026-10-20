@@ -2,7 +2,8 @@
 
 **Date checked:** 2026-10-20  
 **Status:** Initial shortlist; availability, free quotas, and account eligibility must be rechecked before depending on any service.  
-**Constraint:** Start at $0. Do not add paid services without explicit approval.
+**Constraint:** Start at $0. Do not add paid services without explicit approval.  
+**Update 2026-10-20:** A single Freebuff coding agent has been verified in an isolated cloud workspace for branch-based edits and test runs; see [AGENT_WORKFLOW.md](AGENT_WORKFLOW.md). Pull-request creation, CI run inspection, and additional agents remain unverified or unavailable, so the workflow stays single-agent and human-gated.
 
 ## Existing repository foundation
 - GitHub repository and Issues: source of truth for tasks and changes.
