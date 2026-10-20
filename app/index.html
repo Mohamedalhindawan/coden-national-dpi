@@ -149,7 +149,7 @@
         feedback.textContent = "تم إلغاء مسح الطلبات التجريبية؛ لم تُحذف أي طلبات.";
         return;
       }
-      requests = [];
+      requests.length = 0;
       const saved = persistRequests();
       form.reset();
       if (saved) feedback.textContent = "تم مسح جميع الطلبات التجريبية من هذه الجلسة.";
