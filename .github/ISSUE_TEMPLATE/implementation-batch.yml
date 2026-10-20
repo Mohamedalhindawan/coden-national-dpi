@@ -1,0 +1,87 @@
+name: "Implementation batch"
+description: "Track one batch from the original CODEN/YDS/Tamam 31-batch plan"
+title: "[Batch ??] <exact original batch title>"
+labels: ["planning"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template only after the exact original batch list is recovered.
+        Preserve the source title and order. Do not invent or infer batch content.
+  - type: input
+    id: batch_id
+    attributes:
+      label: Original batch number
+      description: "Use the exact number from the source list (1–31)."
+      placeholder: "e.g. 01"
+    validations:
+      required: true
+  - type: input
+    id: source_title
+    attributes:
+      label: Exact original batch title
+      description: "Copy the title verbatim from the original list."
+    validations:
+      required: true
+  - type: textarea
+    id: source_reference
+    attributes:
+      label: Source excerpt and reference
+      description: "Paste the original wording or provide the exact source document and location."
+      placeholder: "Original text, document version, page/section, or conversation reference"
+    validations:
+      required: true
+  - type: textarea
+    id: goal_scope
+    attributes:
+      label: Goal and scope
+      description: "Separate what this batch does from what is explicitly out of scope."
+    validations:
+      required: true
+  - type: textarea
+    id: systems_tools_agents
+    attributes:
+      label: Systems, tools, and AI-agent roles
+      description: "Use only items explicitly named in the source or later approved by the project owner."
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies and blockers
+      description: "List prerequisite batches, decisions, integrations, and any unresolved blockers."
+  - type: textarea
+    id: deliverables
+    attributes:
+      label: Deliverables and repository paths
+      description: "Name the expected files, components, tests, or documentation."
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: "Use observable, testable outcomes; do not claim success before running checks."
+    validations:
+      required: true
+  - type: textarea
+    id: test_security
+    attributes:
+      label: Test and security plan
+      description: "Include automated tests, privacy review, threat considerations, and CI evidence."
+    validations:
+      required: true
+  - type: checkboxes
+    id: approvals
+    attributes:
+      label: Human approval gates
+      options:
+        - label: "Identity, eligibility, payments, legal/policy, security, spending, or production changes reviewed by an authorized human"
+          required: false
+        - label: "Uses synthetic/demo data only; no secrets or real citizen/beneficiary data"
+          required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence and completion notes
+      description: "Link PR, commit, CI run, test results, review, and known limitations."
