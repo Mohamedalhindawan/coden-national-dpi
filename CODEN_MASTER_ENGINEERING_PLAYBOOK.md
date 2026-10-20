@@ -318,19 +318,20 @@ A change is complete only when:
 | X-Road integration | **Planned/Blocked** | Under evaluation | Needs validation |
 | Tamam mobile app | **Planned** | Not present | Web prototype only |
 
-### Known Failures
-- **None currently.** All tests pass (35/35). Preflight passes (3/3). HTML valid. axe-core 0 violations.
+### Known Failures and Verification Status
+- The authoring agent reported 35 tests passing, preflight passing, HTML validation passing, and zero axe-core violations in its environment; those results were not independently verified by this PR's initial CI run.
+- The latest GitHub Actions run for the clean playbook PR failed one existing contract test: `test_submission_and_review_have_accessible_feedback`. The test expects `id="feedback" aria-live="polite"` to be contiguous, while the valid HTML includes `role="status"` between attributes. The other 10 tests in that run passed.
+- A separate proposed fix is available in [PR #16](https://github.com/Mohamedalhindawan/coden-national-dpi/pull/16), whose CI run succeeded. Review and merge decisions remain human-controlled.
 
 ### Blocked/Limitations
-- GitHub API/PR creation via CLI needs auth (use web/mobile)
-- CI run status not visible from this environment
-- Parallel agents limited
-- No official 31-sector inventory in repo (gap documented)
-- Backend/DPI/X-Road not implemented (by design for current phase)
+- The repository does not contain an authoritative enumerated list of all 31 sectors; this gap is documented rather than guessed.
+- Backend/DPI services, native mobile app, and X-Road integration are not implemented in the current prototype.
+- Agent parallelism and background execution must be treated as unavailable unless the active tool explicitly demonstrates otherwise.
+- Check GitHub Actions directly for current CI status; local tool access may vary by environment.
 
 ### Next Priorities (Ranked by Impact/Risk)
-1. **[HIGH/LOW-RISK]** Open PR for current changes, verify CI passes, get human review/merge.
-2. **[HIGH/MED]** Obtain and document official 31-sector inventory with traceability.
+1. **[HIGH/LOW-RISK]** Review the clean playbook PR and resolve the known baseline test failure by reviewing [PR #16](https://github.com/Mohamedalhindawan/coden-national-dpi/pull/16); re-run CI after the fix reaches the base branch.
+2. **[HIGH/MED]** Obtain and document the authoritative 31-sector inventory with traceability.
 3. **[MED/MED]** Consider compatible integration of improved validation UX from `feat/tamam-form-validation-feedback` branch without breaking security.
 4. **[MED/MED]** Address OpenAPI contract review items as backend design progresses.
 5. **[MED/LOW]** Enhance preflight with optional dependency scanning if needed.
