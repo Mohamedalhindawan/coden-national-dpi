@@ -41,7 +41,7 @@
   <main>
     <div class="notice" role="note">
       <strong>بيانات تجريبية — نموذج أولي فقط.</strong>
-      لا تُدخل بيانات حقيقية أو معلومات حساسة. لا تُرسل البيانات إلى أي خادم؛ تحفظ هذه التجربة الطلبات مؤقتاً في الصفحة فقط.
+      لا تُدخل بيانات حقيقية أو معلومات حساسة. لا تُرسل البيانات إلى أي خادم؛ تُحفظ الطلبات التجريبية في ذاكرة جلسة هذا المتصفح فقط، وتُمسح عند انتهاء الجلسة أو مسح بياناتها.
     </div>
     <div class="layout">
       <section class="card" aria-labelledby="form-title">
@@ -73,7 +73,7 @@
       </section>
       <aside class="card" aria-labelledby="requests-title">
         <h2 id="requests-title">الطلبات في هذه الجلسة</h2>
-        <p class="muted">البيانات مؤقتة وتختفي عند تحديث الصفحة أو إغلاقها.</p>
+        <p class="muted">البيانات التجريبية محفوظة في جلسة المتصفح فقط لتبقى عند تحديث الصفحة. لا تستخدم بيانات حقيقية.</p>
         <p id="feedback" class="muted" aria-live="polite" role="status"></p>
         <button id="clearRequests" class="review-button" type="button" disabled>مسح الطلبات التجريبية</button>
         <div id="requests" aria-live="polite">
@@ -86,8 +86,28 @@
   <script>
     const form = document.getElementById("requestForm");
     const list = document.getElementById("requests");
-    const requests = [];
+    const STORAGE_KEY = "tamam.demoRequests";
     const feedback = document.getElementById("feedback");
+    let requests = [];
+
+    try {
+      const savedRequests = sessionStorage.getItem(STORAGE_KEY);
+      const parsedRequests = savedRequests ? JSON.parse(savedRequests) : [];
+      if (Array.isArray(parsedRequests)) requests = parsedRequests;
+    } catch {
+      requests = [];
+      feedback.textContent = "تعذر استعادة الجلسة التجريبية؛ يمكنك المتابعة ببيانات اصطناعية جديدة.";
+    }
+
+    function persistRequests() {
+      try {
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(requests));
+        return true;
+      } catch {
+        feedback.textContent = "تعذر حفظ الجلسة التجريبية في هذا المتصفح؛ ستبقى التغييرات مؤقتة حتى مغادرة الصفحة.";
+        return false;
+      }
+    }
     const clearRequestsButton = document.getElementById("clearRequests");
     const labels = { food: "مساعدة غذائية", cash: "مساعدة نقدية", health: "مساعدة صحية", other: "احتياج آخر" };
 
@@ -106,7 +126,8 @@
       };
       if (!request.fullName || !Number.isInteger(request.householdSize) || request.householdSize < 1 || request.householdSize > 30) return;
       requests.push(request);
-      feedback.textContent = "تمت إضافة الطلب التجريبي " + request.reference + "؛ وهو بانتظار مراجعة بشرية.";
+      const saved = persistRequests();
+      if (saved) feedback.textContent = "تمت إضافة الطلب التجريبي " + request.reference + "؛ وهو بانتظار مراجعة بشرية.";
       renderRequests();
       form.reset();
     });
@@ -116,15 +137,22 @@
       if (!request || request.reviewed) return;
       request.reviewed = true;
       request.status = "تمت مراجعة تجريبية — ليس قراراً رسمياً";
-      feedback.textContent = "تم تسجيل المراجعة التجريبية للطلب " + request.reference + "؛ هذا ليس قراراً رسمياً.";
+      const saved = persistRequests();
+      if (saved) feedback.textContent = "تم تسجيل المراجعة التجريبية للطلب " + request.reference + "؛ هذا ليس قراراً رسمياً.";
       renderRequests();
     }
 
     clearRequestsButton.addEventListener("click", () => {
       if (requests.length === 0) return;
-      requests.length = 0;
+      const confirmed = window.confirm("هل تريد مسح جميع الطلبات التجريبية من جلسة المتصفح؟ هذا الإجراء لا يمكن التراجع عنه.");
+      if (!confirmed) {
+        feedback.textContent = "تم إلغاء مسح الطلبات التجريبية؛ لم تُحذف أي طلبات.";
+        return;
+      }
+      requests = [];
+      const saved = persistRequests();
       form.reset();
-      feedback.textContent = "تم مسح جميع الطلبات التجريبية من هذه الجلسة.";
+      if (saved) feedback.textContent = "تم مسح جميع الطلبات التجريبية من هذه الجلسة.";
       renderRequests();
     });
 
