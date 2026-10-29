@@ -9,13 +9,13 @@ CODEN / YDS / Tamam is a proposal and prototype, not an approved national produc
 ## Start here
 
 - [**Master engineering playbook**](CODEN_MASTER_ENGINEERING_PLAYBOOK.md) — full vision, 31-sector/DPI scope, workflow, and status
-
 - [Project overview](docs/PROJECT_OVERVIEW.md)
 - [Open-source reuse assessment](docs/OPEN_SOURCE_REUSE_ASSESSMENT.md)
 - [Open-source reuse register and integration gates](docs/OPEN_SOURCE_REUSE_REGISTER.md)
 - [Free-first agent roadmap](docs/FREE_FIRST_AGENT_ROADMAP.md)
 - [AI agent toolchain](docs/AI_AGENT_TOOLCHAIN.md)
 - [First coding agent setup](docs/FIRST_CODING_AGENT_SETUP.md)
+- [Hermes Agent setup for GitHub](docs/HERMES_AGENT_SETUP.md)
 - [Prototype instructions](app/README.md)
 
 ## Current prototype
