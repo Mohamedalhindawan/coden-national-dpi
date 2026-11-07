@@ -130,3 +130,8 @@ Focused test command: `python -m unittest skills.tests.test_workflow_orchestrati
 ## Persistent execution queue 1.0
 
 `queue.py` adds a durable local SQLite queue with idempotent enqueue, priority claims, worker leases and fencing tokens, heartbeat, bounded attempts, cancellation, and append-only audit events. It stores envelopes only and does not execute work or launch workers. See `queue/README.md`. Focused tests: `python -m unittest skills.tests.test_persistent_queue -v`.
+
+
+## Worker admission runtime 1.0
+
+`worker_runtime.py` adds a thread-safe in-process admission controller with allowlisted worker IDs/capabilities, per-worker and global concurrency caps, and pause/resume. It does not execute jobs, poll the persistent queue, or create worker processes. See `workers/README.md`. Tests: `python -m unittest skills.tests.test_worker_runtime -v`.
