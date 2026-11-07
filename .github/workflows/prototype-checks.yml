@@ -26,5 +26,7 @@ jobs:
           python -m pip install openapi-spec-validator==0.7.2
           python -m openapi_spec_validator api/openapi.yaml
 
+      - name: Install skills validation dependency
+        run: python -m pip install jsonschema==4.23.0
       - name: Validate CODEN skills library
         run: python -m unittest discover -s skills/tests -v
