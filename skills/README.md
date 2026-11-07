@@ -105,3 +105,8 @@ See `orchestration/control-plane/README.md` for the unified local operations fac
 ### Workflow Operator API
 
 See `orchestration/operator-api/README.md` for the minimal WSGI API, route contract, and security boundaries.
+
+
+### Operator Dashboard
+
+See `orchestration/operator-dashboard/README.md` for the Arabic RTL static dashboard asset, its API integration, and security boundaries.
