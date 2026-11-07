@@ -80,3 +80,8 @@ See `orchestration/queue.py` and `orchestration/queue/README.md` for the experim
 ### Worker admission runtime
 
 See `orchestration/worker_runtime.py` and `orchestration/workers/README.md` for bounded in-process worker admission. This is not a job executor or distributed scheduler.
+
+
+### Worker–queue integration
+
+See `orchestration/worker_queue.py` and `orchestration/worker-queue/README.md` for the experimental in-process bridge between durable queue claims and worker admission. No task execution is performed.
