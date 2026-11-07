@@ -85,3 +85,8 @@ See `orchestration/worker_runtime.py` and `orchestration/workers/README.md` for 
 ### Worker–queue integration
 
 See `orchestration/worker_queue.py` and `orchestration/worker-queue/README.md` for the experimental in-process bridge between durable queue claims and worker admission. No task execution is performed.
+
+
+### DAG-aware scheduler
+
+`orchestration/scheduler.py` connects DAG readiness and blocked-state propagation to the persistent queue and worker integration. See `orchestration/scheduler/README.md`.
