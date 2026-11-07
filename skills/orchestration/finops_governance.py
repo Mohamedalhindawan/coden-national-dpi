@@ -163,6 +163,14 @@ class FinOpsGovernance:
         if row["submitted_by"] == actor:
             self.db.rollback()
             raise FinOpsGovernanceError("maker and checker must be different people")
+        try:
+            ledger_state = self.ledger.reservation_status(row["reservation_id"])
+        except Exception as exc:
+            self.db.rollback()
+            raise FinOpsGovernanceError("reservation state cannot be verified; rejection is blocked") from exc
+        if ledger_state["status"] != "reserved":
+            self.db.rollback()
+            raise FinOpsGovernanceError("reconciled ledger operation cannot be rejected")
         decided = datetime.now(timezone.utc).isoformat()
         self.db.execute(
             "UPDATE reconciliation_requests SET status='rejected',decided_by=?,decided_at=? WHERE request_id=?",
