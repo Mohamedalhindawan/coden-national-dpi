@@ -5,6 +5,7 @@ or stores bearer credentials and is not a standalone internet-facing server.
 """
 import json
 import re
+from urllib.parse import parse_qs
 
 
 class OperatorAPIError(ValueError):
@@ -14,11 +15,12 @@ class OperatorAPIError(ValueError):
 class WorkflowOperatorAPI:
     MAX_BODY_BYTES = 16 * 1024
 
-    def __init__(self, control_plane, authenticator):
+    def __init__(self, control_plane, authenticator, control_center=None):
         if not callable(authenticator):
             raise OperatorAPIError("An authentication provider is required")
         self.control_plane = control_plane
         self.authenticator = authenticator
+        self.control_center = control_center
 
     @staticmethod
     def _response(start_response, status, payload):
@@ -68,6 +70,19 @@ class WorkflowOperatorAPI:
         try:
             if method == "GET" and path == "/v1/workflows/status":
                 return self._response(start_response, "200 OK", self.control_plane.snapshot())
+            if method == "GET" and path == "/v1/observability/snapshot":
+                if self.control_center is None:
+                    return self._response(start_response, "404 Not Found", {"error": "not_found"})
+                query = parse_qs(environ.get("QUERY_STRING", ""), keep_blank_values=True)
+                required = ("project_id", "team_id", "period", "period_key")
+                values = {key: query.get(key, [""])[0] for key in required}
+                if any(not value.strip() for value in values.values()):
+                    return self._response(start_response, "400 Bad Request", {"error": "invalid_observability_scope"})
+                try:
+                    report = self.control_center.snapshot(**values)
+                except (ValueError, KeyError):
+                    return self._response(start_response, "400 Bad Request", {"error": "invalid_observability_scope"})
+                return self._response(start_response, "200 OK", report)
             if method == "POST" and path in {
                 "/v1/workflows/pause", "/v1/workflows/resume", "/v1/workflows/dispatch"
             }:
