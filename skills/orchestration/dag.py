@@ -83,7 +83,7 @@ def ready_tasks(tasks, states):
     if unknown:
         raise DAGError("States supplied for unknown tasks: " + ", ".join(unknown))
     for task_id, state in states.items():
-        if state not in VALID_STATES:
+        if not isinstance(state, str) or state not in VALID_STATES:
             raise DAGError("Invalid state for " + task_id + ": " + str(state))
     current = {task_id: states.get(task_id, "pending") for task_id in graph}
     return sorted(
@@ -108,7 +108,8 @@ def propagate_blocked(tasks, states):
         for dependency in dependencies:
             reverse[dependency].append(task_id)
     blocked = set()
-    queue = deque(sorted(task_id for task_id, state in states.items()
+    current = {task_id: states.get(task_id, "pending") for task_id in graph}
+    queue = deque(sorted(task_id for task_id, state in current.items()
                          if state in {"failed", "blocked", "cancelled"}))
     visited = set(queue)
     while queue:
@@ -116,8 +117,9 @@ def propagate_blocked(tasks, states):
         for child in reverse[failed]:
             if child not in visited:
                 visited.add(child)
-                blocked.add(child)
-                queue.append(child)
+                if current[child] in {"pending", "ready", "running"}:
+                    blocked.add(child)
+                    queue.append(child)
     return sorted(blocked)
 
 
