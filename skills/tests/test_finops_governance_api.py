@@ -19,7 +19,7 @@ class FinOpsGovernanceAPITests(unittest.TestCase):
             "2026-11-07T10:00:00+00:00", run_id="run-1"))
         self.governance = FinOpsGovernance(self.ledger, root / "governance.sqlite")
         self.principals = {
-            "maker": {"subject": "maker-1", "role": "finance_operator"},
+            "maker": {"subject": "maker-1", "role": "finance_admin"},
             "checker": {"subject": "checker-1", "role": "finance_approver"},
             "viewer": {"subject": "viewer-1", "role": "operator"},
         }
