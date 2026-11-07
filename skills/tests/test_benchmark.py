@@ -72,8 +72,8 @@ class BenchmarkTests(unittest.TestCase):
 
     def test_comparison_requires_same_benchmark_definition(self):
         rows = [score_receipt(case(), receipt()),
-                score_receipt(case(), receipt(run_id="run-2", provider="provider-b",
-                                               dataset_id="different-dataset"))]
+                score_receipt(case(), receipt(run_id="run-2", provider="provider-b"))]
+        rows[1]["dataset_id"] = "different-dataset"
         with self.assertRaises(BenchmarkError):
             compare_providers(rows)
 
