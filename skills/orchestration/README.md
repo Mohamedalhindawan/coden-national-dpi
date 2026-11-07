@@ -125,3 +125,8 @@ Focused test command: `python -m unittest skills.tests.test_workflow_orchestrati
 ## Task DAG & dependency engine 1.0
 
 `dag.py` validates dependency graphs, detects cycles, creates deterministic topological waves, derives ready tasks, propagates blocked descendants, and evaluates bounded retry eligibility. It is a planner only: no scheduler, workers, execution, or provider calls. See `dag/README.md` and `schemas/task-graph.schema.json`. Tests: `python -m unittest skills.tests.test_task_dag -v`.
+
+
+## Persistent execution queue 1.0
+
+`queue.py` adds a durable local SQLite queue with idempotent enqueue, priority claims, worker leases and fencing tokens, heartbeat, bounded attempts, cancellation, and append-only audit events. It stores envelopes only and does not execute work or launch workers. See `queue/README.md`. Focused tests: `python -m unittest skills.tests.test_persistent_queue -v`.
