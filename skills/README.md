@@ -125,3 +125,8 @@ See `orchestration/model-gateway/README.md` for simulated model selection, reque
 ### AI FinOps & Budget Control 1.0
 
 See `orchestration/finops/README.md` for project/team daily and monthly budgets, atomic reservations, spend reconciliation, and threshold alerts.
+
+
+### AI Observability & Control Center 2.0
+
+See `orchestration/control-center/README.md` for the local read-only aggregation of agent metrics and FinOps budget snapshots.
