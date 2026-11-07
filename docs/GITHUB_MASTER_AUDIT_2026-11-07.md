@@ -78,15 +78,30 @@ The repository PR search returned the following open PRs in the snapshot. The ke
 | [#13](https://github.com/Mohamedalhindawan/coden-national-dpi/pull/13) | Tamam session persistence and clearing | Open | Yes/needs confirmation | Not audited in detail | Review against current main behavior and tests |
 | [#10](https://github.com/Mohamedalhindawan/coden-national-dpi/pull/10) | Guarded AI coding agent quickstart | Open | Yes/needs confirmation | Not audited in detail | Review for overlap with #24 and #15 |
 
+### CI evidence and branch divergence
+
+| PR | Workflow run | Result | Branch relation to current main | Action |
+|---|---:|---|---|---|
+| #26 | [#266](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/42394258719) | Success; 149 skills tests reported OK, prototype tests and OpenAPI validation passed | Up to date with main at audit time | Continue technical review; keep Draft |
+| #22 | [#45?](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/39488034866) | Success; preflight, prototype tests, OpenAPI validation steps passed | 5 commits ahead / 3 behind; diverged | Update branch and rerun CI |
+| #24 | [workflow run](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/39835112389) | Success | 1 commit ahead / 3 behind; diverged | Update branch and rerun CI |
+| #20 | [workflow run](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/39485351791) | Success | 2 commits ahead / 3 behind; diverged | Update branch and rerun CI |
+
+Note: the PR #22 workflow run is cited by its run ID above; the display label is not a PR number.
+
 PR metadata for #26 reports 303 commits, 154 changed files, 10,449 additions, and 1 deletion. Its PR description says it adds 10 foundational skills. This is a review warning: inspect the complete diff and branch history, reconcile the stated scope with actual files, and split unrelated work before considering merge. Do not infer that 303 commits are all new intended feature work.
 
-PR #26 explicitly states that skills are Draft and need named human owners, technical review, practical validation, and formal approval. Its diff also adds a skills-library validation step to the workflow. The latest observed Actions run for PR #26 was run **#266**, completed **successfully** on 2026-11-07 at 17:02 UTC. This proves that this PR workflow run passed; it does **not** prove that the PR is approved, merged, that main has the same checks, or that the skills are production-ready.
+PR #26 explicitly states that skills are Draft and need named human owners, technical review, practical validation, and formal approval. A direct parse of `skills/registry.yaml` on the PR head found **60 skill entries, 60 unique IDs, and 60 unique paths**; all entries remain Draft. This corrects the PR body wording “10 foundational skill specifications”: the actual registry contains 60 skills distributed across 13 domains.
 
-PR #22 adds a preflight guardrail and associated tests. Its PR description correctly says the CI result must be checked before considering it ready.
+The latest observed Actions run for PR #26 was run **#266**, completed **successfully** on 2026-11-07 at 17:02 UTC. The job completed all seven relevant steps, including the prototype contract tests, OpenAPI validation, and skills-library test suite. The logs report **149 tests run in 1.921 seconds, OK** for the combined skills test command. This is meaningful CI evidence for the PR head, but it does **not** prove that the PR is approved, merged, that main has the same checks, or that the skills are operationally approved.
 
-PR #24 is an operating runbook and states that no backend, production deployment, or paid service is authorized by the document.
+The PR is not documentation-only: it adds Python orchestration modules, a local operator API/dashboard, queue/runtime/scheduler/control-plane prototypes, tests, schemas, and a CI workflow change. The provider adapter is explicitly simulated-only; the workflow facade does not invoke external providers or execute tools, and its docs list production gaps. A COMMENT review was posted on PR #26 asking for an accurate scope description, reconciliation of the 10-vs-60 wording, and clearer separation or architecture mapping of the skills catalogue and orchestration prototype. The PR remains Draft and unmerged.
 
-PR #20 provides a workflow for tracking the original 31 implementation batches, but explicitly says the exact original batch list is still needed. Do not invent or substitute names.
+PR #22 adds a deterministic preflight guardrail, three unit tests, and a CI step. Its workflow run **#39488034866** completed successfully, including preflight, prototype contract tests, and OpenAPI validation. However, its branch is **3 commits behind main and 5 commits ahead**, with a diverged history. It should be rebased/updated against current main and rerun before merge.
+
+PR #24 is an operating runbook and states that no backend, production deployment, or paid service is authorized by the document. Its workflow run **#39835112389** completed successfully. The branch is **3 commits behind main and 1 commit ahead**, so update it against current main and rerun before merge.
+
+PR #20 provides a workflow for tracking the original 31 implementation batches, but explicitly says the exact original batch list is still needed. Do not invent or substitute names. Its workflow run **#39485351791** completed successfully. The branch is **3 commits behind main and 2 commits ahead**, so update it against current main and rerun before merge.
 
 ## 4. Issue baseline and blockers
 
@@ -148,10 +163,10 @@ The workflow file is configuration evidence only. The latest observed PR #26 run
 
 ## 8. Prioritized next actions
 
-1. **Complete PR #26 technical review:** inspect all 154 files, verify the actual skills count and registry consistency, inspect orchestration code separately, check test coverage, identify duplicated/unrelated commits, and reduce scope if needed.
-2. **Verify PR #22:** inspect preflight implementation and tests, then confirm its latest CI run.
-3. **Verify PR #24:** check runbook consistency with current repo and ensure it does not claim an agent is already running.
-4. **Review PR #20 and Issue #21:** preserve the workflow, but keep exact batch mapping blocked until the original source is recovered.
+1. **PR #26:** 60 skill IDs/paths are structurally registered and the PR-head CI passed 149 tests. Reconcile the PR description (10 vs 60) and its “documentation-only” label with the actual executable orchestration prototype. Keep Draft pending review and explicit scope decision.
+2. **PR #22:** preflight and CI are green on its old head; update the diverged branch against current main and rerun.
+3. **PR #24:** documentation CI is green on its old head; update the diverged branch against current main and rerun.
+4. **PR #20 / Issue #21:** workflow CI is green on its old head; update branch against main. Exact batch mapping remains blocked until the original source is recovered.
 5. **Resolve duplicate/overlapping mobile-agent documentation:** compare #14 and #15 and decide one canonical guide.
 6. **Verify main-branch CI:** obtain a successful workflow run tied to the current main SHA.
 7. **Prepare a human-reviewed repository governance proposal:** branch protection, required checks, PR template, issue templates, ADR format, and versioning policy.
@@ -174,6 +189,9 @@ The workflow file is configuration evidence only. The latest observed PR #26 run
 - [Issues](https://github.com/Mohamedalhindawan/coden-national-dpi/issues)
 - [Actions](https://github.com/Mohamedalhindawan/coden-national-dpi/actions)
 - [PR #26 successful workflow run #266](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/42394258719)
+- [PR #22 successful workflow run](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/39488034866)
+- [PR #24 successful workflow run](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/39835112389)
+- [PR #20 successful workflow run](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/39485351791)
 - [README](https://github.com/Mohamedalhindawan/coden-national-dpi/blob/main/README.md)
 - [AGENTS.md](https://github.com/Mohamedalhindawan/coden-national-dpi/blob/main/AGENTS.md)
 - [Prototype checks workflow](https://github.com/Mohamedalhindawan/coden-national-dpi/blob/main/.github/workflows/prototype-checks.yml)
