@@ -21,8 +21,9 @@ class FinOpsGovernance:
         if not hasattr(ledger, "reconcile"):
             raise FinOpsGovernanceError("a FinOps ledger is required")
         self.ledger = ledger
-        self.db = sqlite3.connect(str(database_path))
+        self.db = sqlite3.connect(str(database_path), timeout=30)
         self.db.row_factory = sqlite3.Row
+        self.db.execute("PRAGMA busy_timeout=30000")
         self.db.executescript("""
             CREATE TABLE IF NOT EXISTS reconciliation_requests (
                 request_id TEXT PRIMARY KEY,
@@ -137,10 +138,14 @@ class FinOpsGovernance:
             self.db.rollback()
             raise FinOpsGovernanceError("ledger reconciliation was rejected") from exc
         decided = datetime.now(timezone.utc).isoformat()
-        self.db.execute(
-            "UPDATE reconciliation_requests SET status='approved',decided_by=?,decided_at=? WHERE request_id=?",
+        cursor = self.db.execute(
+            "UPDATE reconciliation_requests SET status='approved',decided_by=?,decided_at=? "
+            "WHERE request_id=? AND status='pending'",
             (actor, decided, request_id),
         )
+        if cursor.rowcount != 1:
+            self.db.rollback()
+            raise FinOpsGovernanceError("reconciliation request changed during approval")
         self._audit(request_id, "reconciliation_approved", actor, result)
         final = self.db.execute(
             "SELECT * FROM reconciliation_requests WHERE request_id=?", (request_id,)
@@ -172,10 +177,14 @@ class FinOpsGovernance:
             self.db.rollback()
             raise FinOpsGovernanceError("reconciled ledger operation cannot be rejected")
         decided = datetime.now(timezone.utc).isoformat()
-        self.db.execute(
-            "UPDATE reconciliation_requests SET status='rejected',decided_by=?,decided_at=? WHERE request_id=?",
+        cursor = self.db.execute(
+            "UPDATE reconciliation_requests SET status='rejected',decided_by=?,decided_at=? "
+            "WHERE request_id=? AND status='pending'",
             (actor, decided, request_id),
         )
+        if cursor.rowcount != 1:
+            self.db.rollback()
+            raise FinOpsGovernanceError("reconciliation request changed during rejection")
         self._audit(request_id, "reconciliation_rejected", actor, {})
         final = self.db.execute(
             "SELECT * FROM reconciliation_requests WHERE request_id=?", (request_id,)
