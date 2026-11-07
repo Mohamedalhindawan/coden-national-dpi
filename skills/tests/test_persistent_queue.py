@@ -40,7 +40,7 @@ class PersistentQueueTests(unittest.TestCase):
             self.queue.complete("task-1", "worker-b", {"result": "bad"}, lease_token=claimed["lease_token"])
 
     def test_expired_lease_can_be_reclaimed_and_old_worker_fenced(self):
-        self.queue.enqueue("task-1", {"kind": "synthetic"})
+        self.queue.enqueue("task-1", {"kind": "synthetic"}, max_attempts=2)
         first = self.queue.claim("worker-a", lease_seconds=1, now=100)
         reclaimed = self.queue.claim("worker-b", lease_seconds=30, now=102)
         self.assertEqual(reclaimed["worker_id"], "worker-b")
