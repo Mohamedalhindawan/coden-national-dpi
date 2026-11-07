@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coden.it.com/schemas/enterprise/risk.schema.json",
+  "title": "CODEN Enterprise Risk",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "risk_id",
+    "initiative_id",
+    "title",
+    "description",
+    "likelihood",
+    "impact",
+    "status",
+    "identified_at"
+  ],
+  "properties": {
+    "risk_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 100,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]*$"
+    },
+    "initiative_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 100,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]*$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 200
+    },
+    "description": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 3000
+    },
+    "category": {
+      "enum": [
+        "delivery",
+        "security",
+        "privacy",
+        "financial",
+        "operational",
+        "legal",
+        "vendor",
+        "reputational",
+        "other"
+      ]
+    },
+    "likelihood": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5
+    },
+    "impact": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5
+    },
+    "status": {
+      "enum": [
+        "identified",
+        "assessing",
+        "mitigating",
+        "accepted",
+        "closed"
+      ]
+    },
+    "risk_owner_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 100
+    },
+    "mitigation_plan": {
+      "type": "string",
+      "maxLength": 3000
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "identified_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "due_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "residual_likelihood": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5
+    },
+    "residual_impact": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "mitigating",
+              "accepted",
+              "closed"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "risk_owner_id",
+          "mitigation_plan"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "closed"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "reviewed_at"
+        ]
+      }
+    }
+  ]
+}
