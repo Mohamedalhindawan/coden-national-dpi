@@ -84,3 +84,13 @@ This is deliberately a control-plane prototype only. It does **not** execute age
 python -m pip install jsonschema==4.23.0
 python -m unittest skills.tests.test_orchestration_contracts skills.tests.test_orchestration_runtime -v
 ```
+
+## Execution adapter boundary (v1.0)
+
+The `adapters/` package introduces a fail-closed registry for tool adapters. Dispatch requires a schema-valid task envelope, a tool explicitly present in that task's `constraints.allowed_tools`, and `network: disabled`. The only supported mode is `dry_run`; live execution is rejected. Adapter receipts must explicitly state `status: simulated` and `executed: false`.
+
+The included `DryRunAdapter` is a no-op: it does not start processes, call model providers, access the network, or mutate the workspace. Receipts include a deterministic payload SHA-256 and run/task identifiers.
+
+Tests: `python -m unittest skills.tests.test_execution_adapters -v`.
+
+**Not production-ready:** there is no real Factory/Manus/Codex/OpenHands integration, credential broker, sandbox, distributed queue, resource metering, or live execution. A future live adapter requires a separately reviewed threat model, sandbox design, secrets isolation, human approval, and dedicated integration tests.
