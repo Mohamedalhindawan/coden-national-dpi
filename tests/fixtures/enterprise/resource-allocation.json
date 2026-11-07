@@ -1,0 +1,11 @@
+{
+  "allocation_id": "allocation-demo-001",
+  "initiative_id": "initiative-demo-001",
+  "resource_id": "agent-demo-001",
+  "role": "delivery-lead",
+  "start_date": "2026-11-10",
+  "end_date": "2026-12-31",
+  "allocation_percent": 40,
+  "status": "proposed",
+  "notes": "Synthetic planning fixture; no real staff or agent assignment"
+}

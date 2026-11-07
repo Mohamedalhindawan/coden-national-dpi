@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coden.it.com/schemas/enterprise/resource-allocation.schema.json",
+  "title": "CODEN Resource Allocation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "allocation_id",
+    "initiative_id",
+    "resource_id",
+    "role",
+    "start_date",
+    "end_date",
+    "allocation_percent",
+    "status"
+  ],
+  "properties": {
+    "allocation_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 100,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]*$"
+    },
+    "initiative_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 100,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]*$"
+    },
+    "resource_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 100,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]*$"
+    },
+    "role": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 120
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "allocation_percent": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    },
+    "status": {
+      "enum": [
+        "proposed",
+        "approved",
+        "active",
+        "completed",
+        "cancelled"
+      ]
+    },
+    "approved_by": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 100
+    },
+    "notes": {
+      "type": "string",
+      "maxLength": 1000
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "approved",
+              "active",
+              "completed"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "approved_by"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "proposed"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "approved_by"
+          ]
+        }
+      }
+    }
+  ]
+}
