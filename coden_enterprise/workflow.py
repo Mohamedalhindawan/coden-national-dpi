@@ -54,3 +54,20 @@ def validate_work_item_transition(
                 f"Transition {current_status!r} -> {next_status!r} "
                 "requires an approved decision"
             )
+
+
+def validate_work_item_references(
+    work_item: dict,
+    project_ids: set[str],
+    agent_ids: set[str],
+) -> None:
+    """Reject unresolved project/agent references using supplied trusted indexes."""
+    project_id = work_item.get("project_id")
+    if not isinstance(project_id, str) or project_id not in project_ids:
+        raise TransitionError(f"Unknown project reference: {project_id!r}")
+
+    agent_id = work_item.get("assignee_agent_id")
+    if agent_id is not None and (
+        not isinstance(agent_id, str) or agent_id not in agent_ids
+    ):
+        raise TransitionError(f"Unknown agent reference: {agent_id!r}")
