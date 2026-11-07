@@ -68,6 +68,16 @@ class EnterpriseSchemaTests(unittest.TestCase):
         errors = list(Draft202012Validator(schema).iter_errors(instance))
         self.assertTrue(errors)
 
+    def test_audit_event_schema_requires_hash_chain_integrity_fields(self):
+        schema = json.loads((SCHEMA_DIR / "audit-event.schema.json").read_text(encoding="utf-8"))
+        instance = json.loads((FIXTURES / "audit-event.json").read_text(encoding="utf-8"))
+        for field in ("sequence", "previous_hash", "event_hash"):
+            with self.subTest(field=field):
+                invalid = dict(instance)
+                invalid.pop(field, None)
+                errors = list(Draft202012Validator(schema).iter_errors(invalid))
+                self.assertTrue(errors)
+
     def test_audit_event_rejects_secret_material(self):
         schema = json.loads((SCHEMA_DIR / "audit-event.schema.json").read_text(encoding="utf-8"))
         instance = json.loads((FIXTURES / "audit-event.json").read_text(encoding="utf-8"))
