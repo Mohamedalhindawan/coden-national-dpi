@@ -6,7 +6,7 @@
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/v1/workflows/status` | Read workflow/worker snapshot |
+| GET | `/v1/workflows/status` | Read workflow/worker snapshot |\n| GET | `/v1/observability/snapshot` | Read project/team metrics and FinOps snapshot (when configured) |
 | POST | `/v1/workflows/pause` | Stop new dispatch admissions |
 | POST | `/v1/workflows/resume` | Resume dispatch admissions |
 | POST | `/v1/workflows/dispatch` | Claim one DAG-ready task for a registered worker |
@@ -40,3 +40,8 @@ python -m unittest discover -s skills/tests -v
 ## Limitations
 
 No browser dashboard, user directory, identity provider, token validation, CSRF protection, rate limiting, TLS termination, persistent operator sessions, distributed control, or production deployment is included. The operator interface is an API component only.
+
+
+## Observability snapshot
+
+When a `ControlCenter` instance is supplied to `WorkflowOperatorAPI(..., control_center=...)`, the authenticated read-only route `GET /v1/observability/snapshot` is enabled. Required query parameters: `project_id`, `team_id`, `period` (`daily` or `monthly`), and `period_key` (`YYYY-MM-DD` or `YYYY-MM`). Missing or invalid scope returns a generic 400 response. If no control center is configured, the route returns 404. The response contains aggregate metrics only; no prompts, payloads, credentials, or task content are returned.
