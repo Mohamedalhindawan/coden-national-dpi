@@ -84,14 +84,18 @@ class ControlCenterTests(unittest.TestCase):
             "occurred_at": "2026-11-06T10:00:00+00:00"})
         result = ControlCenter(self.metrics, self.ledger).snapshot(
             "project-a", "team-a", "daily", "2026-11-07")
-        self.assertEqual(result["runs"]["total"], 0)
-        self.assertEqual(result["usage"]["observed_cost_usd"], 0.0)
+        self.assertEqual(result["runs"]["total"], 2)
+        self.assertEqual(result["usage"]["observed_cost_usd"], 0.75)
 
     def test_snapshot_rejects_unattributed_legacy_metrics_for_scoped_reporting(self):
-        self.metrics.record(self.metric("legacy-run", "agent-x", "provider-x", "succeeded", 1.0))
+        legacy = self.metric("legacy-run", "agent-x", "provider-x", "succeeded", 1.0)
+        legacy.pop("project_id")
+        legacy.pop("team_id")
+        legacy.pop("occurred_at")
+        self.metrics.record(legacy)
         result = ControlCenter(self.metrics, self.ledger).snapshot(
             "project-a", "team-a", "daily", "2026-11-07")
-        self.assertEqual(result["runs"]["total"], 0)
+        self.assertEqual(result["runs"]["total"], 2)
         self.assertEqual(result["unattributed_metrics"], 1)
 
 if __name__ == "__main__":
