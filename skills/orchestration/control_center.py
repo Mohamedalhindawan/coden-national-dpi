@@ -41,8 +41,14 @@ class ControlCenter:
         rows = self.metrics.db.execute(
             """SELECT agent_id,provider,status,duration_ms,input_tokens,output_tokens,
                       cost_usd,quality_score,policy_violations,retry_count
-               FROM agent_metrics ORDER BY sequence"""
+               FROM agent_metrics
+               WHERE project_id=? AND team_id=? AND substr(recorded_at,1,?)=?
+               ORDER BY sequence""",
+            (project_id, team_id, 10 if period == "daily" else 7, period_key),
         ).fetchall()
+        unattributed = self.metrics.db.execute(
+            "SELECT COUNT(*) AS count FROM agent_metrics WHERE project_id IS NULL OR team_id IS NULL"
+        ).fetchone()["count"]
         total = len(rows)
         counts = {status: sum(row["status"] == status for row in rows) for status in self.STATUSES}
         tokens_in = sum(row["input_tokens"] for row in rows)
@@ -99,10 +105,11 @@ class ControlCenter:
                       "retry_count": sum(r["retry_count"] for r in rows)},
             "agents": sorted(agent_rows, key=lambda item: item["agent_id"]),
             "providers": sorted(provider_rows, key=lambda item: item["provider"]),
+            "unattributed_metrics": unattributed,
             "budget": {"project": project_budget, "team": team_budget},
             "budget_alerts": {
                 "project": self.budgets.alerts(project_id, period, period_key),
                 "team": self.budgets.alerts(team_id, period, period_key),
             },
-            "data_note": "Metrics are all recorded runs in this local store; budget values are ledger reservations and reconciled amounts. No live provider telemetry is implied.",
+            "data_note": "Run metrics are filtered by exact project, team and UTC period; legacy unattributed records are excluded and counted separately. Budget values are ledger reservations and reconciled amounts. No live provider telemetry is implied.",
         }
