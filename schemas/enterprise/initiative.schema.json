@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coden.it.com/schemas/enterprise/initiative.schema.json",
+  "title": "CODEN Enterprise Initiative",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "initiative_id",
+    "portfolio_id",
+    "title",
+    "owner_id",
+    "status",
+    "priority",
+    "budget_amount",
+    "currency",
+    "created_at"
+  ],
+  "properties": {
+    "initiative_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 100,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]*$"
+    },
+    "portfolio_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 100,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]*$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 180
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 3000
+    },
+    "owner_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 100,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]*$"
+    },
+    "status": {
+      "enum": [
+        "proposed",
+        "approved",
+        "planned",
+        "in_progress",
+        "at_risk",
+        "blocked",
+        "completed",
+        "cancelled"
+      ]
+    },
+    "priority": {
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low"
+      ]
+    },
+    "budget_amount": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1000000000000
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "target_date": {
+      "type": "string",
+      "format": "date"
+    }
+  }
+}

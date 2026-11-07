@@ -1,0 +1,13 @@
+{
+  "initiative_id": "initiative-demo-001",
+  "portfolio_id": "portfolio-demo-001",
+  "title": "Synthetic Citizen Services Pilot",
+  "description": "Non-production example initiative",
+  "owner_id": "human-demo-owner",
+  "status": "proposed",
+  "priority": "high",
+  "budget_amount": 25000,
+  "currency": "USD",
+  "created_at": "2026-11-07T20:00:00Z",
+  "target_date": "2027-06-30"
+}
