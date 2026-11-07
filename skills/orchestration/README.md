@@ -69,7 +69,7 @@ Record run/task/agent IDs, parent-child links, provider/model/version, prompt an
 - State machine: STATE_MACHINE.md
 - Operations runbook: OPERATIONS_RUNBOOK.md
 - Synthetic pilot cases: pilot/README.md
-- Deterministic validators and JSON Schemas: validator.py and schemas/ (tested in skills/tests/test_orchestration_contracts.py).
+- Deterministic validators and JSON Schemas: validator.py and schemas/ (tested in skills/tests/test_orchestration_contracts.py).\n- Integrated workflow facade: workflow.py and workflow/README.md (tested in skills/tests/test_workflow_orchestration.py).
 
 ## Implementation status
 This is a design and governance package. It does not install or execute Factory AI, Manus, Codex, or other agents. No orchestration runtime, credentials, provider integration, or production deployment is created.
@@ -112,3 +112,4 @@ The store uses append-only database triggers and an allowlisted field set: arbit
 Focused test command: `python -m unittest skills.tests.test_observability -v`.
 
 **Limitations:** local SQLite prototype only; no live provider telemetry, token-meter integration, distributed ingestion, dashboards, alerting, retention policy, or independent benchmark harness. Do not use these metrics to rank Factory/Manus or other providers until representative, reproducible evaluations have actually been run.
+\n\n## Integrated workflow orchestration 2.0\n\n`workflow.py` composes policy routing, task validation, the SQLite state machine, result validation, and independent human review into one explicit lifecycle. See `workflow/README.md` for the lifecycle and API sketch. It is still recommendation/dry-run control-plane code: no provider or tool is invoked, no code is executed, and high-impact routes remain recommendation-only.\n\nFocused test command: `python -m unittest skills.tests.test_workflow_orchestration -v`.\n
