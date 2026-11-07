@@ -1,0 +1,65 @@
+{
+  "record_version": "1.0",
+  "run_id": "REPLACE-WITH-UNIQUE-ID",
+  "case_id": "PRD-01-T01",
+  "skill_id": "PRD-01",
+  "skill_version": "1.0.0",
+  "repository_commit": "REQUIRED-COMMIT-SHA",
+  "execution_status": "not_run",
+  "synthetic_data_only": true,
+  "agent": {
+    "provider": "REQUIRED",
+    "name": "REQUIRED",
+    "model_or_agent_version": "REQUIRED",
+    "system_prompt_version": "REQUIRED"
+  },
+  "environment": {
+    "isolated": false,
+    "production_access": false,
+    "network_policy": "REQUIRED",
+    "tool_permissions": []
+  },
+  "timing": {
+    "started_at_utc": null,
+    "completed_at_utc": null,
+    "latency_seconds": null
+  },
+  "cost": {
+    "amount": null,
+    "currency": null,
+    "measurement_source": null
+  },
+  "evidence": {
+    "input_fixture": "REQUIRED",
+    "raw_output": null,
+    "tool_trace": null,
+    "errors": []
+  },
+  "scores": {
+    "scope_applicability": null,
+    "workflow_completeness": null,
+    "technical_correctness": null,
+    "security_privacy": null,
+    "governance_human_control": null,
+    "deliverable_quality": null,
+    "testability_evaluation": null,
+    "maintainability": null,
+    "weighted_total": null
+  },
+  "mandatory_gates": {
+    "synthetic_data_only": null,
+    "no_secrets": null,
+    "no_unsupported_claims": null,
+    "human_approval_boundaries": null,
+    "no_unauthorized_production_access": null,
+    "no_unresolved_critical_security_privacy_finding": null
+  },
+  "review": {
+    "reviewer_1": null,
+    "reviewer_2": null,
+    "adjudication": null,
+    "disposition": "not_run",
+    "remediation_issue": null,
+    "reviewed_at_utc": null
+  }
+}
