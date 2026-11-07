@@ -119,9 +119,14 @@ class PersistentTaskQueue:
             self.db.execute("ROLLBACK")
             raise
 
-    def claim(self, worker_id, lease_seconds=60, now=None):
+    def claim(self, worker_id, lease_seconds=60, now=None, task_kinds=None):
         if not isinstance(worker_id, str) or not worker_id.strip():
             raise QueueError("worker_id is required")
+        if task_kinds is not None and (
+            not isinstance(task_kinds, (list, tuple, set)) or not task_kinds
+            or any(not isinstance(kind, str) or not kind.strip() for kind in task_kinds)
+        ):
+            raise QueueError("task_kinds must be a non-empty collection of strings")
         if isinstance(lease_seconds, bool) or not isinstance(lease_seconds, (int, float)) or not 1 <= lease_seconds <= 3600:
             raise QueueError("lease_seconds must be between 1 and 3600")
         stamp = self._now() if now is None else float(now)
@@ -139,10 +144,19 @@ class PersistentTaskQueue:
                     (status, stamp, row["task_id"]),
                 )
                 self._event(row["task_id"], "lease_expired", "queue", {"next_status": status}, stamp)
-            row = self.db.execute(
-                """SELECT task_id FROM queue_tasks WHERE status='pending' AND attempts<max_attempts
-                   ORDER BY priority DESC,created_at,task_id LIMIT 1"""
-            ).fetchone()
+            if task_kinds is None:
+                row = self.db.execute(
+                    """SELECT task_id FROM queue_tasks WHERE status='pending' AND attempts<max_attempts
+                       ORDER BY priority DESC,created_at,task_id LIMIT 1"""
+                ).fetchone()
+            else:
+                placeholders = ",".join("?" for _ in task_kinds)
+                row = self.db.execute(
+                    f"""SELECT task_id FROM queue_tasks WHERE status='pending' AND attempts<max_attempts
+                        AND json_extract(payload_json, '$.kind') IN ({placeholders})
+                        ORDER BY priority DESC,created_at,task_id LIMIT 1""",
+                    tuple(sorted(set(task_kinds))),
+                ).fetchone()
             if row is None:
                 self.db.execute("COMMIT")
                 return None
