@@ -10,7 +10,7 @@ The dashboard is Arabic RTL and provides:
 - Workflow state counters (pending, running, succeeded, failed, cancelled, blocked).
 - Pause/resume controls.
 - Worker capacity and capability table.
-- Manual dispatch for a selected registered worker.
+- Manual dispatch for a selected registered worker.\n- Project/team-scoped observability summary: run count, success rate, tokens, recorded cost, quality, policy violations, and legacy unattributed metric count.
 - Configurable API base path.
 
 ## Security
@@ -21,7 +21,7 @@ Serve the page over HTTPS from a trusted origin. Configure the host's authentica
 
 ## API compatibility
 
-The dashboard consumes the routes documented in `../operator-api/README.md`. It displays only fields returned by the API and does not infer cost or token usage. The current API does not expose cost telemetry, detailed event timelines, approvals, or per-task controls.
+The dashboard consumes the workflow routes and optional `/v1/observability/snapshot` route documented in `../operator-api/README.md`. The metrics panel requires project, team, period, and period key. Cost/token values are displayed as recorded by the local metrics store and must not be interpreted as verified live provider billing. Detailed event timelines, approvals, and per-task controls remain unavailable.
 
 ## Verification
 
