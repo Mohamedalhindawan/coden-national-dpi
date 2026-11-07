@@ -1,0 +1,10 @@
+{
+  "portfolio_id": "portfolio-demo-001",
+  "name": "Synthetic Digital Services Portfolio",
+  "description": "Synthetic portfolio fixture for schema tests",
+  "owner_id": "human-demo-owner",
+  "status": "active",
+  "budget_amount": 125000,
+  "currency": "USD",
+  "created_at": "2026-11-07T20:00:00Z"
+}
