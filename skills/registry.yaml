@@ -159,3 +159,153 @@ skills:
     path: 10-quality-engineering/QA-01-quality-engineering/SKILL.md
     owner: quality-lead
     status: draft
+  - id: ENG-04
+    name: "Container and Runtime Engineering"
+    path: 05-platform-engineering/eng-04-container-and-runtime-engineering/SKILL.md
+    owner: platform-lead
+    status: draft
+  - id: ENG-05
+    name: "Open Source Engineering"
+    path: 05-platform-engineering/eng-05-open-source-engineering/SKILL.md
+    owner: platform-lead
+    status: draft
+  - id: ENG-06
+    name: "Mobile Application Engineering"
+    path: 05-platform-engineering/eng-06-mobile-application-engineering/SKILL.md
+    owner: mobile-platform-lead
+    status: draft
+  - id: AI-03
+    name: "Multi-Agent Orchestration"
+    path: 06-ai-agent-engineering/ai-03-multi-agent-orchestration/SKILL.md
+    owner: ai-platform-lead
+    status: draft
+  - id: AI-04
+    name: "Context Engineering"
+    path: 06-ai-agent-engineering/ai-04-context-engineering/SKILL.md
+    owner: ai-platform-lead
+    status: draft
+  - id: AI-05
+    name: "LLMOps and Model Operations"
+    path: 06-ai-agent-engineering/ai-05-llmops-and-model-operations/SKILL.md
+    owner: ai-platform-lead
+    status: draft
+  - id: AIG-01
+    name: "AI Risk and Impact Assessment"
+    path: 07-ai-evaluation-governance/aig-01-ai-risk-and-impact-assessment/SKILL.md
+    owner: ai-governance-lead
+    status: draft
+  - id: AIG-02
+    name: "Model and Dataset Documentation"
+    path: 07-ai-evaluation-governance/aig-02-model-and-dataset-documentation/SKILL.md
+    owner: ai-governance-lead
+    status: draft
+  - id: AIG-03
+    name: "Human Oversight and Decision Design"
+    path: 07-ai-evaluation-governance/aig-03-human-oversight-and-decision-design/SKILL.md
+    owner: ai-governance-lead
+    status: draft
+  - id: SEC-03
+    name: "Software Supply Chain Security"
+    path: 08-devsecops/sec-03-software-supply-chain-security/SKILL.md
+    owner: security-engineering-lead
+    status: draft
+  - id: SEC-04
+    name: "Secrets and Pipeline Identity Security"
+    path: 08-devsecops/sec-04-secrets-and-pipeline-identity-security/SKILL.md
+    owner: security-engineering-lead
+    status: draft
+  - id: SEC-05
+    name: "Application Security Engineering"
+    path: 09-cybersecurity-architecture/sec-05-application-security-engineering/SKILL.md
+    owner: security-architecture-lead
+    status: draft
+  - id: SEC-06
+    name: "Identity and Access Management"
+    path: 09-cybersecurity-architecture/sec-06-identity-and-access-management/SKILL.md
+    owner: security-architecture-lead
+    status: draft
+  - id: QA-02
+    name: "Test Automation Engineering"
+    path: 10-quality-engineering/qa-02-test-automation-engineering/SKILL.md
+    owner: quality-lead
+    status: draft
+  - id: QA-03
+    name: "Performance and Capacity Engineering"
+    path: 10-quality-engineering/qa-03-performance-and-capacity-engineering/SKILL.md
+    owner: quality-lead
+    status: draft
+  - id: QA-04
+    name: "Accessibility and RTL Quality Testing"
+    path: 10-quality-engineering/qa-04-accessibility-and-rtl-quality-testing/SKILL.md
+    owner: quality-lead
+    status: draft
+  - id: QA-05
+    name: "Release Readiness and Acceptance"
+    path: 10-quality-engineering/qa-05-release-readiness-and-acceptance/SKILL.md
+    owner: quality-lead
+    status: draft
+  - id: DAT-01
+    name: "Data Architecture"
+    path: 11-data-governance/dat-01-data-architecture/SKILL.md
+    owner: data-governance-lead
+    status: draft
+  - id: DAT-02
+    name: "Data Engineering"
+    path: 11-data-governance/dat-02-data-engineering/SKILL.md
+    owner: data-governance-lead
+    status: draft
+  - id: DAT-03
+    name: "Data Governance"
+    path: 11-data-governance/dat-03-data-governance/SKILL.md
+    owner: data-governance-lead
+    status: draft
+  - id: DAT-04
+    name: "Data Quality Management"
+    path: 11-data-governance/dat-04-data-quality-management/SKILL.md
+    owner: data-governance-lead
+    status: draft
+  - id: DAT-05
+    name: "Data Privacy and Sovereignty"
+    path: 11-data-governance/dat-05-data-privacy-and-sovereignty/SKILL.md
+    owner: data-governance-lead
+    status: draft
+  - id: DAT-06
+    name: "Analytics and Business Intelligence"
+    path: 11-data-governance/dat-06-analytics-and-business-intelligence/SKILL.md
+    owner: data-governance-lead
+    status: draft
+  - id: FIN-01
+    name: "Cloud Architecture"
+    path: 12-cloud-finops-procurement/fin-01-cloud-architecture/SKILL.md
+    owner: technology-finance-lead
+    status: draft
+  - id: FIN-02
+    name: "FinOps and Cloud Cost Management"
+    path: 12-cloud-finops-procurement/fin-02-finops-and-cloud-cost-management/SKILL.md
+    owner: technology-finance-lead
+    status: draft
+  - id: FIN-03
+    name: "Technology Financial Modeling"
+    path: 12-cloud-finops-procurement/fin-03-technology-financial-modeling/SKILL.md
+    owner: technology-finance-lead
+    status: draft
+  - id: FIN-04
+    name: "Procurement and Vendor Management"
+    path: 12-cloud-finops-procurement/fin-04-procurement-and-vendor-management/SKILL.md
+    owner: technology-finance-lead
+    status: draft
+  - id: FIN-05
+    name: "Contract and Intellectual Property Management"
+    path: 12-cloud-finops-procurement/fin-05-contract-and-intellectual-property-management/SKILL.md
+    owner: technology-finance-lead
+    status: draft
+  - id: MGT-01
+    name: "Project Management"
+    path: 13-management-delivery/mgt-01-project-management/SKILL.md
+    owner: delivery-operations-lead
+    status: draft
+  - id: MGT-02
+    name: "Change Management"
+    path: 13-management-delivery/mgt-02-change-management/SKILL.md
+    owner: delivery-operations-lead
+    status: draft
