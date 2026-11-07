@@ -5,6 +5,7 @@ transaction coordinator across the governance and ledger SQLite databases.
 The host must authenticate principals and protect both database files.
 """
 from datetime import datetime, timezone
+import hashlib
 import json
 import sqlite3
 
@@ -41,7 +42,9 @@ class FinOpsGovernance:
                 event_type TEXT NOT NULL,
                 actor_id TEXT NOT NULL,
                 details_json TEXT NOT NULL,
-                occurred_at TEXT NOT NULL
+                occurred_at TEXT NOT NULL,
+                previous_hash TEXT,
+                event_hash TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_finops_audit_request
                 ON audit_events(request_id, sequence);
@@ -54,7 +57,56 @@ class FinOpsGovernance:
                     SELECT RAISE(ABORT, 'audit events are append-only');
                 END;
         """)
+        self._migrate_audit_chain()
         self.db.commit()
+
+    @staticmethod
+    def _canonical_event(event):
+        payload = {
+            "sequence": event["sequence"],
+            "request_id": event["request_id"],
+            "event_type": event["event_type"],
+            "actor_id": event["actor_id"],
+            "details_json": event["details_json"],
+            "occurred_at": event["occurred_at"],
+            "previous_hash": event["previous_hash"],
+        }
+        return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+    @classmethod
+    def _event_hash(cls, event):
+        return hashlib.sha256(cls._canonical_event(event).encode("utf-8")).hexdigest()
+
+    def _migrate_audit_chain(self):
+        self.db.execute("DROP TRIGGER IF EXISTS finops_audit_no_update")
+        self.db.execute("DROP TRIGGER IF EXISTS finops_audit_no_delete")
+        columns = {row["name"] for row in self.db.execute("PRAGMA table_info(audit_events)")}
+        if "previous_hash" not in columns:
+            self.db.execute("ALTER TABLE audit_events ADD COLUMN previous_hash TEXT")
+        if "event_hash" not in columns:
+            self.db.execute("ALTER TABLE audit_events ADD COLUMN event_hash TEXT")
+        rows = self.db.execute("SELECT * FROM audit_events ORDER BY sequence").fetchall()
+        if any(row["previous_hash"] is None or row["event_hash"] is None for row in rows):
+            previous = "0" * 64
+            for row in rows:
+                event = dict(row)
+                event["previous_hash"] = previous
+                digest = self._event_hash(event)
+                self.db.execute(
+                    "UPDATE audit_events SET previous_hash=?,event_hash=? WHERE sequence=?",
+                    (previous, digest, row["sequence"]),
+                )
+                previous = digest
+        self.db.executescript("""
+            CREATE TRIGGER IF NOT EXISTS finops_audit_no_update
+                BEFORE UPDATE ON audit_events BEGIN
+                    SELECT RAISE(ABORT, 'audit events are append-only');
+                END;
+            CREATE TRIGGER IF NOT EXISTS finops_audit_no_delete
+                BEFORE DELETE ON audit_events BEGIN
+                    SELECT RAISE(ABORT, 'audit events are append-only');
+                END;
+        """)
 
     @staticmethod
     def _actor(actor_id, role, allowed):
@@ -65,11 +117,49 @@ class FinOpsGovernance:
         return actor_id.strip()
 
     def _audit(self, request_id, event_type, actor_id, details):
+        sequence = self.db.execute(
+            "SELECT COALESCE(MAX(sequence), 0) + 1 FROM audit_events"
+        ).fetchone()[0]
+        previous = self.db.execute(
+            "SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1"
+        ).fetchone()
+        previous_hash = previous["event_hash"] if previous else "0" * 64
+        event = {
+            "sequence": sequence,
+            "request_id": request_id,
+            "event_type": event_type,
+            "actor_id": actor_id,
+            "details_json": json.dumps(details, sort_keys=True, separators=(",", ":"), ensure_ascii=False),
+            "occurred_at": datetime.now(timezone.utc).isoformat(),
+            "previous_hash": previous_hash,
+        }
+        digest = self._event_hash(event)
         self.db.execute(
-            "INSERT INTO audit_events(request_id,event_type,actor_id,details_json,occurred_at) VALUES(?,?,?,?,?)",
-            (request_id, event_type, actor_id, json.dumps(details, sort_keys=True, separators=(",", ":")),
-             datetime.now(timezone.utc).isoformat()),
+            """INSERT INTO audit_events
+               (sequence,request_id,event_type,actor_id,details_json,occurred_at,previous_hash,event_hash)
+               VALUES(?,?,?,?,?,?,?,?)""",
+            (sequence, request_id, event_type, actor_id, event["details_json"],
+             event["occurred_at"], previous_hash, digest),
         )
+
+    def verify_audit_chain(self):
+        rows = self.db.execute("SELECT * FROM audit_events ORDER BY sequence").fetchall()
+        previous = "0" * 64
+        expected_sequence = 1
+        for row in rows:
+            event = dict(row)
+            if event["sequence"] != expected_sequence:
+                return {"valid": False, "events_checked": expected_sequence - 1,
+                        "reason": "sequence_gap", "sequence": event["sequence"]}
+            if event["previous_hash"] != previous:
+                return {"valid": False, "events_checked": expected_sequence - 1,
+                        "reason": "previous_hash_mismatch", "sequence": event["sequence"]}
+            if event["event_hash"] != self._event_hash(event):
+                return {"valid": False, "events_checked": expected_sequence - 1,
+                        "reason": "event_hash_mismatch", "sequence": event["sequence"]}
+            previous = event["event_hash"]
+            expected_sequence += 1
+        return {"valid": True, "events_checked": len(rows), "head_hash": previous}
 
     @staticmethod
     def _request(row):
