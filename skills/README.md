@@ -75,3 +75,8 @@ The experimental dependency planner is in `orchestration/dag.py`, with its contr
 ### Persistent execution queue
 
 See `orchestration/queue.py` and `orchestration/queue/README.md` for the experimental SQLite task queue. It manages durable task state and worker leases but does not execute jobs.
+
+
+### Worker admission runtime
+
+See `orchestration/worker_runtime.py` and `orchestration/workers/README.md` for bounded in-process worker admission. This is not a job executor or distributed scheduler.
