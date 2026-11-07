@@ -170,3 +170,8 @@ The local control facade unifies pause/resume, guarded dispatch, state snapshots
 ## Agent Provider Integration 1.0
 
 `providers.py` defines provider profiles, capability allowlists, secret references, policy gates, and simulated-only receipts. No vendor API or live model is invoked. See `providers/README.md` for onboarding and production gaps; tests: `python -m unittest skills.tests.test_provider_integration -v`.
+
+
+## AI Model Gateway & Intelligent Routing 1.0
+
+`model_gateway.py` selects an eligible model by capability, context window, and estimated request cost. It is simulated-only and never invokes providers or network. See `model-gateway/README.md`; tests: `python -m unittest skills.tests.test_model_gateway -v`.
