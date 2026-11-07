@@ -10,7 +10,7 @@
     "test-read"
   ],
   "skill_version_ids": [
-    "skill-contract-test@0.1.0"
+    "skill-contract-test-0.1.0"
   ],
   "risk_tier": "low",
   "created_at": "2026-11-07T20:00:00Z",
