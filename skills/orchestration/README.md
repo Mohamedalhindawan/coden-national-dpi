@@ -155,3 +155,8 @@ Recovery reconstructs scheduler state from the same SQLite queue and declared DA
 ## Workflow Control Plane 1.0
 
 The local control facade unifies pause/resume, guarded dispatch, state snapshots, dependency reconciliation, and task audit retrieval. See `control-plane/README.md`.
+
+
+## Workflow API & Operator Interface 1.0
+
+`operator_api.py` exposes a minimal authenticated WSGI API for status, pause/resume, DAG-ready dispatch, and task audit. Authentication is injected by the host application; see `operator-api/README.md`. It is not a standalone production service.
