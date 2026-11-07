@@ -83,11 +83,11 @@ The repository PR search returned the following open PRs in the snapshot. The ke
 | PR | Workflow run | Result | Branch relation to current main | Action |
 |---|---:|---|---|---|
 | #26 | [#266](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/42394258719) | Success; 149 skills tests reported OK, prototype tests and OpenAPI validation passed | Up to date with main at audit time | Continue technical review; keep Draft |
-| #22 | [#45?](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/39488034866) | Success; preflight, prototype tests, OpenAPI validation steps passed | 5 commits ahead / 3 behind; diverged | Update branch and rerun CI |
+| #22 | [run 39488034866](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/39488034866) | Success; preflight, prototype tests, OpenAPI validation steps passed | 5 commits ahead / 3 behind; diverged | Update branch and rerun CI |
 | #24 | [workflow run](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/39835112389) | Success | 1 commit ahead / 3 behind; diverged | Update branch and rerun CI |
 | #20 | [workflow run](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/39485351791) | Success | 2 commits ahead / 3 behind; diverged | Update branch and rerun CI |
 
-Note: the PR #22 workflow run is cited by its run ID above; the display label is not a PR number.
+A COMMENT review was posted on each of PRs #22, #24, and #20 documenting the successful CI evidence and the need to update each diverged branch against current main before merge. These are comments, not approvals.
 
 PR metadata for #26 reports 303 commits, 154 changed files, 10,449 additions, and 1 deletion. Its PR description says it adds 10 foundational skills. This is a review warning: inspect the complete diff and branch history, reconcile the stated scope with actual files, and split unrelated work before considering merge. Do not infer that 303 commits are all new intended feature work.
 
@@ -180,6 +180,7 @@ The workflow file is configuration evidence only. The latest observed PR #26 run
 - A successful PR check is not proof of main-branch health or production readiness.
 - GitHub connector inspection does not execute the test suite in a local shell.
 - No repository settings, branch protections, PR merge state, production resources, or secrets were changed by this audit.
+- Review comments were added to PRs #20, #22, #24, and #26; no approval or merge action was taken.
 
 ## 10. Evidence links
 
