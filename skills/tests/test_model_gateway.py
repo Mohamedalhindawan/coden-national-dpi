@@ -41,7 +41,7 @@ class ModelGatewayTests(unittest.TestCase):
 
     def test_rejects_context_window_overflow(self):
         with self.assertRaises(GatewayError):
-            self.gateway.route(self.request(estimated_input_tokens=9000), GatewayPolicy())
+            self.gateway.route(self.request(estimated_input_tokens=33000), GatewayPolicy())
 
     def test_rejects_sensitive_and_personal_data(self):
         for classification in ("sensitive", "personal"):
