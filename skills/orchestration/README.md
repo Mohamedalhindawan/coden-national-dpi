@@ -94,3 +94,11 @@ The included `DryRunAdapter` is a no-op: it does not start processes, call model
 Tests: `python -m unittest skills.tests.test_execution_adapters -v`.
 
 **Not production-ready:** there is no real Factory/Manus/Codex/OpenHands integration, credential broker, sandbox, distributed queue, resource metering, or live execution. A future live adapter requires a separately reviewed threat model, sandbox design, secrets isolation, human approval, and dedicated integration tests.
+
+## Sandbox policy helpers (v1.0)
+
+`sandbox.py` adds a local filesystem path-policy helper. It accepts only `workspace://` URIs, checks each operation against separate read/write scope prefixes, rejects traversal and symlink components, resolves paths under a configured workspace root, and provides basic credential-pattern redaction for log-bound text.
+
+This is **not** an OS-level security boundary. It does not isolate processes, containers, kernels, networks, or credentials; callers must not treat it as a substitute for a hardened sandbox. The current runtime and adapters still do not execute untrusted code.
+
+Focused tests: `python -m unittest skills.tests.test_sandbox_policy -v`.
