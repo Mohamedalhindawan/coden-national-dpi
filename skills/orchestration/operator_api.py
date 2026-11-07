@@ -76,6 +76,8 @@ class WorkflowOperatorAPI:
             return self._response(start_response, "401 Unauthorized", {"error": "unauthorized"})
         method = environ.get("REQUEST_METHOD", "GET").upper()
         path = environ.get("PATH_INFO", "/")
+        role = principal.get("role")
+        workflow_roles = {"operator", "admin"}
         try:
             if path.startswith("/v1/finops/reconciliations"):
                 if self.finops_governance is None:
@@ -121,6 +123,8 @@ class WorkflowOperatorAPI:
                     return self._response(start_response, "200 OK", result)
                 return self._response(start_response, "404 Not Found", {"error": "not_found"})
             if method == "GET" and path == "/v1/workflows/status":
+                if role not in workflow_roles:
+                    return self._response(start_response, "403 Forbidden", {"error": "forbidden"})
                 return self._response(start_response, "200 OK", self.control_plane.snapshot())
             if method == "GET" and path == "/v1/observability/snapshot":
                 if self.control_center is None:
@@ -138,6 +142,8 @@ class WorkflowOperatorAPI:
             if method == "POST" and path in {
                 "/v1/workflows/pause", "/v1/workflows/resume", "/v1/workflows/dispatch"
             }:
+                if role not in workflow_roles:
+                    return self._response(start_response, "403 Forbidden", {"error": "forbidden"})
                 body = self._body(environ)
                 if path.endswith("/pause"):
                     return self._response(start_response, "200 OK", self.control_plane.pause())
@@ -155,6 +161,8 @@ class WorkflowOperatorAPI:
                 })
             match = re.fullmatch(r"/v1/workflows/tasks/([A-Za-z0-9_.:-]+)/audit", path)
             if method == "GET" and match:
+                if role not in workflow_roles:
+                    return self._response(start_response, "403 Forbidden", {"error": "forbidden"})
                 return self._response(start_response, "200 OK", {
                     "task_id": match.group(1), "events": self.control_plane.task_audit(match.group(1))
                 })
