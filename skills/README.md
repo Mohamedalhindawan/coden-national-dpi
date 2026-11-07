@@ -90,3 +90,8 @@ See `orchestration/worker_queue.py` and `orchestration/worker-queue/README.md` f
 ### DAG-aware scheduler
 
 `orchestration/scheduler.py` connects DAG readiness and blocked-state propagation to the persistent queue and worker integration. See `orchestration/scheduler/README.md`.
+
+
+### Durable workflow recovery
+
+See `orchestration/recovery/README.md` for restart recovery behavior and limitations.
