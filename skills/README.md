@@ -100,3 +100,8 @@ See `orchestration/recovery/README.md` for restart recovery behavior and limitat
 ### Workflow Control Plane
 
 See `orchestration/control-plane/README.md` for the unified local operations facade and its limitations.
+
+
+### Workflow Operator API
+
+See `orchestration/operator-api/README.md` for the minimal WSGI API, route contract, and security boundaries.
