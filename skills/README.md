@@ -50,7 +50,11 @@ The experimental benchmark suite is documented in `orchestration/benchmark/READM
 
 The experimental policy-first router is documented in `orchestration/routing/README.md`. It recommends logical roles only; it does not invoke providers, execute tools, or rank models.
 
-## Integrated workflow orchestration\n\nThe experimental workflow facade is documented in `orchestration/workflow/README.md`. It composes task validation, routing, local state transitions, result checks, and independent human review; it does not execute providers or tools.\n\n## How to add a skill
+## Integrated workflow orchestration
+
+The experimental workflow facade is documented in `orchestration/workflow/README.md`. It composes task validation, routing, local state transitions, result checks, and independent human review; it does not execute providers or tools.
+
+## How to add a skill
 
 Copy the template, assign a unique ID, name an accountable owner, define acceptance tests, and submit the skill for review. Do not change a skill to Approved without evidence and an authorized reviewer.
 
