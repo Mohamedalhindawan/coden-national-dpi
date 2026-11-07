@@ -59,7 +59,7 @@ class WorkflowOrchestrator:
 
     def submit_validation(self, run_id, result, actor):
         run = self.get_run(run_id)
-        task = json.loads(run["task_json"])
+        task = run["task"]
         if result.get("run_id") != run_id or result.get("task_id") != task["task_id"]:
             raise WorkflowOrchestrationError("Result identity does not match workflow task")
         if result.get("role_id") != task["role_id"]:
