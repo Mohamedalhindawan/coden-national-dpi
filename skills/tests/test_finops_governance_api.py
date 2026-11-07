@@ -37,7 +37,7 @@ class FinOpsGovernanceAPITests(unittest.TestCase):
         raw = json.dumps(body or {}).encode("utf-8")
         environ = {
             "REQUEST_METHOD": method, "PATH_INFO": path, "QUERY_STRING": "",
-            "CONTENT_LENGTH": str(len(raw)), "wsgi.input": io.BytesIO(raw),
+            "CONTENT_LENGTH": str(len(raw)), "CONTENT_TYPE": "application/json", "wsgi.input": io.BytesIO(raw),
             "HTTP_AUTHORIZATION": token,
         }
         captured = {}
