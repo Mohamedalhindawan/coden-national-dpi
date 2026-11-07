@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coden.it.com/schemas/enterprise/dependency.schema.json",
+  "title": "CODEN Enterprise Dependency",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "dependency_id",
+    "source_id",
+    "target_id",
+    "dependency_type",
+    "status",
+    "created_at"
+  ],
+  "properties": {
+    "dependency_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 100,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]*$"
+    },
+    "source_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 100,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]*$"
+    },
+    "target_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 100,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]*$"
+    },
+    "dependency_type": {
+      "enum": [
+        "blocks",
+        "requires",
+        "informs",
+        "related_to"
+      ]
+    },
+    "status": {
+      "enum": [
+        "proposed",
+        "active",
+        "satisfied",
+        "waived",
+        "cancelled"
+      ]
+    },
+    "rationale": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "owner_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 100
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "due_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "resolved_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "satisfied",
+              "waived",
+              "cancelled"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "resolved_at"
+        ]
+      }
+    }
+  ]
+}
