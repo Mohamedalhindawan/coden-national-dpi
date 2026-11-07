@@ -3,6 +3,8 @@ from datetime import datetime, timezone
 import hashlib
 import json
 
+from skills.orchestration.validator import validate_task
+
 class AdapterError(ValueError):
     """Raised when an adapter dispatch violates the execution boundary."""
 
@@ -19,15 +21,21 @@ class AdapterRegistry:
             raise AdapterError("Adapter must implement execute(context)")
         self._adapters[tool_name] = adapter
 
-    def dispatch(self, tool_name, task_id, run_id, payload, network, mode):
+    def dispatch(self, task, tool_name, payload, mode="dry_run"):
+        checked = validate_task(task)
+        if not checked["valid"]:
+            raise AdapterError("Task contract rejected: " + "; ".join(checked["errors"]))
         if mode != "dry_run":
             raise AdapterError("Only dry_run mode is enabled; live execution is disabled")
-        if network != "disabled":
+        if task["constraints"]["network"] != "disabled":
             raise AdapterError("Network access must be disabled")
+        if tool_name not in task["constraints"]["allowed_tools"]:
+            raise AdapterError(f"Tool is not allowed by task contract: {tool_name}")
         if tool_name not in self._adapters:
             raise AdapterError(f"No adapter registered for tool: {tool_name}")
-        if not task_id or not run_id or not isinstance(payload, dict):
-            raise AdapterError("task_id, run_id and object payload are required")
+        if not isinstance(payload, dict):
+            raise AdapterError("Payload must be an object")
+        task_id, run_id = task["task_id"], task["run_id"]
         canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         context = {
             "task_id": task_id,
