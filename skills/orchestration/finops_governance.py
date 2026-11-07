@@ -175,6 +175,15 @@ class FinOpsGovernance:
         self.db.commit()
         return self._request(final)
 
+    def list_requests(self, status=None):
+        if status is not None and status not in {"pending", "approved", "rejected"}:
+            raise FinOpsGovernanceError("invalid reconciliation status")
+        if status:
+            rows = self.db.execute("SELECT * FROM reconciliation_requests WHERE status=? ORDER BY created_at DESC, request_id", (status,)).fetchall()
+        else:
+            rows = self.db.execute("SELECT * FROM reconciliation_requests ORDER BY created_at DESC, request_id").fetchall()
+        return [self._request(row) for row in rows]
+
     def audit_events(self, request_id):
         rows = self.db.execute(
             "SELECT * FROM audit_events WHERE request_id=? ORDER BY sequence", (request_id,)
