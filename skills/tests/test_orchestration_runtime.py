@@ -70,5 +70,12 @@ class OrchestrationRuntimeTests(unittest.TestCase):
         with self.assertRaises(WorkflowError):
             self.runtime.create_run(valid_task())
 
+    def test_cancel_stops_run_and_audit_is_append_only(self):
+        self.runtime.create_run(valid_task())
+        self.runtime.transition("run-runtime-01", "cancel", actor="operator")
+        self.assertEqual(self.runtime.get_run("run-runtime-01")["state"], "CANCELLED")
+        with self.assertRaises(Exception):
+            self.runtime.db.execute("DELETE FROM audit_events")
+
 if __name__ == "__main__":
     unittest.main()
