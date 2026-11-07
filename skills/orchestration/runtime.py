@@ -104,7 +104,7 @@ class OrchestrationRuntime:
         before = row["state"]
         if before in TERMINAL:
             raise WorkflowError(f"Run is terminal: {before}")
-        after = TRANSITIONS.get((before, event))
+        after = "CANCELLED" if event == "cancel" else TRANSITIONS.get((before, event))
         if after is None:
             raise WorkflowError(f"Transition not allowed: {before} + {event}")
         if event in {"human_approve", "human_reject", "human_request_changes"}:
