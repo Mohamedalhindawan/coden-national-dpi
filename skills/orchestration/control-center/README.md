@@ -17,7 +17,7 @@ Combine the existing append-only agent metrics store and SQLite FinOps ledger in
 
 ## Data boundaries
 
-The service reads the existing local metrics and budget stores. It does not collect prompts, payloads, credentials, or raw task content. Agent/provider metrics are aggregated across every run currently in the observability store; the current metrics schema does not include project/team/period attribution, so these run totals must not be interpreted as project-filtered results. Budget data is scoped by project/team and period key.
+The service reads the existing local metrics and budget stores. New attributed metrics carry both project and team identifiers plus an ISO-8601 timestamp normalized to UTC. Reports filter run metrics by exact project, team, and UTC day/month. Legacy rows without scope attribution are excluded from scoped totals and counted separately. Raw prompts, payloads, and credentials are not stored.
 
 ## Accuracy limitations
 
@@ -35,4 +35,9 @@ python -m unittest discover -s skills/tests -v
 
 ## Next integration steps
 
-Add project/team/period attribution to metric records; expose this snapshot through an authenticated read-only API; add dashboard panels and time-series views; then verify browser rendering and access controls before any deployment.
+Expose this snapshot through an authenticated read-only API; add dashboard panels and time-series views; validate provider-supplied cost/token provenance; then verify browser rendering and access controls before any deployment.
+
+
+## Attribution contract
+
+`ObservabilityStore.record()` accepts `project_id` and `team_id` together, plus optional `occurred_at`. Timestamps must include a timezone and are normalized to UTC. Records without project/team attribution remain compatible with legacy data, but they are never included in a scoped project/team snapshot. The control center reports their count as `unattributed_metrics`.
