@@ -123,9 +123,7 @@ def compare_providers(rows):
     grouped = {}
     for row in rows:
         grouped.setdefault(row["provider"], []).append(row)
-    minimum = 1
-    # Each row carries the same benchmark identity; caller may set a stricter
-    # threshold through the optional argument below.
+    minimum = max(_nonnegative_int(r.get("minimum_sample_size", 1), "minimum_sample_size") for r in rows)
     providers = []
     for provider, samples in sorted(grouped.items()):
         n = len(samples)
