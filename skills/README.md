@@ -4,7 +4,7 @@ Version: 1.0.0
 Status: Draft for review  
 Parent framework: CODEN Enterprise Operating & Engineering Playbook 2.2
 
-This library contains **30 registered draft skill specifications** for CODEN teams and AI agents. The registry is the inventory of record. A skill is not approved merely because its file exists.
+This library contains **60 registered draft skill specifications** for CODEN teams and AI agents. The registry is the inventory of record. A skill is not approved merely because its file exists.
 
 ## Structure
 
@@ -21,6 +21,9 @@ This library contains **30 registered draft skill specifications** for CODEN tea
 - `08-devsecops/`: secure software delivery.
 - `09-cybersecurity-architecture/`: cybersecurity architecture.
 - `10-quality-engineering/`: quality engineering.
+- `11-data-governance/`: data architecture, engineering, governance, privacy, and analytics.
+- `12-cloud-finops-procurement/`: cloud, FinOps, financial modeling, procurement, and IP.
+- `13-management-delivery/`: project and change management.
 
 ## Lifecycle
 
