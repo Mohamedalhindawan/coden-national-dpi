@@ -140,3 +140,8 @@ Focused test command: `python -m unittest skills.tests.test_workflow_orchestrati
 ## Worker–queue integration 1.0
 
 `worker_queue.py` connects the persistent SQLite queue to bounded worker admission: capability-filtered claims, lease heartbeat, completion/failure, and slot release. It does not execute payloads or enforce DAG dependencies. See `worker-queue/README.md`. Tests: `python -m unittest skills.tests.test_worker_queue_integration -v`.
+
+
+## DAG-aware scheduler 1.0
+
+`scheduler.py` gates queue admission on successful DAG dependencies and dispatches through `worker_queue.py`. See `scheduler/README.md`. It is an experimental local control-plane prototype, not a durable distributed scheduler.
