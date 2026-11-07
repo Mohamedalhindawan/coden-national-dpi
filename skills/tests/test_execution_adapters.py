@@ -12,7 +12,7 @@ class AdapterRegistryTests(unittest.TestCase):
     def task():
         return {
             "contract_version": "1.0.0", "run_id": "run-01", "task_id": "task-01",
-            "role_id": "QA-01", "owner": "owner", "objective": "test",
+            "role_id": "QA-01", "owner": "owner", "objective": "Run the synthetic test fixture",
             "inputs": [{"artifact_id": "fixture", "uri": "workspace://fixture.json", "classification": "synthetic"}],
             "constraints": {"allowed_tools": ["read_workspace", "run_tests"], "network": "disabled",
                             "write_scope": [], "max_runtime_seconds": 30, "max_retries": 0},
