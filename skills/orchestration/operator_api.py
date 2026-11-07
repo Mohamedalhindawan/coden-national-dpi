@@ -60,7 +60,7 @@ class WorkflowOperatorAPI:
         if length and stream is None:
             raise OperatorAPIError("invalid_request_body")
         raw = stream.read(length) if length else b"{}"
-        if not isinstance(raw, bytes) or len(raw) != length:
+        if not isinstance(raw, bytes) or (length and len(raw) != length):
             raise OperatorAPIError("invalid_request_body")
         try:
             value = json.loads(raw.decode("utf-8"))
