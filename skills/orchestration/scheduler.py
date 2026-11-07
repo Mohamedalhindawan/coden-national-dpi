@@ -39,7 +39,7 @@ class DAGAwareScheduler:
         self._known_queue_ids = set()
         self._blocked = set()
 
-    def states(self):
+    def _queue_states(self):
         result = {task_id: "pending" for task_id in self.tasks}
         for task_id in self.tasks:
             try:
@@ -51,9 +51,20 @@ class DAGAwareScheduler:
                 "succeeded": "succeeded", "failed": "failed",
                 "cancelled": "cancelled",
             }[status]
-        for task_id in self._blocked:
-            result[task_id] = "blocked"
         return result
+
+    def states(self):
+        current = self._queue_states()
+        try:
+            blocked = propagate_blocked(
+                [{"task_id": task_id, "depends_on": item["depends_on"]}
+                 for task_id, item in self.tasks.items()], current)
+        except DAGError as exc:
+            raise SchedulerError(str(exc)) from exc
+        self._blocked.update(blocked)
+        for task_id in self._blocked:
+            current[task_id] = "blocked"
+        return current
 
     def enqueue_ready(self, now=None):
         current = self.states()
@@ -120,7 +131,7 @@ class DAGAwareScheduler:
             raise SchedulerError(str(exc)) from exc
 
     def refresh_blocked(self):
-        current = self.states()
+        current = self._queue_states()
         try:
             blocked = propagate_blocked(
                 [{"task_id": task_id, "dependencies": item["depends_on"]}
