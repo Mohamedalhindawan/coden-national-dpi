@@ -51,7 +51,7 @@ class ObjectiveKpiContractsTests(unittest.TestCase):
     def test_kpi_rejects_bad_unit_and_target(self):
         schema = self._schema("kpi")
         fixture = json.loads((FIXTURES / "kpi.json").read_text(encoding="utf-8"))
-        for mutation in ({"unit": ""}, {"target": -1}):
+        for mutation in ({"unit": ""}, {"direction": "sideways"}):
             invalid = dict(fixture)
             invalid.update(mutation)
             with self.subTest(mutation=mutation):
