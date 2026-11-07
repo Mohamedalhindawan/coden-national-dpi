@@ -23,7 +23,7 @@ class OperatorAPITests(unittest.TestCase):
         ])
         self.queue = queue
         self.api = WorkflowOperatorAPI(WorkflowControlPlane(scheduler, workers),
-                                      authenticator=lambda environ: environ.get("HTTP_AUTHORIZATION"))
+                                      authenticator=lambda environ: ({"subject":"test-operator","role":"operator"} if environ.get("HTTP_AUTHORIZATION") else None))
 
     def tearDown(self):
         self.queue.close()
