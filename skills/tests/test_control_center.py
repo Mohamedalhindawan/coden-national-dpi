@@ -48,6 +48,19 @@ class ControlCenterTests(unittest.TestCase):
         self.assertEqual(result["budget"]["project"]["remaining_usd"], 8.0)
         self.assertEqual(result["budget"]["team"]["remaining_usd"], 3.0)
 
+    def test_snapshot_exposes_cost_reconciliation_without_combining_sources(self):
+        reservation = self.ledger.reserve(SpendRequest(
+            "run-linked-spend", "project-a", "team-a", 2.0,
+            "2026-11-07T10:00:00+00:00", run_id="run-1"))
+        self.ledger.reconcile(reservation["reservation_id"], 1.25)
+        result = ControlCenter(self.metrics, self.ledger).snapshot(
+            "project-a", "team-a", "daily", "2026-11-07")
+        reconciliation = result["cost_reconciliation"]
+        self.assertEqual(reconciliation["observed_metric_cost_usd"], 0.25)
+        self.assertEqual(reconciliation["reconciled_ledger_cost_usd"], 1.25)
+        self.assertEqual(reconciliation["variance_usd"], 1.0)
+        self.assertEqual(reconciliation["status"], "variance_review")
+
     def test_provider_rollup_is_aggregated_without_payload_content(self):
         result = ControlCenter(self.metrics, self.ledger).snapshot(
             "project-a", "team-a", "daily", "2026-11-07")
