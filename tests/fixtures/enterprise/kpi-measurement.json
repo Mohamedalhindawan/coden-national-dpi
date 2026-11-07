@@ -1,0 +1,12 @@
+{
+  "measurement_id": "measurement-demo-001",
+  "kpi_id": "kpi-demo-001",
+  "value": 1850,
+  "period_start": "2026-10-01",
+  "period_end": "2026-10-31",
+  "measured_at": "2026-11-07T20:00:00Z",
+  "source_ref": "synthetic://demo/monthly-active-users/2026-10",
+  "sample_size": 1850,
+  "status": "submitted",
+  "quality_note": "Synthetic fixture only"
+}
