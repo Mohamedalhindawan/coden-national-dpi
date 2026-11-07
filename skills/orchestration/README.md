@@ -135,3 +135,8 @@ Focused test command: `python -m unittest skills.tests.test_workflow_orchestrati
 ## Worker admission runtime 1.0
 
 `worker_runtime.py` adds a thread-safe in-process admission controller with allowlisted worker IDs/capabilities, per-worker and global concurrency caps, and pause/resume. It does not execute jobs, poll the persistent queue, or create worker processes. See `workers/README.md`. Tests: `python -m unittest skills.tests.test_worker_runtime -v`.
+
+
+## Worker–queue integration 1.0
+
+`worker_queue.py` connects the persistent SQLite queue to bounded worker admission: capability-filtered claims, lease heartbeat, completion/failure, and slot release. It does not execute payloads or enforce DAG dependencies. See `worker-queue/README.md`. Tests: `python -m unittest skills.tests.test_worker_queue_integration -v`.
