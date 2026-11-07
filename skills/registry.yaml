@@ -1,0 +1,61 @@
+library:
+  name: CODEN Enterprise Skills Library
+  version: "1.0.0"
+  status: draft
+  parent_playbook: "CODEN Enterprise Operating & Engineering Playbook 2.2"
+  approval_policy: "A file existing does not imply approval."
+
+lifecycle:
+  states: [draft, reviewed, tested, approved, published, monitored, retired]
+
+skills:
+  - id: STR-01
+    name: Enterprise Architecture
+    path: 01-strategy-governance/STR-01-enterprise-architecture/SKILL.md
+    owner: architecture-lead
+    status: draft
+  - id: DPI-01
+    name: DPI and GovTech Architecture
+    path: 02-dpi-architecture/DPI-01-dpi-govtech-architecture/SKILL.md
+    owner: dpi-architecture-lead
+    status: draft
+  - id: PRD-01
+    name: Digital Product Management
+    path: 03-product-management/PRD-01-digital-product-management/SKILL.md
+    owner: product-lead
+    status: draft
+  - id: ARC-01
+    name: Software Architecture
+    path: 04-software-architecture/ARC-01-software-architecture/SKILL.md
+    owner: software-architecture-lead
+    status: draft
+  - id: ENG-01
+    name: Platform Engineering
+    path: 05-platform-engineering/ENG-01-platform-engineering/SKILL.md
+    owner: platform-lead
+    status: draft
+  - id: AI-01
+    name: AI Agent Engineering
+    path: 06-ai-agent-engineering/AI-01-ai-agent-engineering/SKILL.md
+    owner: ai-platform-lead
+    status: draft
+  - id: AI-02
+    name: AI Evaluation and Governance
+    path: 07-ai-evaluation-governance/AI-02-ai-evaluation-governance/SKILL.md
+    owner: ai-governance-lead
+    status: draft
+  - id: SEC-01
+    name: DevSecOps
+    path: 08-devsecops/SEC-01-devsecops/SKILL.md
+    owner: security-engineering-lead
+    status: draft
+  - id: SEC-02
+    name: Cybersecurity Architecture
+    path: 09-cybersecurity-architecture/SEC-02-cybersecurity-architecture/SKILL.md
+    owner: security-architecture-lead
+    status: draft
+  - id: QA-01
+    name: Quality Engineering
+    path: 10-quality-engineering/QA-01-quality-engineering/SKILL.md
+    owner: quality-lead
+    status: draft
