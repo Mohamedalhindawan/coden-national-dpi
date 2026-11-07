@@ -38,3 +38,14 @@ Do not claim user validation without evidence. Do not design eligibility, paymen
 
 ## Evaluation
 Measure user task completion, adoption, accessibility, reliability, time-to-value, cost per successful transaction, and unresolved user needs.
+
+## Security
+Classify product data before collection; minimize personal data; define retention and access rules with security and privacy owners. Do not use real citizen records in prototype discovery or test fixtures. Treat user research and analytics as restricted project data.
+
+## Failure and escalation
+Pause prioritization or release when user evidence is insufficient, acceptance criteria are ambiguous, safety/accessibility issues remain unresolved, or a proposed feature affects eligibility, payments, identity, health, or legal rights without accountable institutional approval. Record the decision and escalate to the product sponsor and relevant control owners.
+
+## Change history
+| Version | Change | Status |
+|---|---|---|
+| 1.0.1 | Added security, escalation, and change-control requirements | Draft |
