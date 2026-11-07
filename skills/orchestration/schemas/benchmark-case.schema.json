@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coden.example/schemas/benchmark-case.schema.json",
+  "title": "CODEN Benchmark Case",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["case_id", "version", "domain", "dataset_id", "criteria_version", "acceptance_criteria", "minimum_sample_size"],
+  "properties": {
+    "case_id": {"type": "string", "minLength": 1},
+    "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "domain": {"enum": ["engineering", "dpi", "devsecops", "quality"]},
+    "dataset_id": {"type": "string", "minLength": 1},
+    "criteria_version": {"type": "string", "minLength": 1},
+    "acceptance_criteria": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "minimum_sample_size": {"type": "integer", "minimum": 3}
+  }
+}
