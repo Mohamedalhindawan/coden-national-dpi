@@ -48,6 +48,16 @@ class SkillsLibraryTests(unittest.TestCase):
                 failures.append(f"{skill_id}: {', '.join(missing)}")
         self.assertEqual(failures, [], "\\n".join(failures))
 
+    def test_pilot_benchmark_cases_exist_and_are_synthetic(self):
+        pilot = SKILLS_ROOT / "validation" / "pilot"
+        expected = ("PRD-01-T01.md", "DPI-02-T01.md", "AI-01-T01.md",
+                    "SEC-02-T01.md", "QA-01-T01.md")
+        missing = [name for name in expected if not (pilot / name).is_file()]
+        self.assertEqual(missing, [], f"Missing pilot cases: {missing}")
+        for name in expected:
+            case = (pilot / name).read_text(encoding="utf-8").lower()
+            self.assertIn("synthetic", case, f"{name} must explicitly use synthetic data")
+
     def test_all_skills_remain_draft_until_approved(self):
         invalid = [(skill_id, status) for skill_id, _, status in self.entries if status != "draft"]
         self.assertEqual(invalid, [], f"Unexpected lifecycle statuses: {invalid}")
