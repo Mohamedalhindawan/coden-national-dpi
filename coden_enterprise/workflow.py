@@ -71,3 +71,21 @@ def validate_work_item_references(
         not isinstance(agent_id, str) or agent_id not in agent_ids
     ):
         raise TransitionError(f"Unknown agent reference: {agent_id!r}")
+
+
+def validate_transition_command(command: dict) -> None:
+    """Validate a transition request envelope before a trusted service processes it."""
+    if not isinstance(command, dict):
+        raise TransitionError("Transition command must be an object")
+
+    key = command.get("idempotency_key")
+    if not isinstance(key, str) or not (16 <= len(key) <= 128):
+        raise TransitionError("idempotency_key must contain 16 to 128 characters")
+
+    version = command.get("expected_version")
+    if isinstance(version, bool) or not isinstance(version, int) or version < 1:
+        raise TransitionError("expected_version must be a positive integer")
+
+    requester = command.get("requested_by")
+    if not isinstance(requester, str) or not requester.strip():
+        raise TransitionError("requested_by must be a non-empty identifier")
