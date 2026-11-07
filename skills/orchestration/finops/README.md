@@ -79,3 +79,21 @@ operator receives a conflict rather than recording a second decision.
 These guarantees apply to processes sharing the same SQLite database on a
 supported local filesystem. They do not provide distributed locking across
 hosts, network-filesystem safety, or high-availability database semantics.
+
+## FinOps API security hardening
+
+The local WSGI adapter now rejects FinOps mutation requests unless their media
+type is `application/json`, verifies that the request stream supplies the
+declared content length, retains the 16 KiB body ceiling, and normalizes and
+bounds authenticated subject identifiers before using them in audit records.
+Unknown audit request IDs return `404` rather than an empty success response.
+Authentication and role assignment remain the responsibility of the injected
+host authenticator; the adapter does not validate bearer tokens itself.
+
+The audit table uses SQLite triggers to block ordinary SQL UPDATE and DELETE
+operations. This is an append-only application control, not cryptographic
+tamper evidence: a database owner or privileged host can alter the file or
+drop triggers. Production audit integrity still requires a separately
+controlled append-only sink or externally anchored hash/signature chain,
+restricted database access, backups, and independent monitoring. This
+prototype does not claim regulatory-grade audit immutability.
