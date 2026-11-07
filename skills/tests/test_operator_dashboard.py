@@ -9,7 +9,7 @@ class OperatorDashboardAssetTests(unittest.TestCase):
         for marker in ('lang="ar"', 'dir="rtl"', 'aria-live="polite"',
                        '/v1/workflows/status', '/v1/workflows/pause',
                        '/v1/workflows/resume', '/v1/workflows/dispatch',
-                       'Cache-Control', 'Authorization'):
+                       '/v1/observability/snapshot', 'Authorization', 'loadMetrics'):
             self.assertIn(marker, html)
         self.assertNotIn("localStorage", html)
         self.assertNotIn("sessionStorage", html)
