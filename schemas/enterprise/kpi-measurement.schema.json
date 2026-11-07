@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coden.it.com/schemas/enterprise/kpi-measurement.schema.json",
+  "title": "CODEN KPI Measurement",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "measurement_id",
+    "kpi_id",
+    "value",
+    "period_start",
+    "period_end",
+    "measured_at",
+    "source_ref",
+    "status"
+  ],
+  "properties": {
+    "measurement_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 100,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]*$"
+    },
+    "kpi_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 100,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]*$"
+    },
+    "value": {
+      "type": "number"
+    },
+    "period_start": {
+      "type": "string",
+      "format": "date"
+    },
+    "period_end": {
+      "type": "string",
+      "format": "date"
+    },
+    "measured_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source_ref": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 500
+    },
+    "sample_size": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "status": {
+      "enum": [
+        "submitted",
+        "verified",
+        "rejected",
+        "superseded"
+      ]
+    },
+    "quality_note": {
+      "type": "string",
+      "maxLength": 1000
+    },
+    "reviewer_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 100
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "verified"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "reviewer_id"
+        ]
+      }
+    }
+  ]
+}
