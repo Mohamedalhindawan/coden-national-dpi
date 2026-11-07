@@ -28,6 +28,18 @@ class EnterpriseSchemaTests(unittest.TestCase):
                 errors = list(Draft202012Validator(schema, format_checker=FormatChecker()).iter_errors(instance))
                 self.assertEqual(errors, [], [error.message for error in errors])
 
+    def test_work_item_references_an_existing_project_and_agent(self):
+        project = json.loads((FIXTURES / "project.json").read_text(encoding="utf-8"))
+        agent = json.loads((FIXTURES / "agent-profile.json").read_text(encoding="utf-8"))
+        work_item = json.loads((FIXTURES / "work-item.json").read_text(encoding="utf-8"))
+        self.assertEqual(work_item["project_id"], project["project_id"])
+        self.assertEqual(work_item["assignee_agent_id"], agent["agent_id"])
+
+    def test_pending_approval_has_no_decision_timestamp(self):
+        approval = json.loads((FIXTURES / "approval.json").read_text(encoding="utf-8"))
+        self.assertEqual(approval["decision"], "pending")
+        self.assertNotIn("decided_at", approval)
+
     def test_work_item_rejects_unknown_fields(self):
         schema = json.loads((SCHEMA_DIR / "work-item.schema.json").read_text(encoding="utf-8"))
         instance = json.loads((FIXTURES / "work-item.json").read_text(encoding="utf-8"))
