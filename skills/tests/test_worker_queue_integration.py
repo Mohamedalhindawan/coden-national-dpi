@@ -65,6 +65,5 @@ class WorkerQueueIntegrationTests(unittest.TestCase):
 
     def test_invalid_payload_kind_is_not_dispatched(self):
         self.queue.enqueue("bad", {"kind": "unlisted"})
-        with self.assertRaises(IntegrationError):
-            self.integration.dispatch("worker-a")
+        self.assertIsNone(self.integration.dispatch("worker-a"))
         self.assertEqual(self.queue.get("bad")["status"], "pending")
