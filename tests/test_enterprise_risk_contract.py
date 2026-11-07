@@ -34,7 +34,7 @@ class EnterpriseRiskContractTests(unittest.TestCase):
         schema = json.loads((SCHEMAS / "risk.schema.json").read_text(encoding="utf-8"))
         fixture = json.loads((FIXTURES / "risk.json").read_text(encoding="utf-8"))
         for status in ("mitigating", "closed"):
-            invalid = dict(fixture, status=status)
+            invalid = dict(fixture, status=status, risk_owner_id="owner-demo-001", mitigation_plan="Synthetic mitigation plan")
             invalid.pop("risk_owner_id")
             with self.subTest(status=status):
                 self.assertTrue(list(Draft202012Validator(schema).iter_errors(invalid)))
