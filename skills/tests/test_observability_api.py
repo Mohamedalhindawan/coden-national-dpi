@@ -22,7 +22,7 @@ class ObservabilityAPITests(unittest.TestCase):
         queue = PersistentTaskQueue(root / "queue.sqlite")
         workers = WorkerAdmissionController(1, ["worker-a"], ["synthetic-test"])
         workers.register_worker("worker-a", ["synthetic-test"])
-        scheduler = DAGAwareScheduler(queue, WorkerQueueIntegration(queue, workers), [\n            {"task_id":"api-placeholder","depends_on":[],"payload":{"kind":"synthetic-test"}}\n        ])
+        scheduler = DAGAwareScheduler(queue, WorkerQueueIntegration(queue, workers), [{"task_id": "api-placeholder", "depends_on": [], "payload": {"kind": "synthetic-test"}}])
         self.queue = queue
         self.metrics = ObservabilityStore(root / "metrics.sqlite")
         self.ledger = BudgetLedger(root / "finops.sqlite")
