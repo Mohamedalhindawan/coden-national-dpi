@@ -102,3 +102,13 @@ Tests: `python -m unittest skills.tests.test_execution_adapters -v`.
 This is **not** an OS-level security boundary. It does not isolate processes, containers, kernels, networks, or credentials; callers must not treat it as a substitute for a hardened sandbox. The current runtime and adapters still do not execute untrusted code.
 
 Focused tests: `python -m unittest skills.tests.test_sandbox_policy -v`.
+
+## Agent observability and evaluation metrics (v1.0)
+
+`observability.py` provides a local SQLite metrics store and per-agent scorecard. It records run/task/agent/provider identifiers, outcome, duration, token counts, estimated USD cost, normalized quality score (0–1), policy-violation count, retry count, and an evidence reference. Aggregates include success rate, total cost, average quality and duration, token volume, policy violations, and retries.
+
+The store uses append-only database triggers and an allowlisted field set: arbitrary prompt text, secrets, and unrecognized input fields are not persisted. Callers remain responsible for validating metric provenance; cost and quality values are reported measurements, not independently verified facts. Compare providers only on equivalent task sets and disclose sample size.
+
+Focused test command: `python -m unittest skills.tests.test_observability -v`.
+
+**Limitations:** local SQLite prototype only; no live provider telemetry, token-meter integration, distributed ingestion, dashboards, alerting, retention policy, or independent benchmark harness. Do not use these metrics to rank Factory/Manus or other providers until representative, reproducible evaluations have actually been run.
