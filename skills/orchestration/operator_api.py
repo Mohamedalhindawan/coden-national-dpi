@@ -48,6 +48,19 @@ class WorkflowOperatorAPI:
             return None
         return {**principal, "subject": subject.strip()}
 
+    @staticmethod
+    def _principal_has_observability_scope(principal, project_id, team_id):
+        """Fail closed unless the authenticated principal has this exact scope."""
+        scopes = principal.get("observability_scopes")
+        if not isinstance(scopes, list):
+            return False
+        for scope in scopes:
+            if not isinstance(scope, dict):
+                continue
+            if scope.get("project_id") == project_id and scope.get("team_id") == team_id:
+                return True
+        return False
+
     def _body(self, environ):
         raw_length = environ.get("CONTENT_LENGTH", "") or "0"
         try:
@@ -130,6 +143,10 @@ class WorkflowOperatorAPI:
                 values = {key: query.get(key, [""])[0] for key in required}
                 if any(not value.strip() for value in values.values()):
                     return self._response(start_response, "400 Bad Request", {"error": "invalid_observability_scope"})
+                if not self._principal_has_observability_scope(
+                    principal, values["project_id"], values["team_id"]
+                ):
+                    return self._response(start_response, "403 Forbidden", {"error": "forbidden"})
                 try:
                     report = self.control_center.snapshot(**values)
                 except (ValueError, KeyError):
