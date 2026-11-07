@@ -10,7 +10,8 @@ This library contains **60 registered draft skill specifications** for CODEN tea
 
 - `registry.yaml`: inventory, IDs, owners, paths, and lifecycle status.
 - `templates/SKILL_TEMPLATE.md`: required structure for new skills.
-- `tests/test_registry.py`: automated checks for unique IDs, file existence, required sections, and draft status.
+- `tests/test_registry.py`: automated checks for the 60-skill count, unique IDs, file existence, required sections, and draft status.
+- `validation/`: scoring rubric, mandatory safety gates, benchmark protocol, and case template.
 - `01-strategy-governance/`: strategy and governance.
 - `02-dpi-architecture/`: DPI and GovTech architecture.
 - `03-product-management/`: product and service design.
