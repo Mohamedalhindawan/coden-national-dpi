@@ -1,7 +1,7 @@
 """Tests for the Stage 3A work-item lifecycle transition policy."""
 import unittest
 
-from coden_enterprise.workflow import validate_work_item_transition, TransitionError
+from coden_enterprise.workflow import (\n    validate_work_item_transition,\n    validate_work_item_references,\n    TransitionError,\n)
 
 
 class WorkItemLifecycleTests(unittest.TestCase):
@@ -25,6 +25,15 @@ class WorkItemLifecycleTests(unittest.TestCase):
             with self.subTest(state=state):
                 with self.assertRaises(TransitionError):
                     validate_work_item_transition(state, "ready")
+
+    def test_rejects_unknown_project_and_assignee_references(self):
+        work_item = {"project_id": "missing-project", "assignee_agent_id": "missing-agent"}
+        with self.assertRaises(TransitionError):
+            validate_work_item_references(work_item, {"known-project"}, {"known-agent"})
+
+    def test_allows_unassigned_work_item_when_project_exists(self):
+        work_item = {"project_id": "known-project"}
+        validate_work_item_references(work_item, {"known-project"}, set())
 
     def test_unknown_states_and_self_transitions_are_rejected(self):
         with self.assertRaises(TransitionError):
