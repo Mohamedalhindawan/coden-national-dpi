@@ -36,7 +36,8 @@ class DAGAwareScheduler:
             self.plan = build_execution_plan(normalized)
         except DAGError as exc:
             raise SchedulerError(str(exc)) from exc
-        self._known_queue_ids = set()\n        self._blocked = set()
+        self._known_queue_ids = set()
+        self._blocked = set()
 
     def states(self):
         result = {task_id: "pending" for task_id in self.tasks}
@@ -50,6 +51,8 @@ class DAGAwareScheduler:
                 "succeeded": "succeeded", "failed": "failed",
                 "cancelled": "cancelled",
             }[status]
+        for task_id in self._blocked:
+            result[task_id] = "blocked"
         return result
 
     def enqueue_ready(self, now=None):
@@ -127,6 +130,7 @@ class DAGAwareScheduler:
         except DAGError as exc:
             raise SchedulerError(str(exc)) from exc
         for task_id in blocked:
+            self._blocked.add(task_id)
             # A dependent may already be pending in the queue. Cancel it to
             # invalidate any claim and preserve a terminal blocked state locally.
             try:
