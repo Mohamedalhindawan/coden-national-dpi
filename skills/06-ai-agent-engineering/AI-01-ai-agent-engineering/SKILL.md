@@ -37,3 +37,14 @@ No unrestricted shell, network, secrets, or production access by default. Prompt
 
 ## Evaluation
 Measure task success, factuality, tool correctness, policy violations, escalation quality, cost, latency, and reproducibility.
+
+## Security
+Enforce tool allowlists, scoped credentials, sandbox isolation, egress restrictions, secret redaction, and auditable execution traces. Validate tool outputs before downstream use. Never place production credentials or citizen data in prompts, logs, or evaluation fixtures.
+
+## Failure and escalation
+Stop execution on permission violations, prompt-injection indicators, repeated tool failures, budget/time limit breaches, unexpected data access, or uncertainty affecting a consequential action. Preserve traces, notify the accountable owner, and require human authorization before resuming sensitive workflows.
+
+## Change history
+| Version | Change | Status |
+|---|---|---|
+| 1.0.1 | Added explicit security, escalation, and change-control requirements | Draft |
