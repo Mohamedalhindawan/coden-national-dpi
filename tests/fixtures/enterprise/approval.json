@@ -6,7 +6,6 @@
   "action": "accept_work_item",
   "environment": "test",
   "requested_by": "human-demo-requester",
-  "approver_id": "human-demo-approver",
   "decision": "pending",
   "created_at": "2026-11-07T20:00:00Z"
 }
