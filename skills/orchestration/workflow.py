@@ -78,8 +78,7 @@ class WorkflowOrchestrator:
         else:
             event = "checks_pass"
         try:
-            return self.runtime.transition(run_id, "tasks_done", actor=actor,
-                                           details={"result_status": result["status"]})
+            self.runtime.transition(run_id, "tasks_done", actor=actor,\n                                           details={"result_status": result["status"]})
         except WorkflowError as exc:
             raise WorkflowOrchestrationError(str(exc)) from exc
         try:
