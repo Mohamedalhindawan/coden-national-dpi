@@ -150,3 +150,8 @@ Focused test command: `python -m unittest skills.tests.test_workflow_orchestrati
 ## Durable workflow recovery 1.0
 
 Recovery reconstructs scheduler state from the same SQLite queue and declared DAG. Expired leases are lazily reconciled on claim; blocked descendants are recalculated with `refresh_blocked()`. See `recovery/README.md`.
+
+
+## Workflow Control Plane 1.0
+
+The local control facade unifies pause/resume, guarded dispatch, state snapshots, dependency reconciliation, and task audit retrieval. See `control-plane/README.md`.
