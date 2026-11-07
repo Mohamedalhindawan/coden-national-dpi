@@ -16,6 +16,32 @@ The FinOps layer provides a persistent SQLite ledger for project/team budgets, p
 - Snapshots report reserved, actual, consumed, remaining, and utilization.
 - Alerts are emitted at configurable percentage thresholds (default 80%, 90%, and 100%).
 
+## Governance transaction recovery
+
+The governance workflow and the budget ledger use separate SQLite databases, so
+there is no cross-database atomic commit. Approval is implemented as a
+recoverable saga:
+
+1. The governance request is persisted as `pending`.
+2. Approval invokes the ledger's idempotent reconciliation. Repeating the same
+   reservation and actual amount returns the already-reconciled result; a
+   different amount is rejected.
+3. The governance decision and approval audit event are committed afterward.
+4. If the process stops after step 2 but before step 3, the request remains
+   pending. A checker can retry approval; the ledger recognizes the same
+   reconciliation and the governance decision can then complete without a
+   second financial posting.
+5. Rejection checks the persisted ledger reservation state first and is
+   blocked if the ledger is already reconciled or its state cannot be verified.
+
+This is retry-based recovery, not distributed atomicity. Operators must retain
+the same governance request and reservation identifiers when retrying. The
+ledger remains the source of truth for whether a reservation has been
+reconciled. Concurrent access is limited to SQLite's local locking model; this
+design is not a multi-host transaction coordinator. The host remains
+responsible for authenticated identities, authorization, database protection,
+backups, and operational recovery procedures.
+
 ## Integration boundary
 
 The ledger is not yet wired into ModelGateway or ProviderCatalog. A future orchestration integration must reserve estimated cost before dispatch and reconcile verified provider usage afterward. No model or provider is invoked by this module.
