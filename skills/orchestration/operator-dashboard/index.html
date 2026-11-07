@@ -55,6 +55,13 @@ table{width:100%;border-collapse:collapse;text-align:right}th,td{padding:11px;bo
 <p>جودة المخرجات: <strong id="metricQuality">—</strong>　|　مخالفات السياسات: <strong id="metricViolations">—</strong></p>
 <p>المقاييس غير المنسوبة لمشروع/فريق: <strong id="metricUnattributed">—</strong></p>
 <p class="muted">التكلفة والرموز قيم مسجلة وليست بالضرورة قياساً مباشراً من مزود النموذج.</p></section>
+<section class="panel"><h2>مطابقة تكاليف التشغيل</h2>
+<p>حالة المطابقة: <strong id="reconciliationStatus">—</strong></p>
+<p>تكلفة المقاييس المرتبطة: <strong id="reconciliationObserved">—</strong>　|　التكلفة الفعلية المسوّاة في الدفتر: <strong id="reconciliationActual">—</strong></p>
+<p>الفرق (الدفتر ناقص المقاييس): <strong id="reconciliationVariance">—</strong></p>
+<p>تشغيلات مرتبطة: <strong id="reconciliationLinkedRuns">—</strong>　|　تشغيلات مسوّاة: <strong id="reconciliationReconciledRuns">—</strong></p>
+<p>حجوزات غير مرتبطة: <strong id="reconciliationUnlinked">—</strong>　|　حجوزات مرتبطة معلّقة: <strong id="reconciliationPending">—</strong></p>
+<p id="reconciliationNote" class="muted">لا توجد بيانات مطابقة بعد.</p></section>
 <section class="panel"><h2>حالة المنظومة</h2><p>حالة الاستقبال: <strong id="paused">غير معروفة</strong></p><p>العمال المسجلون: <strong id="registered">—</strong>　|　المهام النشطة: <strong id="active">—</strong></p></section>
 <section class="panel"><h2>العمال</h2><div style="overflow-x:auto"><table><thead><tr><th>العامل</th><th>الحالة</th><th>المهام النشطة</th><th>السعة</th><th>القدرات</th></tr></thead><tbody id="workers"><tr><td colspan="5" class="muted">لا توجد بيانات بعد</td></tr></tbody></table></div></section>
 <p class="muted">هذه الواجهة لا تخزن رمز الوصول في المتصفح، ولا تنفذ المهام بنفسها. يجب تشغيلها خلف خدمة موثوقة مع TLS ومصادقة وصلاحيات فعلية. قد تختلف البيانات المعروضة حسب ما يوفره إصدار API المتصل.</p>
@@ -107,6 +114,17 @@ table{width:100%;border-collapse:collapse;text-align:right}th,td{padding:11px;bo
       el("metricQuality").textContent=Number(data.usage.average_quality).toFixed(3);
       el("metricViolations").textContent=data.usage.policy_violations;
       el("metricUnattributed").textContent=data.unattributed_metrics;
+      const reconciliation=data.cost_reconciliation||{};
+      const statusLabels={reconciled:"متطابقة",variance_review:"فرق يحتاج مراجعة",incomplete_review:"مطابقة غير مكتملة"};
+      el("reconciliationStatus").textContent=statusLabels[reconciliation.status]||"غير متاحة";
+      el("reconciliationObserved").textContent=Number(reconciliation.observed_metric_cost_usd||0).toFixed(6)+" USD";
+      el("reconciliationActual").textContent=Number(reconciliation.reconciled_ledger_cost_usd||0).toFixed(6)+" USD";
+      el("reconciliationVariance").textContent=Number(reconciliation.variance_usd||0).toFixed(6)+" USD";
+      el("reconciliationLinkedRuns").textContent=Number(reconciliation.linked_runs||0).toLocaleString("en-US");
+      el("reconciliationReconciledRuns").textContent=Number(reconciliation.reconciled_runs||0).toLocaleString("en-US");
+      el("reconciliationUnlinked").textContent=Number(reconciliation.unlinked_reservations||0).toLocaleString("en-US");
+      el("reconciliationPending").textContent=Number(reconciliation.pending_linked_reservations||0).toLocaleString("en-US");
+      el("reconciliationNote").textContent=reconciliation.data_note||"لا تتوفر ملاحظة مصدر البيانات.";
       notice("تم تحميل مؤشرات النطاق المحدد.","ok");
     }catch(error){notice("تعذر تحميل المؤشرات: "+error.message,"error");}
   }
