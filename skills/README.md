@@ -12,7 +12,7 @@ This library contains **60 registered draft skill specifications** for CODEN tea
 - `templates/SKILL_TEMPLATE.md`: required structure for new skills.
 - `tests/test_registry.py`: automated checks for the 60-skill count, unique IDs, file existence, required sections, and draft status.
 - `validation/`: scoring rubric, mandatory safety gates, benchmark protocol, and case template.
-- `orchestration/`: multi-agent architecture, workforce roles, task contracts, permission matrix, state machine, operations runbook, synthetic pilot scenarios, runtime controls, adapters, sandbox, observability, benchmark evaluation, and policy-first routing.
+- `orchestration/`: multi-agent architecture, workforce roles, task contracts, permission matrix, state machine, operations runbook, synthetic pilot scenarios, runtime controls, adapters, sandbox, observability, benchmark evaluation, policy-first routing, and integrated workflow orchestration.
 - `01-strategy-governance/`: strategy and governance.
 - `02-dpi-architecture/`: DPI and GovTech architecture.
 - `03-product-management/`: product and service design.
@@ -50,7 +50,7 @@ The experimental benchmark suite is documented in `orchestration/benchmark/READM
 
 The experimental policy-first router is documented in `orchestration/routing/README.md`. It recommends logical roles only; it does not invoke providers, execute tools, or rank models.
 
-## How to add a skill
+## Integrated workflow orchestration\n\nThe experimental workflow facade is documented in `orchestration/workflow/README.md`. It composes task validation, routing, local state transitions, result checks, and independent human review; it does not execute providers or tools.\n\n## How to add a skill
 
 Copy the template, assign a unique ID, name an accountable owner, define acceptance tests, and submit the skill for review. Do not change a skill to Approved without evidence and an authorized reviewer.
 
