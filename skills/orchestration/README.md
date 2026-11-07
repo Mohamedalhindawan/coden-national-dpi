@@ -160,3 +160,8 @@ The local control facade unifies pause/resume, guarded dispatch, state snapshots
 ## Workflow API & Operator Interface 1.0
 
 `operator_api.py` exposes a minimal authenticated WSGI API for status, pause/resume, DAG-ready dispatch, and task audit. Authentication is injected by the host application; see `operator-api/README.md`. It is not a standalone production service.
+
+
+## Operator Dashboard 1.0
+
+`operator-dashboard/index.html` is a self-contained Arabic RTL dashboard for workflow status, pause/resume, worker capacity, and manual dispatch. It is a static asset, not a deployed service; see `operator-dashboard/README.md` for security and API compatibility notes. Static contract test: `python -m unittest skills.tests.test_operator_dashboard -v`.
