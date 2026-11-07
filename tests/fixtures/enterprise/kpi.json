@@ -1,0 +1,14 @@
+{
+  "kpi_id": "kpi-demo-001",
+  "objective_id": "objective-demo-001",
+  "name": "Monthly active digital service users",
+  "definition": "Synthetic example metric; no real user data",
+  "unit": "users",
+  "baseline": 1000,
+  "target": 5000,
+  "direction": "increase",
+  "measurement_frequency": "monthly",
+  "status": "active",
+  "created_at": "2026-11-07T20:00:00Z",
+  "owner_id": "human-demo-owner"
+}
