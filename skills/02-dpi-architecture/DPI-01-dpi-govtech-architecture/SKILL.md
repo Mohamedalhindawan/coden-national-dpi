@@ -37,3 +37,18 @@ No real citizen data in prototypes. No automated high-impact decisions. No centr
 
 ## Evaluation
 Measure reuse, interoperability, service accessibility, lifecycle cost, operational sustainability, and reduction of duplicated infrastructure.
+
+
+## Security
+
+- Draft controls and review requirements must be confirmed by the accountable owner before approval.
+
+
+## Failure and escalation
+
+- Draft controls and review requirements must be confirmed by the accountable owner before approval.
+
+
+## Change history
+
+- Draft controls and review requirements must be confirmed by the accountable owner before approval.
