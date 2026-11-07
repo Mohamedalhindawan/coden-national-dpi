@@ -37,3 +37,14 @@ Use least privilege, MFA for privileged access, encryption in transit and at res
 
 ## Evaluation
 Track material risks, control coverage, vulnerability exposure, incident detection and response, access review completion, and recovery test outcomes.
+
+## Security
+Apply defense in depth, least privilege, MFA for privileged identities, secure defaults, secrets management, dependency provenance, and tested backup restoration. Define control owners and evidence sources; document exceptions with expiry dates and authorized risk acceptance.
+
+## Failure and escalation
+Escalate immediately when active compromise, exposed credentials, unauthorized data access, critical exploitable vulnerabilities, or failed recovery controls are suspected. Preserve evidence, follow the incident response plan, contain safely, and do not conceal unresolved critical findings in release recommendations.
+
+## Change history
+| Version | Change | Status |
+|---|---|---|
+| 1.0.1 | Added explicit security, escalation, and change-control requirements | Draft |
