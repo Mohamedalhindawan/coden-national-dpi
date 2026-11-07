@@ -32,6 +32,8 @@ class ControlCenterTests(unittest.TestCase):
             "input_tokens": 100, "output_tokens": 50, "cost_usd": cost,
             "quality_score": 0.8, "policy_violations": 0, "retry_count": 0,
             "evidence_ref": "artifact://evidence/" + run_id,
+            "project_id": "project-a", "team_id": "team-a",
+            "occurred_at": "2026-11-07T10:00:00+00:00",
         }
 
     def test_snapshot_aggregates_runs_cost_tokens_quality_and_agents(self):
