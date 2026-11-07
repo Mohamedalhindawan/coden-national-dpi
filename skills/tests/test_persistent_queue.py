@@ -33,7 +33,7 @@ class PersistentQueueTests(unittest.TestCase):
 
     def test_worker_ownership_is_required_for_heartbeat_and_completion(self):
         self.queue.enqueue("task-1", {"kind": "synthetic"})
-        self.queue.claim("worker-a")
+        claimed = self.queue.claim("worker-a")
         with self.assertRaises(QueueError):
             self.queue.heartbeat("task-1", "worker-b", claimed["lease_token"])
         with self.assertRaises(QueueError):
@@ -41,7 +41,7 @@ class PersistentQueueTests(unittest.TestCase):
 
     def test_expired_lease_can_be_reclaimed_and_old_worker_fenced(self):
         self.queue.enqueue("task-1", {"kind": "synthetic"})
-        self.queue.claim("worker-a", lease_seconds=1, now=100)
+        first = self.queue.claim("worker-a", lease_seconds=1, now=100)
         reclaimed = self.queue.claim("worker-b", lease_seconds=30, now=102)
         self.assertEqual(reclaimed["worker_id"], "worker-b")
         with self.assertRaises(QueueError):
@@ -63,7 +63,7 @@ class PersistentQueueTests(unittest.TestCase):
         self.queue.cancel("pending", actor="operator")
         self.assertEqual(self.queue.get("pending")["status"], "cancelled")
         self.queue.enqueue("running", {"kind": "synthetic"})
-        self.queue.claim("worker-a")
+        claimed = self.queue.claim("worker-a")
         self.queue.cancel("running", actor="operator")
         with self.assertRaises(QueueError):
             self.queue.complete("running", "worker-a", {"result": "late"}, lease_token=claimed["lease_token"])
@@ -81,7 +81,7 @@ class PersistentQueueTests(unittest.TestCase):
         with self.assertRaises(QueueError):
             self.queue.enqueue("bad", ["not", "an", "object"])
         self.queue.enqueue("task-1", {"kind": "synthetic"})
-        claimed = claimed = self.queue.claim("worker-a")
+        claimed = self.queue.claim("worker-a")
         with self.assertRaises(QueueError):
             self.queue.complete("task-1", "worker-a", ["not", "an", "object"], lease_token=claimed["lease_token"])
 
