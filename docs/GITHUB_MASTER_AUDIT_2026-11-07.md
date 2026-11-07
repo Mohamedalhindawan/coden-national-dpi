@@ -218,3 +218,20 @@ A regression test was added first in PR #28. The first CI run (#270) failed with
 - Green evidence: [run #271](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/42409698531)
 
 **Disposition:** PR #28 is still Draft and not merged. PR #26 remains Draft. This fix must be reviewed and incorporated before the experimental operator API can be considered to have passed the role-separation acceptance check. Passing these tests does not establish production security.
+
+
+## 12. Follow-up refreshes on current main
+
+To avoid merging older PR branches that had diverged from current main, the following bounded work was reapplied on branches created from the current main commit:
+
+| Refreshed PR | Purpose | CI evidence | Disposition |
+|---|---|---|---|
+| [#29](https://github.com/Mohamedalhindawan/coden-national-dpi/pull/29) | Issue forms, PR template, ADR template, proposed branch/version policy | [Run #273](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/42409932522) — success | Draft; human review required |
+| [#31](https://github.com/Mohamedalhindawan/coden-national-dpi/pull/31) | Refresh preflight guardrails from #22 onto current main | [Run #274](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/42410075730) — success; preflight 15/15, prototype suite 14 tests, OpenAPI OK | Draft; human review required |
+| [#32](https://github.com/Mohamedalhindawan/coden-national-dpi/pull/32) | Refresh safe agent runbook and source-preserving 31-batch workflow from #24/#20 onto current main | [Run #275](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/42410167142) — success | Draft; exact original batch source remains blocked |
+
+The original PRs #20, #22, and #24 remain open and have comments pointing to the refreshed candidates. They have not been closed or merged automatically. A human repository owner should decide whether to close them as superseded after reviewing the refreshed PRs.
+
+PR #29 adds proposed templates and policies but does not enforce branch protection or required reviewers. The current main branch remains unprotected until an authorized human changes repository settings.
+
+The 15-stage master tracker is [Issue #30](https://github.com/Mohamedalhindawan/coden-national-dpi/issues/30). It links the stage gates, dependencies, and evidence. It is a coordination record, not evidence that all stages are complete.
