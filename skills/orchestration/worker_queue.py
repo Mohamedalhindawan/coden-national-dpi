@@ -16,6 +16,9 @@ class WorkerQueueIntegration:
     def dispatch(self, worker_id, lease_seconds=60, now=None):
         status = self.workers.worker_status(worker_id)
         capabilities = status["capabilities"]
+        if (status["active_count"] >= status["max_concurrency"]
+                or self.workers.active_count >= self.workers.max_workers):
+            return None
         try:
             claim = self.queue.claim(worker_id, lease_seconds=lease_seconds, now=now,
                                      task_kinds=capabilities)
@@ -28,7 +31,7 @@ class WorkerQueueIntegration:
         previous = self._claims.get(claim["task_id"])
         if previous:
             try:
-                self.workers.release_slot(previous["worker_id"], previous["task_id"])
+                self.workers.release_slot(previous["worker_id"], claim["task_id"])
             except WorkerRuntimeError:
                 pass
         try:
