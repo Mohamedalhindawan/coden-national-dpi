@@ -1,0 +1,9 @@
+{
+  "dependency_id": "dependency-demo-001",
+  "source_id": "initiative-demo-001",
+  "target_id": "initiative-demo-002",
+  "dependency_type": "blocks",
+  "status": "active",
+  "rationale": "Synthetic prerequisite between two demo initiatives.",
+  "created_at": "2026-11-08T10:00:00Z"
+}
