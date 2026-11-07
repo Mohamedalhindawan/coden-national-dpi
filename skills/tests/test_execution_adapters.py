@@ -42,5 +42,5 @@ class AdapterRegistryTests(unittest.TestCase):
         with self.assertRaises(AdapterError):
             registry.dispatch("run_tests", "task-01", "run-01", {}, "disabled", "dry_run")
 
-if __ (name__ == "__main__"):
+if __name__ == "__main__":
     unittest.main()
