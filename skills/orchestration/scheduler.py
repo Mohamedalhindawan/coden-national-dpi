@@ -31,7 +31,7 @@ class DAGAwareScheduler:
             if not isinstance(dependencies, list):
                 raise SchedulerError("depends_on must be a list")
             self.tasks[task_id] = {"payload": payload, "depends_on": dependencies}
-            normalized.append({"task_id": task_id, "dependencies": dependencies})
+            normalized.append({"task_id": task_id, "depends_on": dependencies})
         try:
             self.plan = build_execution_plan(normalized)
         except DAGError as exc:
@@ -74,7 +74,7 @@ class DAGAwareScheduler:
         # A pending task already present in the queue is ready only if every
         # dependency is still successful; the queue itself remains the source of lease state.
         pending_graph = [
-            {"task_id": task_id, "dependencies": item["depends_on"]}
+            {"task_id": task_id, "depends_on": item["depends_on"]}
             for task_id, item in self.tasks.items()
         ]
         from skills.orchestration.dag import ready_tasks
