@@ -65,3 +65,8 @@ Run from the repository root:
 ```bash
 python -m unittest discover -s skills/tests -v
 ```
+
+
+### Task DAG & dependency planning
+
+The experimental dependency planner is in `orchestration/dag.py`, with its contract in `orchestration/schemas/task-graph.schema.json`. It plans dependency waves and readiness; it does not execute or schedule work. See `orchestration/dag/README.md`.
