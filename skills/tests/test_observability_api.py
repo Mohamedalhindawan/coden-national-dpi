@@ -39,7 +39,8 @@ class ObservabilityAPITests(unittest.TestCase):
         self.center = ControlCenter(self.metrics, self.ledger)
         self.api = WorkflowOperatorAPI(
             WorkflowControlPlane(scheduler, workers),
-            authenticator=lambda environ: ({"subject":"operator","role":"operator"}
+            authenticator=lambda environ: ({"subject":"operator","role":"operator",
+                                           "observability_scopes":[{"project_id":"project-a","team_id":"team-a"}]}
                                            if environ.get("HTTP_AUTHORIZATION") else None),
             control_center=self.center,
         )
@@ -93,6 +94,22 @@ class ObservabilityAPITests(unittest.TestCase):
             "project_id=project-a&team_id=team-a&period=daily&period_key=2026-11-07", token="")
         self.assertEqual(code, 401)
         self.assertEqual(body["error"], "unauthorized")
+
+    def test_snapshot_denies_project_team_scope_not_granted_to_principal(self):
+        code, body, _ = self.request("project_id=project-b&team_id=team-a&period=daily&period_key=2026-11-07")
+        self.assertEqual(code, 403)
+        self.assertEqual(body["error"], "forbidden")
+
+    def test_snapshot_denies_team_scope_not_granted_to_principal(self):
+        code, body, _ = self.request("project_id=project-a&team_id=team-b&period=daily&period_key=2026-11-07")
+        self.assertEqual(code, 403)
+        self.assertEqual(body["error"], "forbidden")
+
+    def test_snapshot_fails_closed_when_principal_has_no_scope_claim(self):
+        self.api.authenticator = lambda environ: {"subject":"operator","role":"operator"}
+        code, body, _ = self.request("project_id=project-a&team_id=team-a&period=daily&period_key=2026-11-07")
+        self.assertEqual(code, 403)
+        self.assertEqual(body["error"], "forbidden")
 
 
 if __name__ == "__main__":
