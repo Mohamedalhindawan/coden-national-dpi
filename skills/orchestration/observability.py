@@ -1,5 +1,4 @@
-"""Privacy-minimizing, append-only agent run metrics and scorecards."""
-import json
+"""Privacy-minimizing, append-only, project-attributed agent run metrics."""
 import sqlite3
 from datetime import datetime, timezone
 
@@ -32,6 +31,15 @@ class ObservabilityStore:
             evidence_ref TEXT NOT NULL,
             recorded_at TEXT NOT NULL
         );
+        """)
+        columns = {row["name"] for row in self.db.execute("PRAGMA table_info(agent_metrics)")}
+        if "project_id" not in columns:
+            self.db.execute("ALTER TABLE agent_metrics ADD COLUMN project_id TEXT")
+        if "team_id" not in columns:
+            self.db.execute("ALTER TABLE agent_metrics ADD COLUMN team_id TEXT")
+        self.db.executescript("""
+        CREATE INDEX IF NOT EXISTS idx_metrics_scope_time
+        ON agent_metrics(project_id, team_id, recorded_at);
         CREATE TRIGGER IF NOT EXISTS agent_metrics_no_update
         BEFORE UPDATE ON agent_metrics BEGIN
             SELECT RAISE(ABORT, 'metrics are append-only');
@@ -50,6 +58,20 @@ class ObservabilityStore:
             raise ObservabilityError(f"{key} must be a non-negative integer")
         return value
 
+    @staticmethod
+    def _timestamp(value):
+        if value is None:
+            return datetime.now(timezone.utc).isoformat()
+        if not isinstance(value, str):
+            raise ObservabilityError("occurred_at must be an ISO-8601 timestamp")
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            raise ObservabilityError("occurred_at must be an ISO-8601 timestamp")
+        if parsed.tzinfo is None:
+            raise ObservabilityError("occurred_at must include a timezone")
+        return parsed.astimezone(timezone.utc).isoformat()
+
     def record(self, record):
         if not isinstance(record, dict):
             raise ObservabilityError("Metric record must be an object")
@@ -60,17 +82,22 @@ class ObservabilityStore:
             raise ObservabilityError("Unsupported status")
         if record["status"] == "succeeded" and not record["evidence_ref"].strip():
             raise ObservabilityError("Successful runs require evidence_ref")
+        project_id, team_id = record.get("project_id"), record.get("team_id")
+        if (project_id is None) != (team_id is None):
+            raise ObservabilityError("project_id and team_id must be supplied together")
+        if project_id is not None and any(not isinstance(v, str) or not v.strip() for v in (project_id, team_id)):
+            raise ObservabilityError("project_id and team_id must be non-empty strings")
         duration = self._nonnegative_int(record, "duration_ms")
         input_tokens = self._nonnegative_int(record, "input_tokens")
         output_tokens = self._nonnegative_int(record, "output_tokens")
         violations = self._nonnegative_int(record, "policy_violations")
         retries = self._nonnegative_int(record, "retry_count")
-        cost = record.get("cost_usd")
-        quality = record.get("quality_score")
+        cost, quality = record.get("cost_usd"), record.get("quality_score")
         if isinstance(cost, bool) or not isinstance(cost, (int, float)) or cost < 0:
             raise ObservabilityError("cost_usd must be non-negative")
         if isinstance(quality, bool) or not isinstance(quality, (int, float)) or not 0 <= quality <= 1:
             raise ObservabilityError("quality_score must be between 0 and 1")
+        occurred_at = self._timestamp(record.get("occurred_at"))
         safe = {
             "run_id": record["run_id"], "task_id": record["task_id"],
             "agent_id": record["agent_id"], "provider": record["provider"],
@@ -78,16 +105,18 @@ class ObservabilityStore:
             "input_tokens": input_tokens, "output_tokens": output_tokens,
             "cost_usd": float(cost), "quality_score": float(quality),
             "policy_violations": violations, "retry_count": retries,
-            "evidence_ref": record["evidence_ref"],
+            "evidence_ref": record["evidence_ref"], "project_id": project_id,
+            "team_id": team_id, "occurred_at": occurred_at,
         }
         self.db.execute(
             """INSERT INTO agent_metrics
             (run_id,task_id,agent_id,provider,status,duration_ms,input_tokens,output_tokens,
-             cost_usd,quality_score,policy_violations,retry_count,evidence_ref,recorded_at)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+             cost_usd,quality_score,policy_violations,retry_count,evidence_ref,recorded_at,
+             project_id,team_id)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             tuple(safe[k] for k in ("run_id","task_id","agent_id","provider","status","duration_ms",
                  "input_tokens","output_tokens","cost_usd","quality_score","policy_violations",
-                 "retry_count","evidence_ref")) + (datetime.now(timezone.utc).isoformat(),)
+                 "retry_count","evidence_ref","occurred_at","project_id","team_id"))
         )
         self.db.commit()
         return safe
