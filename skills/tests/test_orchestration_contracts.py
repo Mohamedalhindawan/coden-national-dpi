@@ -37,7 +37,7 @@ class OrchestrationContractTests(unittest.TestCase):
     def test_rejects_tool_outside_role_allowlist(self):
         task = {
             "contract_version": "1.0.0", "run_id": "r", "task_id": "t",
-            "role_id": "QA-01", "owner": "human", "objective": "test",
+            "role_id": "QA-01", "owner": "human", "objective": "Check the synthetic task",
             "inputs": [{"artifact_id": "f", "uri": "workspace://fixtures/f.json", "classification": "synthetic"}],
             "constraints": {"allowed_tools": ["merge_pull_request"], "network": "disabled", "write_scope": [], "max_runtime_seconds": 60, "max_retries": 0},
             "acceptance_criteria": ["pass"], "deadline": "2026-12-01T00:00:00Z", "status": "ready"
