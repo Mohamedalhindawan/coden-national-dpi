@@ -110,3 +110,8 @@ See `orchestration/operator-api/README.md` for the minimal WSGI API, route contr
 ### Operator Dashboard
 
 See `orchestration/operator-dashboard/README.md` for the Arabic RTL static dashboard asset, its API integration, and security boundaries.
+
+
+### Agent Provider Integration
+
+See `orchestration/providers/README.md` for the provider-neutral, simulated-only integration contract and security boundaries.
