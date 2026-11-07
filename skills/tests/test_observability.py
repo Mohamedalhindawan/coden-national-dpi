@@ -57,5 +57,22 @@ class ObservabilityTests(unittest.TestCase):
         with self.assertRaises(Exception):
             self.store.db.execute("DELETE FROM agent_metrics")
 
+    def test_records_project_team_and_timestamp_attribution(self):
+        stored = self.store.record(self.sample(
+            project_id="tamam", team_id="platform",
+            occurred_at="2026-11-07T10:15:00+03:00"))
+        self.assertEqual(stored["project_id"], "tamam")
+        self.assertEqual(stored["team_id"], "platform")
+        self.assertEqual(stored["occurred_at"], "2026-11-07T07:15:00+00:00")
+
+    def test_rejects_partial_scope_attribution_and_naive_timestamp(self):
+        for changes in [
+            {"project_id": "tamam"},
+            {"team_id": "platform"},
+            {"project_id": "tamam", "team_id": "platform", "occurred_at": "2026-11-07T10:00:00"},
+        ]:
+            with self.subTest(changes=changes), self.assertRaises(ObservabilityError):
+                self.store.record(self.sample(**changes))
+
 if __name__ == "__main__":
     unittest.main()
