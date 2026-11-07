@@ -1,0 +1,11 @@
+{
+  "risk_id": "risk-demo-001",
+  "initiative_id": "initiative-demo-001",
+  "title": "Synthetic delivery dependency risk",
+  "description": "A simulated external dependency may delay a planned milestone.",
+  "category": "delivery",
+  "likelihood": 3,
+  "impact": 4,
+  "status": "identified",
+  "identified_at": "2026-11-08T10:00:00Z"
+}
