@@ -95,3 +95,8 @@ See `orchestration/worker_queue.py` and `orchestration/worker-queue/README.md` f
 ### Durable workflow recovery
 
 See `orchestration/recovery/README.md` for restart recovery behavior and limitations.
+
+
+### Workflow Control Plane
+
+See `orchestration/control-plane/README.md` for the unified local operations facade and its limitations.
