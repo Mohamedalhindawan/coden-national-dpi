@@ -37,3 +37,18 @@ Do not use model confidence as proof of correctness. Do not permit AI-only decis
 
 ## Evaluation
 Track task quality, harmful error rate, subgroup performance where lawful, privacy/security incidents, drift, escalation rate, latency, and unit cost.
+
+
+## Security
+
+- Draft controls and review requirements must be confirmed by the accountable owner before approval.
+
+
+## Failure and escalation
+
+- Draft controls and review requirements must be confirmed by the accountable owner before approval.
+
+
+## Change history
+
+- Draft controls and review requirements must be confirmed by the accountable owner before approval.
