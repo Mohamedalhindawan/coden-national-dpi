@@ -184,4 +184,4 @@ The local control facade unifies pause/resume, guarded dispatch, state snapshots
 
 ## AI Observability & Control Center 2.0
 
-`control_center.py` aggregates run metrics, agent/provider rollups, budget snapshots, and threshold alerts into a read-only local report. Metrics are not yet project-attributed and the service is not exposed through the operator API/dashboard. See `control-center/README.md`; tests: `python -m unittest skills.tests.test_control_center -v`.
+`control_center.py` aggregates run metrics, agent/provider rollups, budget snapshots, and threshold alerts into a read-only local report. Metrics now support project/team attribution and UTC period filtering; legacy unattributed records are excluded and counted. The service is not exposed through the operator API/dashboard. See `control-center/README.md`; tests: `python -m unittest skills.tests.test_control_center -v`.
