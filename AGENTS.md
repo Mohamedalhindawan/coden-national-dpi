@@ -3,7 +3,7 @@
 ## Project context
 **Master guide:** See [CODEN_MASTER_ENGINEERING_PLAYBOOK.md](CODEN_MASTER_ENGINEERING_PLAYBOOK.md) for the complete vision, 31-sector/DPI scope, agent workflow, safety gates, and implementation status.
 
-**Skills library:** See [skills/README.md](skills/README.md) and [skills/registry.yaml](skills/registry.yaml). Before a specialized task, read the relevant skill file and follow its scope, workflow, quality gates, and safety controls. Skill files marked Draft are guidance proposals, not institutional approvals.
+**Skills library:** See [skills/README.md](skills/README.md) and [skills/registry.yaml](skills/registry.yaml). For multi-agent workflows, consult [skills/orchestration/README.md](skills/orchestration/README.md) and its linked contracts, permissions, state machine, and runbook. These are draft design specifications, not an active orchestration runtime. Before a specialized task, read the relevant skill file and follow its scope, workflow, quality gates, and safety controls. Skill files marked Draft are guidance proposals, not institutional approvals.
 
 CODEN is a proposed Yemeni GovTech / Digital Public Infrastructure project. Tamam is a prototype citizen-facing super-app. This repository is a prototype and planning workspace, not an approved government production system.
 
