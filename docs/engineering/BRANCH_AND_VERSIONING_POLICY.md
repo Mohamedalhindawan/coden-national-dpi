@@ -43,3 +43,26 @@ Every release must record:
 
 ## Enforcement note
 This file is a proposed policy. Branch protection, required reviewers, required status checks, signed commits, and release permissions must be configured separately in GitHub settings by an authorized human.
+
+## Recommended GitHub enforcement for `main` (proposal only)
+
+These settings are recommended for an authorized repository administrator to review and apply:
+
+1. Require pull requests before changes reach `main`; block routine direct pushes.
+2. Require at least one approval from a human reviewer who is not the PR author.
+3. Require approval of the latest push where GitHub offers that option.
+4. Require conversation resolution before merge.
+5. Require the `Prototype checks / contract-tests` status check after confirming its exact check name in the Actions UI.
+6. Require the branch to be up to date before merging, if this does not create excessive merge friction.
+7. Block force pushes and branch deletion for `main`.
+8. Do not enable automatic merge for AI-generated changes by default.
+9. For changes to identity, authorization, payments, benefit eligibility, sensitive data, production infrastructure, or release controls, require a second independent specialist review and explicit accountable-owner approval.
+10. Review administrator/bypass permissions and keep them limited to named maintainers.
+
+### Observed settings visibility (2026-11-07)
+
+- The GitHub repository rulesets endpoint returned an empty list.
+- The connected GitHub integration returned HTTP 403 for the classic branch-protection read endpoint; therefore the actual classic branch-protection state could not be verified here.
+- No branch-protection or repository settings were changed by this PR.
+
+**Do not mark branch protection as enabled until an authorized administrator verifies the settings in GitHub and records a screenshot/export or equivalent audit evidence.**
