@@ -36,3 +36,18 @@ Kubernetes is optional and must be justified by scale, isolation, resilience, or
 
 ## Evaluation
 Measure onboarding time, deployment lead time, change failure rate, platform adoption, pipeline availability, and cost per workload.
+
+
+## Security
+
+- Draft controls and review requirements must be confirmed by the accountable owner before approval.
+
+
+## Failure and escalation
+
+- Draft controls and review requirements must be confirmed by the accountable owner before approval.
+
+
+## Change history
+
+- Draft controls and review requirements must be confirmed by the accountable owner before approval.
