@@ -1,0 +1,82 @@
+name: Feature request
+description: Propose a bounded capability or improvement
+title: "feat: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: "Describe a testable change. Do not assume production authority, integrations, budget, or institutional approval."
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / opportunity
+      description: Who experiences this problem and why does it matter?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: What observable result should this change produce?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: In scope
+      description: List the smallest useful deliverable.
+    validations:
+      required: true
+  - type: textarea
+    id: exclusions
+    attributes:
+      label: Out of scope
+      description: State what this request must not introduce.
+    validations:
+      required: false
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Use observable, testable statements.
+      placeholder: "- [ ] Given ... when ... then ..."
+    validations:
+      required: true
+  - type: dropdown
+    id: data
+    attributes:
+      label: Data classification
+      options:
+        - Synthetic
+        - Public
+        - Internal (approval required)
+        - Personal / sensitive (blocked from prototype work)
+    validations:
+      required: true
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Risk level
+      options:
+        - Low
+        - Medium
+        - High
+        - Critical
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies and evidence
+      description: Link related issues, architecture decisions, source documents, and test evidence.
+    validations:
+      required: false
+  - type: checkboxes
+    id: guardrails
+    attributes:
+      label: Guardrails
+      options:
+        - label: No secrets or real citizen data will be added.
+          required: true
+        - label: Production, payment, identity, eligibility, legal, or spending changes will require explicit human approval.
+          required: true
