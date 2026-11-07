@@ -37,7 +37,7 @@ class SkillsLibraryTests(unittest.TestCase):
         self.assertEqual(len(ids), len(set(ids)), "Duplicate skill IDs found")
 
     def test_registry_paths_exist(self):
-        missing = [path for _, path, _ in self.entries if not path or not (ROOT / path).is_file()]
+        missing = [path for _, path, _ in self.entries if not path or not (ROOT / "skills" / path).is_file()]
         self.assertEqual(missing, [], f"Missing skill files: {missing}")
 
     def test_every_skill_has_required_sections(self):
@@ -45,7 +45,7 @@ class SkillsLibraryTests(unittest.TestCase):
         for skill_id, path, _ in self.entries:
             if not path or not (ROOT / path).is_file():
                 continue
-            content = (ROOT / path).read_text(encoding="utf-8")
+            content = (ROOT / "skills" / path).read_text(encoding="utf-8")
             missing = [heading for heading in REQUIRED_HEADINGS if heading not in content]
             if missing:
                 failures.append(f"{skill_id}: {', '.join(missing)}")
