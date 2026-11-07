@@ -189,6 +189,18 @@ class BudgetLedger:
             )
             return {"reservation_id": reservation_id, "actual_usd": actual, "status": "reconciled"}
 
+    def reservation_status(self, reservation_id):
+        """Return the persisted reservation state without exposing mutable internals."""
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT reservation_id, status, actual_usd FROM reservations WHERE reservation_id=?",
+                (reservation_id,),
+            ).fetchone()
+        if row is None:
+            raise BudgetError("unknown reservation")
+        return {"reservation_id": row["reservation_id"], "status": row["status"],
+                "actual_usd": row["actual_usd"]}
+
     def snapshot(self, scope_id, period, key):
         if period not in {"daily", "monthly"} or not isinstance(scope_id, str) or not scope_id.strip():
             raise BudgetError("valid scope and period are required")
