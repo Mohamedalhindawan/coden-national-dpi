@@ -56,10 +56,10 @@ class WorkflowOrchestrationTests(unittest.TestCase):
         self.flow.start_dry_run("workflow-01", actor="operator")
         self.flow.submit_validation("workflow-01", {
             "contract_version": "1.0.0", "run_id": "workflow-01", "task_id": "task-01",
-            "agent_id": "DEV-01", "status": "succeeded",
+            "role_id": "DEV-01", "status": "succeeded",
             "acceptance_results": [{"criterion": "Implementation contract is recorded",
                                     "status": "pass", "evidence_ref": "workspace://reports/result.json"}],
-            "summary": "Synthetic dry-run validation completed"
+            "summary": "Synthetic dry-run validation completed", "requires_human_approval": True
         }, actor="validator")
         self.assertEqual(self.flow.get_run("workflow-01")["state"], "REVIEW_REQUIRED")
         with self.assertRaises(WorkflowOrchestrationError):
@@ -81,7 +81,7 @@ class WorkflowOrchestrationTests(unittest.TestCase):
             "agent_id": "DEV-01", "status": "failed",
             "acceptance_results": [{"criterion": "Implementation contract is recorded",
                                     "status": "fail"}],
-            "summary": "Acceptance check failed"
+            "summary": "Acceptance check failed", "requires_human_approval": True
         }, actor="validator")
         self.assertEqual(self.flow.get_run("workflow-01")["state"], "PLANNING")
 
@@ -112,7 +112,7 @@ class WorkflowOrchestrationTests(unittest.TestCase):
                 "agent_id": "DEV-01", "status": "succeeded",
                 "acceptance_results": [{"criterion": "Implementation contract is recorded",
                                         "status": "pass"}],
-                "summary": "Missing evidence"
+                "summary": "Missing evidence", "requires_human_approval": True
             }, actor="validator")
 
 
