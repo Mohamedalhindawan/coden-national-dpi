@@ -1,7 +1,6 @@
 name: Engineering task
 description: Track a bounded implementation, validation, or documentation task
 title: "task: "
-labels: ["engineering", "needs-triage"]
 body:
   - type: input
     id: parent
