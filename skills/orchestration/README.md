@@ -1,0 +1,74 @@
+# CODEN Agent Orchestration & Multi-Agent Workforce 1.0
+
+**Status:** Draft architecture proposal  
+**Version:** 1.0.0  
+**Scope:** Isolated engineering workflows and synthetic-data pilots only.
+
+## Purpose
+Define a controlled multi-agent operating model: an orchestrator decomposes an approved task, delegates bounded work to specialist roles, validates outputs, and assembles an auditable result. Factory, Codex, Manus, OpenHands, or another provider may be evaluated as an adapter; none is assumed to be connected or available.
+
+## Design principles
+1. Human accountability: every workflow has one named human owner.
+2. Least privilege: each agent receives only task-specific tools and resources.
+3. Explicit contracts: inputs, outputs, acceptance criteria, and failure states are machine-readable.
+4. Untrusted-by-default: model output, retrieved content, repository text, and tool results require validation.
+5. Deterministic control plane: permissions, approvals, retries, budgets, and state transitions are enforced outside the model.
+6. Evidence over claims: material results link to artifacts, tests, and run records.
+7. Reversibility: changes remain in isolated workspaces and reviewable branches.
+8. Data minimization: current TAMAM work uses synthetic data only.
+
+## Reference architecture
+Human task owner → Intake and policy gate → Orchestrator/state machine → Planner → Task DAG and contracts → Specialist agent pool → Independent validation/QA → Result assembly → Human review. Audit trail, traces, metrics, cost controls, and scoped sandbox tools surround the workflow.
+
+The orchestrator is the policy enforcement point. Models propose plans and content; the control plane validates schemas, permissions, budgets, state transitions, and approvals.
+
+## Workflow states
+| State | Purpose | Exit condition |
+|---|---|---|
+| INTAKE | Capture objective, owner, scope, risk and budget | Required fields complete |
+| POLICY_CHECK | Classify data and action risk | Policy permits isolated execution |
+| PLANNING | Create task DAG, contracts and acceptance tests | Plan accepted where required |
+| READY | Pin versions, tools, fixtures and workspace | Reproducible run envelope exists |
+| EXECUTING | Run bounded specialist tasks | Tasks complete or explicit failure |
+| VALIDATING | Schema, tests, security and independent review | Mandatory gates pass |
+| REVIEW_REQUIRED | Present diff, evidence, costs and open risks | Human approves, requests changes or rejects |
+| COMPLETED | Archive evidence and outcome | Run record complete |
+| FAILED / BLOCKED | Stop safely and preserve evidence | Human-directed remediation |
+| CANCELLED | Stop queued and active work | Cancellation confirmed |
+
+Approval is scoped to a specific artifact, action, environment, and version. No state transition may grant new permissions.
+
+## Delegation defaults
+- Maximum delegation depth: 2.
+- Maximum concurrent specialist tasks: 4 until measured otherwise.
+- No agent may spawn unbounded agents or change its own permissions.
+- Handoffs carry task ID, parent ID, contract version, artifact references, and deadline.
+- A specialist returns a result package; it cannot mark the workflow complete.
+
+## Mandatory human approval
+Required before merging PRs, deploying, provisioning infrastructure, spending money, accessing real citizen or sensitive data, making decisions affecting eligibility/rights/health/identity/finance, sending external commitments, or changing security/data-sharing policy.
+
+## Reliability and failure handling
+Use bounded retries only for transient idempotent operations. Require idempotency keys for writes. Apply per-agent timeout, workflow deadline, concurrency cap, and circuit breaker. Preserve successful artifacts after partial failure while blocking dependent tasks. Stop and escalate on secrets, personal data, privilege escalation, or policy bypass. Never retry non-idempotent external actions automatically.
+
+## Observability
+Record run/task/agent IDs, parent-child links, provider/model/version, prompt and contract versions, tool allowlist, workspace commit, timestamps, state transitions, retries, usage/cost where available, latency, test outcomes, approvals, artifact hashes, and stop reason. Never log secrets or raw sensitive data.
+
+## Rollout
+1. Documentation and schema review.
+2. Offline simulation with synthetic fixtures.
+3. Single-agent sandbox pilot.
+4. Two-specialist orchestration pilot.
+5. Limited internal engineering workflows.
+6. Reassessment before production or public-service use.
+
+## Related specifications
+- Agent catalog: AGENT_CATALOG.md
+- Task/result contracts: TASK_CONTRACTS.md
+- Permission matrix: PERMISSION_MATRIX.md
+- State machine: STATE_MACHINE.md
+- Operations runbook: OPERATIONS_RUNBOOK.md
+- Synthetic pilot cases: pilot/README.md
+
+## Implementation status
+This is a design and governance package. It does not install or execute Factory AI, Manus, Codex, or other agents. No orchestration runtime, credentials, provider integration, or production deployment is created.
