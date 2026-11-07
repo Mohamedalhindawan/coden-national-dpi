@@ -120,3 +120,8 @@ See `orchestration/providers/README.md` for the provider-neutral, simulated-only
 ### AI Model Gateway & Intelligent Routing 1.0
 
 See `orchestration/model-gateway/README.md` for simulated model selection, request cost ceilings, and security limitations.
+
+
+### AI FinOps & Budget Control 1.0
+
+See `orchestration/finops/README.md` for project/team daily and monthly budgets, atomic reservations, spend reconciliation, and threshold alerts.
