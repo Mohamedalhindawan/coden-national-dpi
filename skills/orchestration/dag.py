@@ -117,7 +117,7 @@ def propagate_blocked(tasks, states):
         for child in reverse[failed]:
             if child not in visited:
                 visited.add(child)
-                if current[child] in {"pending", "ready", "running"}:
+                if current[child] in {"pending", "ready", "running", "cancelled"}:
                     blocked.add(child)
                     queue.append(child)
     return sorted(blocked)
