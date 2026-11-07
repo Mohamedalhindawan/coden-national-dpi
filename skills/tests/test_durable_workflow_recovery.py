@@ -59,6 +59,8 @@ class DurableWorkflowRecoveryTests(unittest.TestCase):
         queue2.close()
 
     def test_restart_reconstructs_blocked_descendants(self):
+        # This scenario requires a terminal failure, not a retryable first failure.
+        self.tasks[0]["max_attempts"] = 1
         queue, workers, integration = self.make_runtime()
         scheduler = DAGAwareScheduler(queue, integration, self.tasks)
         scheduler.enqueue_ready(now=10)
