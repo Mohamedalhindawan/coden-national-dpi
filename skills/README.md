@@ -12,7 +12,7 @@ This library contains **60 registered draft skill specifications** for CODEN tea
 - `templates/SKILL_TEMPLATE.md`: required structure for new skills.
 - `tests/test_registry.py`: automated checks for the 60-skill count, unique IDs, file existence, required sections, and draft status.
 - `validation/`: scoring rubric, mandatory safety gates, benchmark protocol, and case template.
-- `orchestration/`: multi-agent architecture, workforce roles, task contracts, permission matrix, state machine, operations runbook, synthetic pilot scenarios, runtime controls, adapters, sandbox, observability, and benchmark evaluation.
+- `orchestration/`: multi-agent architecture, workforce roles, task contracts, permission matrix, state machine, operations runbook, synthetic pilot scenarios, runtime controls, adapters, sandbox, observability, benchmark evaluation, and policy-first routing.
 - `01-strategy-governance/`: strategy and governance.
 - `02-dpi-architecture/`: DPI and GovTech architecture.
 - `03-product-management/`: product and service design.
@@ -42,7 +42,7 @@ Every skill must have an owner, version, scope, inputs, workflow, deliverables, 
 - Require human approval for production changes and high-impact decisions involving identity, benefits, money, health, legal rights, or citizen data.
 - Do not assume any listed tool, cloud credit, partnership, certification, or government authority has been approved.
 
-## Agent benchmark and provider evaluation\n\nThe experimental benchmark suite is documented in `orchestration/benchmark/README.md`. It evaluates submitted evidence receipts only; it does not execute external providers. No provider performance results are currently established.\n\n## How to add a skill
+## Agent benchmark and provider evaluation\n\nThe experimental benchmark suite is documented in `orchestration/benchmark/README.md`. It evaluates submitted evidence receipts only; it does not execute external providers. No provider performance results are currently established.\n\n## Agent routing and model selection\n\nThe experimental policy-first router is documented in `orchestration/routing/README.md`. It recommends logical roles only; it does not invoke providers, execute tools, or rank models.\n\n## How to add a skill
 
 Copy the template, assign a unique ID, name an accountable owner, define acceptance tests, and submit the skill for review. Do not change a skill to Approved without evidence and an authorized reviewer.
 
