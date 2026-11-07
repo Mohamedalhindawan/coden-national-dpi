@@ -45,6 +45,16 @@ class TaskDAGTests(unittest.TestCase):
         blocked = propagate_blocked(self.graph(), {"design": "failed"})
         self.assertEqual(blocked, ["api", "integration", "ui"])
 
+    def test_block_propagation_does_not_overwrite_completed_descendants(self):
+        blocked = propagate_blocked(self.graph(), {"design": "failed", "api": "succeeded"})
+        self.assertEqual(blocked, ["integration", "ui"])
+
+    def test_rejects_non_string_states_and_negative_attempts(self):
+        with self.assertRaises(DAGError):
+            ready_tasks(self.graph(), {"design": []})
+        with self.assertRaises(DAGError):
+            retry_allowed({"max_retries": 2}, attempts=-1)
+
     def test_retry_is_bounded_by_task_policy(self):
         self.assertTrue(retry_allowed({"max_retries": 2}, attempts=1))
         self.assertFalse(retry_allowed({"max_retries": 2}, attempts=2))
