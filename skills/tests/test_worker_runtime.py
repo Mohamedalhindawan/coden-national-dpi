@@ -50,7 +50,7 @@ class WorkerAdmissionTests(unittest.TestCase):
             self.controller.release_slot("worker-a", "missing")
 
     def test_pause_blocks_new_admissions_but_keeps_existing_slots(self):
-        self.controller.register_worker("worker-a", ["synthetic-test"])
+        self.controller.register_worker("worker-a", ["synthetic-test"], max_concurrency=2)
         self.controller.acquire_slot("worker-a", "job-1", "synthetic-test")
         self.controller.pause()
         self.assertEqual(self.controller.active_count, 1)
