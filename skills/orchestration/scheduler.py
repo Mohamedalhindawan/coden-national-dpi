@@ -36,7 +36,7 @@ class DAGAwareScheduler:
             self.plan = build_execution_plan(normalized)
         except DAGError as exc:
             raise SchedulerError(str(exc)) from exc
-        self._known_queue_ids = set()
+        self._known_queue_ids = set()\n        self._blocked = set()
 
     def states(self):
         result = {task_id: "pending" for task_id in self.tasks}
