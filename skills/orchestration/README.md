@@ -165,3 +165,8 @@ The local control facade unifies pause/resume, guarded dispatch, state snapshots
 ## Operator Dashboard 1.0
 
 `operator-dashboard/index.html` is a self-contained Arabic RTL dashboard for workflow status, pause/resume, worker capacity, and manual dispatch. It is a static asset, not a deployed service; see `operator-dashboard/README.md` for security and API compatibility notes. Static contract test: `python -m unittest skills.tests.test_operator_dashboard -v`.
+
+
+## Agent Provider Integration 1.0
+
+`providers.py` defines provider profiles, capability allowlists, secret references, policy gates, and simulated-only receipts. No vendor API or live model is invoked. See `providers/README.md` for onboarding and production gaps; tests: `python -m unittest skills.tests.test_provider_integration -v`.
