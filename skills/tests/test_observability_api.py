@@ -11,7 +11,7 @@ from skills.orchestration.scheduler import DAGAwareScheduler
 from skills.orchestration.control_plane import WorkflowControlPlane
 from skills.orchestration.operator_api import WorkflowOperatorAPI
 from skills.orchestration.observability import ObservabilityStore
-from skills.orchestration.finops import BudgetLedger, BudgetLimit
+from skills.orchestration.finops import BudgetLedger, BudgetLimit, SpendRequest
 from skills.orchestration.control_center import ControlCenter
 
 
@@ -65,6 +65,23 @@ class ObservabilityAPITests(unittest.TestCase):
         self.assertEqual(body["runs"]["total"], 1)
         self.assertEqual(body["scope"]["project_id"], "project-a")
         self.assertEqual(headers["Cache-Control"], "no-store")
+
+    def test_api_returns_end_to_end_run_linked_cost_reconciliation(self):
+        reservation = self.ledger.reserve(SpendRequest(
+            "api-run-spend", "project-a", "team-a", 1.0,
+            "2026-11-07T10:00:00+00:00", run_id="run-1"))
+        self.ledger.reconcile(reservation["reservation_id"], 0.75)
+        code, body, _ = self.request(
+            "project_id=project-a&team_id=team-a&period=daily&period_key=2026-11-07")
+        self.assertEqual(code, 200)
+        report = body["cost_reconciliation"]
+        self.assertEqual(report["linked_runs"], 1)
+        self.assertEqual(report["reconciled_runs"], 1)
+        self.assertEqual(report["observed_metric_cost_usd"], 0.01)
+        self.assertEqual(report["reconciled_ledger_cost_usd"], 0.75)
+        self.assertEqual(report["variance_usd"], 0.74)
+        self.assertEqual(report["status"], "variance_review")
+        self.assertIn("not verified provider invoices", report["data_note"])
 
     def test_snapshot_rejects_missing_or_invalid_scope(self):
         code, body, _ = self.request("project_id=project-a")
