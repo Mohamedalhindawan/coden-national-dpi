@@ -70,3 +70,8 @@ python -m unittest discover -s skills/tests -v
 ### Task DAG & dependency planning
 
 The experimental dependency planner is in `orchestration/dag.py`, with its contract in `orchestration/schemas/task-graph.schema.json`. It plans dependency waves and readiness; it does not execute or schedule work. See `orchestration/dag/README.md`.
+
+
+### Persistent execution queue
+
+See `orchestration/queue.py` and `orchestration/queue/README.md` for the experimental SQLite task queue. It manages durable task state and worker leases but does not execute jobs.
