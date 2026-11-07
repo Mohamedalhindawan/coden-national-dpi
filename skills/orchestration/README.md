@@ -145,3 +145,8 @@ Focused test command: `python -m unittest skills.tests.test_workflow_orchestrati
 ## DAG-aware scheduler 1.0
 
 `scheduler.py` gates queue admission on successful DAG dependencies and dispatches through `worker_queue.py`. See `scheduler/README.md`. It is an experimental local control-plane prototype, not a durable distributed scheduler.
+
+
+## Durable workflow recovery 1.0
+
+Recovery reconstructs scheduler state from the same SQLite queue and declared DAG. Expired leases are lazily reconciled on claim; blocked descendants are recalculated with `refresh_blocked()`. See `recovery/README.md`.
