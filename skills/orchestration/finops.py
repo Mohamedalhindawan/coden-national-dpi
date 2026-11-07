@@ -25,6 +25,7 @@ class SpendRequest:
     team_id: str
     estimated_usd: float
     created_at: str
+    run_id: str | None = None
 
 
 class BudgetLedger:
@@ -58,13 +59,18 @@ class BudgetLedger:
                     period_day TEXT NOT NULL,
                     period_month TEXT NOT NULL,
                     status TEXT NOT NULL CHECK(status IN ('reserved','reconciled')),
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    run_id TEXT
                 );
                 CREATE INDEX IF NOT EXISTS idx_res_project_day ON reservations(project_id, period_day);
                 CREATE INDEX IF NOT EXISTS idx_res_team_day ON reservations(team_id, period_day);
                 CREATE INDEX IF NOT EXISTS idx_res_project_month ON reservations(project_id, period_month);
                 CREATE INDEX IF NOT EXISTS idx_res_team_month ON reservations(team_id, period_month);
             """)
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(reservations)")}
+            if "run_id" not in columns:
+                db.execute("ALTER TABLE reservations ADD COLUMN run_id TEXT")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_res_run_id ON reservations(run_id)")
 
     @staticmethod
     def _money(value, field):
@@ -118,6 +124,8 @@ class BudgetLedger:
             value = getattr(request, field)
             if not isinstance(value, str) or not value.strip():
                 raise BudgetError(field + " is required")
+        if request.run_id is not None and (not isinstance(request.run_id, str) or not request.run_id.strip()):
+            raise BudgetError("run_id must be a non-empty string when supplied")
         amount = self._money(request.estimated_usd, "estimated_usd")
         instant = self._parse_time(request.created_at)
         day, month = instant.strftime("%Y-%m-%d"), instant.strftime("%Y-%m")
@@ -127,7 +135,7 @@ class BudgetLedger:
             existing = db.execute("SELECT * FROM reservations WHERE request_id=?", (request.request_id,)).fetchone()
             if existing:
                 if (existing["project_id"] != request.project_id or existing["team_id"] != request.team_id
-                    or existing["reserved_usd"] != amount or existing["period_day"] != day):
+                    or existing["reserved_usd"] != amount or existing["period_day"] != day or existing["run_id"] != request.run_id):
                     raise BudgetError("request_id was already used with different reservation details")
                 return self._receipt(existing)
             for scope in scopes:
@@ -143,9 +151,9 @@ class BudgetLedger:
                         raise BudgetError(f"{period} budget exceeded for scope {scope}")
             reservation_id = uuid.uuid4().hex
             db.execute(
-                "INSERT INTO reservations VALUES(?,?,?,?,?,?,?,?,'reserved',?)",
+                "INSERT INTO reservations (reservation_id,request_id,project_id,team_id,reserved_usd,actual_usd,period_day,period_month,status,created_at,run_id) VALUES(?,?,?,?,?,?,?,?,'reserved',?,?)",
                 (reservation_id, request.request_id, request.project_id, request.team_id,
-                 amount, None, day, month, instant.isoformat()),
+                 amount, None, day, month, instant.isoformat(), request.run_id),
             )
             row = db.execute("SELECT * FROM reservations WHERE reservation_id=?", (reservation_id,)).fetchone()
             return self._receipt(row)
@@ -159,6 +167,7 @@ class BudgetLedger:
             "team_id": row["team_id"],
             "reserved_usd": row["reserved_usd"],
             "status": row["status"],
+            "run_id": row["run_id"],
         }
 
     def reconcile(self, reservation_id, actual_usd):
@@ -197,6 +206,27 @@ class BudgetLedger:
             "consumed_usd": consumed,
             "remaining_usd": round(limit - consumed, 8) if limit is not None else None,
             "utilization_percent": round(consumed / limit * 100, 2) if limit else (100.0 if limit == 0 and consumed else 0.0) if limit == 0 else None,
+        }
+
+    def reconciliation_snapshot(self, project_id, team_id, period, key):
+        if (not isinstance(project_id, str) or not project_id.strip()
+            or not isinstance(team_id, str) or not team_id.strip()
+            or period not in {"daily", "monthly"} or not isinstance(key, str) or not key.strip()):
+            raise BudgetError("valid project, team, period and period key are required")
+        column = "period_day" if period == "daily" else "period_month"
+        with self._connect() as db:
+            rows = db.execute(
+                f"SELECT run_id,status,actual_usd FROM reservations WHERE project_id=? AND team_id=? AND {column}=?",
+                (project_id, team_id, key),
+            ).fetchall()
+        linked = [row for row in rows if row["run_id"] is not None]
+        reconciled = [row for row in linked if row["status"] == "reconciled"]
+        return {
+            "linked_runs": len({row["run_id"] for row in linked}),
+            "reconciled_runs": len({row["run_id"] for row in reconciled}),
+            "reconciled_actual_usd": round(sum(row["actual_usd"] or 0.0 for row in reconciled), 8),
+            "unlinked_reservations": sum(row["run_id"] is None for row in rows),
+            "pending_linked_reservations": sum(row["run_id"] is not None and row["status"] == "reserved" for row in rows),
         }
 
     def alerts(self, scope_id, period, key, thresholds=(80, 90, 100)):
