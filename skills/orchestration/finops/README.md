@@ -66,3 +66,16 @@ python -m unittest discover -s skills/tests -v
 ## Production requirements
 
 Before production use, add authenticated budget administration, tenant/project RBAC, tamper-evident audit, backup/restore, reservation expiry/recovery, provider usage reconciliation, currency and tax policy, budget rollover, scheduled alerts, cost attribution, organization-wide caps, and integration tests proving the reservation gate executes before any live provider call.
+
+## Concurrent operator decisions
+
+Governance writes acquire SQLite's `BEGIN IMMEDIATE` write reservation before
+reading a request, so independent operator processes serialize approve/reject
+decisions against the same database. Connections use a 30-second SQLite busy
+timeout, and final state changes include a `status='pending'` compare-and-set
+condition. The transition and its audit event commit together. A losing
+operator receives a conflict rather than recording a second decision.
+
+These guarantees apply to processes sharing the same SQLite database on a
+supported local filesystem. They do not provide distributed locking across
+hosts, network-filesystem safety, or high-availability database semantics.
