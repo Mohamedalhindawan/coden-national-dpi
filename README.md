@@ -9,6 +9,8 @@ CODEN / YDS / Tamam is a proposal and prototype, not an approved national produc
 ## Start here
 
 - [**Master engineering playbook**](CODEN_MASTER_ENGINEERING_PLAYBOOK.md) — full vision, 31-sector/DPI scope, workflow, and status
+- [**CODEN Enterprise Skills Library**](skills/README.md) — reusable enterprise, DPI, product, engineering, AI, security, and quality skills
+- [Skills registry](skills/registry.yaml) — inventory, owners, and lifecycle status
 - [Project overview](docs/PROJECT_OVERVIEW.md)
 - [Open-source reuse assessment](docs/OPEN_SOURCE_REUSE_ASSESSMENT.md)
 - [Open-source reuse register and integration gates](docs/OPEN_SOURCE_REUSE_REGISTER.md)
