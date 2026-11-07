@@ -34,6 +34,10 @@ class AdapterRegistryTests(unittest.TestCase):
         with self.assertRaises(AdapterError):
             self.registry.dispatch(self.task(), "shell", {})
 
+    def test_tool_not_in_task_allowlist_is_rejected(self):
+        with self.assertRaises(AdapterError):
+            self.registry.dispatch(self.task(), "write_test_report", {})
+
     def test_live_mode_is_rejected_even_for_registered_adapter(self):
         with self.assertRaises(AdapterError):
             self.registry.dispatch(self.task(), "run_tests", {}, mode="live")
