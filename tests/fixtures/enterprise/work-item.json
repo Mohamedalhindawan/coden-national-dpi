@@ -1,0 +1,19 @@
+{
+  "work_item_id": "task-contract-demo",
+  "project_id": "proj-tamam-demo",
+  "title": "Validate synthetic management schema",
+  "owner_principal_id": "human-demo-owner",
+  "assignee_agent_id": "agent-qa-demo",
+  "priority": "normal",
+  "status": "draft",
+  "acceptance_criteria": [
+    "All canonical schemas validate",
+    "Human review is required"
+  ],
+  "data_class": "synthetic",
+  "allowed_tools": [
+    "read_repository",
+    "run_tests"
+  ],
+  "created_at": "2026-11-07T20:00:00Z"
+}
