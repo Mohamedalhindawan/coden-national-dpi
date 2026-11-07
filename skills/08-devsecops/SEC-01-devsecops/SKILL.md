@@ -37,3 +37,18 @@ Protect CI tokens; use short-lived credentials; pin and verify dependencies wher
 
 ## Evaluation
 Measure vulnerability age, remediation time, escaped defects, pipeline control coverage, secret incidents, and release failure rate.
+
+
+## Security
+
+- Draft controls and review requirements must be confirmed by the accountable owner before approval.
+
+
+## Failure and escalation
+
+- Draft controls and review requirements must be confirmed by the accountable owner before approval.
+
+
+## Change history
+
+- Draft controls and review requirements must be confirmed by the accountable owner before approval.
