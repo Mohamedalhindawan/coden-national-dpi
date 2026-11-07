@@ -39,7 +39,7 @@ class ControlCenter:
     def snapshot(self, project_id, team_id, period, period_key):
         self._validate(project_id, team_id, period, period_key)
         rows = self.metrics.db.execute(
-            """SELECT agent_id,provider,status,duration_ms,input_tokens,output_tokens,
+            """SELECT run_id,agent_id,provider,status,duration_ms,input_tokens,output_tokens,
                       cost_usd,quality_score,policy_violations,retry_count
                FROM agent_metrics
                WHERE project_id=? AND team_id=? AND substr(recorded_at,1,?)=?
@@ -90,6 +90,31 @@ class ControlCenter:
             provider_rows.append(item)
         project_budget = self.budgets.snapshot(project_id, period, period_key)
         team_budget = self.budgets.snapshot(team_id, period, period_key)
+        ledger_reconciliation = self.budgets.reconciliation_snapshot(
+            project_id, team_id, period, period_key)
+        linked_run_ids = set(ledger_reconciliation["run_ids"])
+        observed_linked_cost = round(sum(
+            row["cost_usd"] for row in rows if row["run_id"] in linked_run_ids
+        ), 8)
+        reconciled_cost = ledger_reconciliation["reconciled_actual_usd"]
+        variance = round(reconciled_cost - observed_linked_cost, 8)
+        if ledger_reconciliation["unlinked_reservations"] or ledger_reconciliation["pending_linked_reservations"]:
+            reconciliation_status = "incomplete_review"
+        elif abs(variance) > 0.00000001:
+            reconciliation_status = "variance_review"
+        else:
+            reconciliation_status = "reconciled"
+        cost_reconciliation = {
+            "linked_runs": ledger_reconciliation["linked_runs"],
+            "reconciled_runs": ledger_reconciliation["reconciled_runs"],
+            "observed_metric_cost_usd": observed_linked_cost,
+            "reconciled_ledger_cost_usd": reconciled_cost,
+            "variance_usd": variance,
+            "unlinked_reservations": ledger_reconciliation["unlinked_reservations"],
+            "pending_linked_reservations": ledger_reconciliation["pending_linked_reservations"],
+            "status": reconciliation_status,
+            "data_note": "Comparison uses only run IDs linked in the FinOps ledger. Metric costs are recorded estimates/observations; ledger actuals are manual reconciliations, not verified provider invoices. The two values are not added together.",
+        }
         return {
             "control_center_version": "2.0.0",
             "scope": {"project_id": project_id, "team_id": team_id,
@@ -107,6 +132,7 @@ class ControlCenter:
             "providers": sorted(provider_rows, key=lambda item: item["provider"]),
             "unattributed_metrics": unattributed,
             "budget": {"project": project_budget, "team": team_budget},
+            "cost_reconciliation": cost_reconciliation,
             "budget_alerts": {
                 "project": self.budgets.alerts(project_id, period, period_key),
                 "team": self.budgets.alerts(team_id, period, period_key),
