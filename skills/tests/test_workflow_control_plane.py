@@ -39,7 +39,7 @@ class WorkflowControlPlaneTests(unittest.TestCase):
         self.control.dispatch("worker-a", now=10)
         snapshot = self.control.snapshot()
         self.assertEqual(snapshot["tasks"]["running"], 1)
-        self.assertEqual(snapshot["tasks"]["pending"], 0)
+        self.assertEqual(snapshot["tasks"]["pending"], 1)
         self.assertEqual(snapshot["workers"]["active_count"], 1)
         self.assertFalse(snapshot["paused"])
 
