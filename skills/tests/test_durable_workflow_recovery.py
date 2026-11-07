@@ -13,7 +13,7 @@ class DurableWorkflowRecoveryTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.db = Path(self.tmp.name) / "queue.sqlite"
         self.tasks = [
-            {"task_id": "root", "depends_on": [], "payload": {"kind": "synthetic-test"}},
+            {"task_id": "root", "depends_on": [], "max_attempts": 2, "payload": {"kind": "synthetic-test"}},
             {"task_id": "child", "depends_on": ["root"], "payload": {"kind": "synthetic-test"}},
         ]
 
