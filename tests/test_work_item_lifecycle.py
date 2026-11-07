@@ -14,6 +14,11 @@ class WorkItemLifecycleTests(unittest.TestCase):
         with self.assertRaises(TransitionError):
             validate_work_item_transition("in_progress", "accepted", approval_status="approved")
 
+    def test_requires_approval_before_submitted_can_be_approved(self):
+        with self.assertRaises(TransitionError):
+            validate_work_item_transition("submitted", "approved", approval_status="pending")
+        validate_work_item_transition("submitted", "approved", approval_status="approved")
+
     def test_requires_approval_before_acceptance(self):
         for status in ("pending", "rejected", None):
             with self.subTest(status=status):
