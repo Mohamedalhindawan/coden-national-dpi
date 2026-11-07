@@ -63,6 +63,10 @@ Draft → Reviewed → Tested → Approved → Published → Monitored → Retir
 
 Skill ID; skill version; repository commit; test case ID; evaluator; model/agent and version; tool permissions; input fixture; expected criteria; observed result; dimension scores; mandatory gate outcomes; cost; latency; defects; reviewer decision; remediation link.
 
+## Execution framework
+
+See `EXECUTION_FRAMEWORK.md` for the controlled run procedure and `RUN_RECORD_TEMPLATE.json` for evidence capture. The pilot status register is `pilot/RESULTS.md`. No run is considered complete without actual execution evidence and human review.
+
 ## First pilot scope
 
 Start with five risk-representative skills:
