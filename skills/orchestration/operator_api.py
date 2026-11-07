@@ -39,11 +39,14 @@ class WorkflowOperatorAPI:
             principal = self.authenticator(environ)
         except Exception:
             principal = None
-        if not isinstance(principal, dict) or not principal.get("subject"):
+        if not isinstance(principal, dict):
+            return None
+        subject = principal.get("subject")
+        if not isinstance(subject, str) or not subject.strip() or len(subject) > 256:
             return None
         if principal.get("role") not in {"operator", "admin", "finance_operator", "finance_approver", "finance_admin"}:
             return None
-        return principal
+        return {**principal, "subject": subject.strip()}
 
     def _body(self, environ):
         raw_length = environ.get("CONTENT_LENGTH", "") or "0"
@@ -53,7 +56,12 @@ class WorkflowOperatorAPI:
             raise OperatorAPIError("invalid_content_length")
         if length < 0 or length > self.MAX_BODY_BYTES:
             raise OperatorAPIError("request_body_too_large")
-        raw = environ.get("wsgi.input").read(length) if length else b"{}"
+        stream = environ.get("wsgi.input")
+        if length and stream is None:
+            raise OperatorAPIError("invalid_request_body")
+        raw = stream.read(length) if length else b"{}"
+        if not isinstance(raw, bytes) or len(raw) != length:
+            raise OperatorAPIError("invalid_request_body")
         try:
             value = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
@@ -83,10 +91,15 @@ class WorkflowOperatorAPI:
                     if role not in finance_roles:
                         return self._response(start_response, "403 Forbidden", {"error": "forbidden"})
                     rid = audit_match.group(1)
-                    return self._response(start_response, "200 OK", {"request_id": rid, "events": self.finops_governance.audit_events(rid)})
+                    events = self.finops_governance.audit_events(rid)
+                    if not events:
+                        return self._response(start_response, "404 Not Found", {"error": "not_found"})
+                    return self._response(start_response, "200 OK", {"request_id": rid, "events": events})
                 if method == "POST" and path == "/v1/finops/reconciliations":
                     if role not in {"finance_operator", "finance_admin"}:
                         return self._response(start_response, "403 Forbidden", {"error": "forbidden"})
+                    if environ.get("CONTENT_TYPE", "").split(";", 1)[0].strip().lower() != "application/json":
+                        return self._response(start_response, "415 Unsupported Media Type", {"error": "unsupported_media_type"})
                     body = self._body(environ)
                     try:
                         result = self.finops_governance.submit_reconciliation(body.get("reservation_id"), body.get("actual_usd"), actor_id, role, body.get("request_id"))
@@ -97,6 +110,8 @@ class WorkflowOperatorAPI:
                 if method == "POST" and decision:
                     if role not in {"finance_approver", "finance_admin"}:
                         return self._response(start_response, "403 Forbidden", {"error": "forbidden"})
+                    if environ.get("CONTENT_TYPE", "").split(";", 1)[0].strip().lower() != "application/json":
+                        return self._response(start_response, "415 Unsupported Media Type", {"error": "unsupported_media_type"})
                     self._body(environ)
                     rid, action = decision.groups()
                     try:
