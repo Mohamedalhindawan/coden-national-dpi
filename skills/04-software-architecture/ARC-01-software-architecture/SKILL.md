@@ -37,3 +37,18 @@ Do not introduce microservices, event streaming, or distributed complexity witho
 
 ## Evaluation
 Assess changeability, testability, security, performance, reliability, complexity, and total lifecycle cost.
+
+
+## Security
+
+- Draft controls and review requirements must be confirmed by the accountable owner before approval.
+
+
+## Failure and escalation
+
+- Draft controls and review requirements must be confirmed by the accountable owner before approval.
+
+
+## Change history
+
+- Draft controls and review requirements must be confirmed by the accountable owner before approval.
