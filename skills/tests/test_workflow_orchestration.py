@@ -109,7 +109,7 @@ class WorkflowOrchestrationTests(unittest.TestCase):
         with self.assertRaises(WorkflowOrchestrationError):
             self.flow.submit_validation("workflow-01", {
                 "contract_version": "1.0.0", "run_id": "workflow-01", "task_id": "task-01",
-                "agent_id": "DEV-01", "status": "succeeded",
+                "role_id": "DEV-01", "status": "succeeded",
                 "acceptance_results": [{"criterion": "Implementation contract is recorded",
                                         "status": "pass"}],
                 "summary": "Missing evidence", "requires_human_approval": True
