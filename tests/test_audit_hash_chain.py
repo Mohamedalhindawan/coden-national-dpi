@@ -58,6 +58,35 @@ class AuditHashChainTests(unittest.TestCase):
                 "event_hash": "forged",
             })
 
+    def test_rejects_non_string_or_blank_required_identity_fields(self):
+        for field, value in (("event_id", 123), ("action", ""), ("actor_id", None), ("subject_id", " ")):
+            with self.subTest(field=field):
+                with self.assertRaises(AuditIntegrityError):
+                    append_event([], {
+                        "event_id": "event-010", "action": "task.updated",
+                        "actor_id": "human-001", "subject_id": "task-001",
+                        field: value,
+                    })
+
+    def test_rejects_boolean_or_invalid_sequence_numbers(self):
+        chain = [append_event([], {
+            "event_id": "event-001", "action": "project.created",
+            "actor_id": "human-001", "subject_id": "project-001",
+        })]
+        chain[0]["sequence"] = True
+        with self.assertRaises(AuditIntegrityError):
+            verify_chain(chain)
+
+    def test_rejects_non_json_payload_without_mutating_chain(self):
+        chain = []
+        with self.assertRaises(AuditIntegrityError):
+            append_event(chain, {
+                "event_id": "event-001", "action": "task.updated",
+                "actor_id": "human-001", "subject_id": "task-001",
+                "unsafe": object(),
+            })
+        self.assertEqual(chain, [])
+
     def test_empty_chain_is_valid(self):
         self.assertTrue(verify_chain([]))
 
