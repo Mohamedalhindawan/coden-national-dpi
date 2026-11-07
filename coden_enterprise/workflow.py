@@ -89,3 +89,36 @@ def validate_transition_command(command: dict) -> None:
     requester = command.get("requested_by")
     if not isinstance(requester, str) or not requester.strip():
         raise TransitionError("requested_by must be a non-empty identifier")
+
+
+def validate_approval_decision(approval: dict) -> None:
+    """Validate approval record state and enforce requester/approver separation.
+
+    Identity authenticity, role eligibility, timestamp parsing, and persistence
+    must be enforced by the trusted service layer.
+    """
+    if not isinstance(approval, dict):
+        raise TransitionError("Approval must be an object")
+
+    requester = approval.get("requested_by")
+    if not isinstance(requester, str) or not requester.strip():
+        raise TransitionError("requested_by must be a non-empty identifier")
+
+    decision = approval.get("decision")
+    if decision not in {"pending", "approved", "rejected", "expired", "revoked"}:
+        raise TransitionError(f"Unknown approval decision: {decision!r}")
+
+    approver = approval.get("approver_id")
+    decided_at = approval.get("decided_at")
+
+    if decision == "pending":
+        if approver is not None or decided_at is not None:
+            raise TransitionError("Pending approval cannot have approver_id or decided_at")
+        return
+
+    if not isinstance(approver, str) or not approver.strip():
+        raise TransitionError("Final approval decision requires approver_id")
+    if not isinstance(decided_at, str) or not decided_at.strip():
+        raise TransitionError("Final approval decision requires decided_at")
+    if approver == requester:
+        raise TransitionError("Requester cannot approve or decide their own request")

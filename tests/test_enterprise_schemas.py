@@ -54,6 +54,20 @@ class EnterpriseSchemaTests(unittest.TestCase):
         errors = list(Draft202012Validator(schema).iter_errors(instance))
         self.assertTrue(any(error.validator == "required" for error in errors))
 
+    def test_approval_schema_requires_approver_and_decision_time_for_final_decisions(self):
+        schema = json.loads((SCHEMA_DIR / "approval.schema.json").read_text(encoding="utf-8"))
+        instance = json.loads((FIXTURES / "approval.json").read_text(encoding="utf-8"))
+        instance["decision"] = "approved"
+        errors = list(Draft202012Validator(schema, format_checker=FormatChecker()).iter_errors(instance))
+        self.assertTrue(any(error.validator == "required" for error in errors))
+
+    def test_approval_schema_rejects_pending_decision_metadata(self):
+        schema = json.loads((SCHEMA_DIR / "approval.schema.json").read_text(encoding="utf-8"))
+        instance = json.loads((FIXTURES / "approval.json").read_text(encoding="utf-8"))
+        instance["approver_id"] = "human-approver-01"
+        errors = list(Draft202012Validator(schema).iter_errors(instance))
+        self.assertTrue(errors)
+
     def test_audit_event_rejects_secret_material(self):
         schema = json.loads((SCHEMA_DIR / "audit-event.schema.json").read_text(encoding="utf-8"))
         instance = json.loads((FIXTURES / "audit-event.json").read_text(encoding="utf-8"))

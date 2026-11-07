@@ -93,5 +93,41 @@
       "type": "string",
       "format": "date-time"
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "decision": {
+            "const": "pending"
+          }
+        },
+        "required": [
+          "decision"
+        ]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "approver_id"
+              ]
+            },
+            {
+              "required": [
+                "decided_at"
+              ]
+            }
+          ]
+        }
+      },
+      "else": {
+        "required": [
+          "approver_id",
+          "decided_at"
+        ]
+      }
+    }
+  ]
 }
