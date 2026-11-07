@@ -120,3 +120,8 @@ Focused test command: `python -m unittest skills.tests.test_observability -v`.
 `workflow.py` composes policy routing, task validation, the SQLite state machine, result validation, and independent human review into one explicit lifecycle. See `workflow/README.md` for the lifecycle and API sketch. It is still recommendation/dry-run control-plane code: no provider or tool is invoked, no code is executed, and high-impact routes remain recommendation-only.
 
 Focused test command: `python -m unittest skills.tests.test_workflow_orchestration -v`.
+
+
+## Task DAG & dependency engine 1.0
+
+`dag.py` validates dependency graphs, detects cycles, creates deterministic topological waves, derives ready tasks, propagates blocked descendants, and evaluates bounded retry eligibility. It is a planner only: no scheduler, workers, execution, or provider calls. See `dag/README.md` and `schemas/task-graph.schema.json`. Tests: `python -m unittest skills.tests.test_task_dag -v`.
