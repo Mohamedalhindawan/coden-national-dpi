@@ -4,20 +4,21 @@ Version: 1.0.0
 Status: Draft for review  
 Parent framework: CODEN Enterprise Operating & Engineering Playbook 2.2
 
-This library contains reusable, reviewable work instructions for CODEN teams and AI agents. A skill is not considered approved merely because its file exists.
+This library contains **30 registered draft skill specifications** for CODEN teams and AI agents. The registry is the inventory of record. A skill is not approved merely because its file exists.
 
 ## Structure
 
-- `registry.yaml`: authoritative inventory and lifecycle status.
+- `registry.yaml`: inventory, IDs, owners, paths, and lifecycle status.
 - `templates/SKILL_TEMPLATE.md`: required structure for new skills.
-- `01-strategy-governance/`: strategy and enterprise architecture.
+- `tests/test_registry.py`: automated checks for unique IDs, file existence, required sections, and draft status.
+- `01-strategy-governance/`: strategy and governance.
 - `02-dpi-architecture/`: DPI and GovTech architecture.
-- `03-product-management/`: digital product management.
-- `04-software-architecture/`: software architecture.
-- `05-platform-engineering/`: platform engineering.
+- `03-product-management/`: product and service design.
+- `04-software-architecture/`: software and solution architecture.
+- `05-platform-engineering/`: platform and delivery engineering.
 - `06-ai-agent-engineering/`: AI agent engineering.
 - `07-ai-evaluation-governance/`: AI evaluation and governance.
-- `08-devsecops/`: DevSecOps.
+- `08-devsecops/`: secure software delivery.
 - `09-cybersecurity-architecture/`: cybersecurity architecture.
 - `10-quality-engineering/`: quality engineering.
 
@@ -29,7 +30,7 @@ Every skill must have an owner, version, scope, inputs, workflow, deliverables, 
 
 ## Safety and project boundaries
 
-- Treat this repository as a proposal/prototype workspace, not an approved national production environment.
+- This repository is a proposal/prototype workspace, not an approved national production environment.
 - Use synthetic data only in the current Tamam prototype.
 - Never place credentials, secrets, or real citizen records in skills or examples.
 - AI agents must use least-privilege, short-lived access and isolated workspaces.
@@ -39,3 +40,11 @@ Every skill must have an owner, version, scope, inputs, workflow, deliverables, 
 ## How to add a skill
 
 Copy the template, assign a unique ID, name an accountable owner, define acceptance tests, and submit the skill for review. Do not change a skill to Approved without evidence and an authorized reviewer.
+
+## Validation
+
+Run from the repository root:
+
+```bash
+python -m unittest discover -s skills/tests -v
+```
