@@ -35,7 +35,7 @@ def verify_chain(events: list[dict]) -> bool:
     for expected_sequence, event in enumerate(events, start=1):
         if not isinstance(event, dict):
             raise AuditIntegrityError("Each audit event must be an object")
-        if event.get("sequence") != expected_sequence:
+        if isinstance(event.get("sequence"), bool) or event.get("sequence") != expected_sequence:
             raise AuditIntegrityError("Audit sequence is missing, reordered, or discontinuous")
         if event.get("previous_hash") != previous:
             raise AuditIntegrityError("Audit previous_hash linkage is invalid")
@@ -64,6 +64,10 @@ def append_event(events: list[dict], payload: dict) -> dict:
     missing = _REQUIRED_FIELDS.difference(payload)
     if missing:
         raise AuditIntegrityError(f"Audit payload missing fields: {sorted(missing)}")
+    for field in _REQUIRED_FIELDS:
+        value = payload[field]
+        if not isinstance(value, str) or not value.strip():
+            raise AuditIntegrityError(f"{field} must be a non-empty string")
     if any(event["event_id"] == payload["event_id"] for event in events):
         raise AuditIntegrityError("Audit event_id must be unique")
     event = dict(payload)
