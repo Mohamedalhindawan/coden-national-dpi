@@ -22,8 +22,13 @@ class OperatorAPITests(unittest.TestCase):
             {"task_id": "task-1", "depends_on": [], "payload": {"kind": "synthetic-test"}}
         ])
         self.queue = queue
-        self.api = WorkflowOperatorAPI(WorkflowControlPlane(scheduler, workers),
-                                      authenticator=lambda environ: ({"subject":"test-operator","role":"operator"} if environ.get("HTTP_AUTHORIZATION") else None))
+        self.api = WorkflowOperatorAPI(
+            WorkflowControlPlane(scheduler, workers),
+            authenticator=lambda environ: (
+                {"subject": "test-principal", "role": environ.get("HTTP_AUTHORIZATION")}
+                if environ.get("HTTP_AUTHORIZATION") else None
+            ),
+        )
 
     def tearDown(self):
         self.queue.close()
@@ -57,6 +62,31 @@ class OperatorAPITests(unittest.TestCase):
         code, body = self.request("POST", "/v1/workflows/dispatch", body={"worker_id":"worker-a"})
         self.assertEqual(code, 200)
         self.assertEqual(body["task_id"], "task-1")
+
+
+    def test_finance_roles_cannot_access_workflow_control_or_audit_routes(self):
+        protected_routes = (
+            ("GET", "/v1/workflows/status", None),
+            ("POST", "/v1/workflows/pause", None),
+            ("POST", "/v1/workflows/resume", None),
+            ("POST", "/v1/workflows/dispatch", {"worker_id": "worker-a"}),
+            ("GET", "/v1/workflows/tasks/task-1/audit", None),
+        )
+        for role in ("finance_operator", "finance_approver", "finance_admin"):
+            for method, path, body in protected_routes:
+                with self.subTest(role=role, method=method, path=path):
+                    code, _ = self.request(method, path, token=role, body=body)
+                    self.assertEqual(code, 403)
+
+    def test_admin_can_access_workflow_control_routes(self):
+        for method, path, body in (
+            ("GET", "/v1/workflows/status", None),
+            ("POST", "/v1/workflows/pause", None),
+            ("POST", "/v1/workflows/resume", None),
+        ):
+            with self.subTest(method=method, path=path):
+                code, _ = self.request(method, path, token="admin", body=body)
+                self.assertEqual(code, 200)
 
     def test_unknown_route_and_invalid_json_are_safe_errors(self):
         self.assertEqual(self.request("GET", "/unknown")[0], 404)
