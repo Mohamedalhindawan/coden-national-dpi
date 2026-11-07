@@ -180,3 +180,8 @@ The local control facade unifies pause/resume, guarded dispatch, state snapshots
 ## AI FinOps & Budget Control 1.0
 
 `finops.py` provides a local SQLite budget ledger with atomic project/team daily and monthly reservations, reconciliation, snapshots, and threshold alerts. It is not yet wired into model/provider execution. See `finops/README.md`; tests: `python -m unittest skills.tests.test_finops -v`.
+
+
+## AI Observability & Control Center 2.0
+
+`control_center.py` aggregates run metrics, agent/provider rollups, budget snapshots, and threshold alerts into a read-only local report. Metrics are not yet project-attributed and the service is not exposed through the operator API/dashboard. See `control-center/README.md`; tests: `python -m unittest skills.tests.test_control_center -v`.
