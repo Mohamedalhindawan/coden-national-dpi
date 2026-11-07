@@ -21,3 +21,8 @@ class OperatorDashboardAssetTests(unittest.TestCase):
         self.assertIn('id="reconciliationVariance"', html)
         self.assertIn('data.cost_reconciliation', html)
         self.assertIn('pending_linked_reservations', html)
+        self.assertIn('/v1/finops/reconciliations', html)
+        self.assertIn('finopsRequests', html)
+        self.assertIn('finopsAudit', html)
+        self.assertIn('decideFinops', html)
+        self.assertIn('window.confirm', html)
