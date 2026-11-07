@@ -49,11 +49,12 @@ class ControlCenterTests(unittest.TestCase):
         self.assertEqual(result["budget"]["team"]["remaining_usd"], 3.0)
 
     def test_snapshot_exposes_cost_reconciliation_without_combining_sources(self):
-        reservation = self.ledger.reserve(SpendRequest(
+        ledger = BudgetLedger(Path(self.tmp.name) / "reconcile.sqlite")
+        reservation = ledger.reserve(SpendRequest(
             "run-linked-spend", "project-a", "team-a", 2.0,
             "2026-11-07T10:00:00+00:00", run_id="run-1"))
-        self.ledger.reconcile(reservation["reservation_id"], 1.25)
-        result = ControlCenter(self.metrics, self.ledger).snapshot(
+        ledger.reconcile(reservation["reservation_id"], 1.25)
+        result = ControlCenter(self.metrics, ledger).snapshot(
             "project-a", "team-a", "daily", "2026-11-07")
         reconciliation = result["cost_reconciliation"]
         self.assertEqual(reconciliation["observed_metric_cost_usd"], 0.25)
