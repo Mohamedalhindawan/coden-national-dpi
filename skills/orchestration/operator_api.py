@@ -15,12 +15,13 @@ class OperatorAPIError(ValueError):
 class WorkflowOperatorAPI:
     MAX_BODY_BYTES = 16 * 1024
 
-    def __init__(self, control_plane, authenticator, control_center=None):
+    def __init__(self, control_plane, authenticator, control_center=None, finops_governance=None):
         if not callable(authenticator):
             raise OperatorAPIError("An authentication provider is required")
         self.control_plane = control_plane
         self.authenticator = authenticator
         self.control_center = control_center
+        self.finops_governance = finops_governance
 
     @staticmethod
     def _response(start_response, status, payload):
@@ -40,7 +41,7 @@ class WorkflowOperatorAPI:
             principal = None
         if not isinstance(principal, dict) or not principal.get("subject"):
             return None
-        if principal.get("role") not in {"operator", "admin"}:
+        if principal.get("role") not in {"operator", "admin", "finance_operator", "finance_approver", "finance_admin"}:
             return None
         return principal
 
@@ -68,6 +69,42 @@ class WorkflowOperatorAPI:
         method = environ.get("REQUEST_METHOD", "GET").upper()
         path = environ.get("PATH_INFO", "/")
         try:
+            if path.startswith("/v1/finops/reconciliations"):
+                if self.finops_governance is None:
+                    return self._response(start_response, "404 Not Found", {"error": "not_found"})
+                role, actor_id = principal.get("role"), principal.get("subject")
+                finance_roles = {"finance_operator", "finance_approver", "finance_admin"}
+                if method == "GET" and path == "/v1/finops/reconciliations":
+                    if role not in finance_roles:
+                        return self._response(start_response, "403 Forbidden", {"error": "forbidden"})
+                    return self._response(start_response, "200 OK", {"requests": self.finops_governance.list_requests()})
+                audit_match = re.fullmatch(r"/v1/finops/reconciliations/([A-Za-z0-9_.:-]+)/audit", path)
+                if method == "GET" and audit_match:
+                    if role not in finance_roles:
+                        return self._response(start_response, "403 Forbidden", {"error": "forbidden"})
+                    rid = audit_match.group(1)
+                    return self._response(start_response, "200 OK", {"request_id": rid, "events": self.finops_governance.audit_events(rid)})
+                if method == "POST" and path == "/v1/finops/reconciliations":
+                    if role not in {"finance_operator", "finance_admin"}:
+                        return self._response(start_response, "403 Forbidden", {"error": "forbidden"})
+                    body = self._body(environ)
+                    try:
+                        result = self.finops_governance.submit_reconciliation(body.get("reservation_id"), body.get("actual_usd"), actor_id, role, body.get("request_id"))
+                    except ValueError:
+                        return self._response(start_response, "400 Bad Request", {"error": "invalid_reconciliation_request"})
+                    return self._response(start_response, "201 Created", result)
+                decision = re.fullmatch(r"/v1/finops/reconciliations/([A-Za-z0-9_.:-]+)/(approve|reject)", path)
+                if method == "POST" and decision:
+                    if role not in {"finance_approver", "finance_admin"}:
+                        return self._response(start_response, "403 Forbidden", {"error": "forbidden"})
+                    self._body(environ)
+                    rid, action = decision.groups()
+                    try:
+                        result = self.finops_governance.approve_reconciliation(rid, actor_id, role) if action == "approve" else self.finops_governance.reject_reconciliation(rid, actor_id, role)
+                    except ValueError:
+                        return self._response(start_response, "409 Conflict", {"error": "reconciliation_operation_rejected"})
+                    return self._response(start_response, "200 OK", result)
+                return self._response(start_response, "404 Not Found", {"error": "not_found"})
             if method == "GET" and path == "/v1/workflows/status":
                 return self._response(start_response, "200 OK", self.control_plane.snapshot())
             if method == "GET" and path == "/v1/observability/snapshot":
