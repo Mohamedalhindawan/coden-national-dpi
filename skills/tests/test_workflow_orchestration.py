@@ -33,7 +33,7 @@ class WorkflowOrchestrationTests(unittest.TestCase):
             "data_classification": "synthetic", "network_required": False,
             "requires_code_execution": True
         })
-        self.assertEqual(result["state"], "POLICY_CHECK")
+        self.assertEqual(result["state"], "PLANNING")
         self.assertEqual(result["route"]["agent_role"], "DEV-01")
         self.assertFalse(result["route"]["provider_invoked"])
 
@@ -78,7 +78,7 @@ class WorkflowOrchestrationTests(unittest.TestCase):
         self.flow.start_dry_run("workflow-01", actor="operator")
         self.flow.submit_validation("workflow-01", {
             "contract_version": "1.0.0", "run_id": "workflow-01", "task_id": "task-01",
-            "agent_id": "DEV-01", "status": "failed",
+            "role_id": "DEV-01", "status": "failed",
             "acceptance_results": [{"criterion": "Implementation contract is recorded",
                                     "status": "fail"}],
             "summary": "Acceptance check failed", "requires_human_approval": True
