@@ -37,3 +37,14 @@ Do not report tests as passed unless they ran and results were observed. Synthet
 
 ## Evaluation
 Measure escaped defects, test reliability, coverage of critical requirements, regression duration, accessibility defects, and release confidence supported by evidence.
+
+## Security
+Use isolated test environments, synthetic data, controlled test accounts, and least-privilege test credentials. Never run destructive or intrusive tests against production without explicit written authorization and a scoped plan. Protect test reports from leaking secrets or personal data.
+
+## Failure and escalation
+Block release recommendations when critical tests fail, evidence is missing, test environments are unreliable, or high-severity defects remain without authorized risk acceptance. Record flaky tests separately; do not relabel a flaky or unexecuted test as passed.
+
+## Change history
+| Version | Change | Status |
+|---|---|---|
+| 1.0.1 | Added explicit security, escalation, and change-control requirements | Draft |
