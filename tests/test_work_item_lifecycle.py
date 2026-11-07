@@ -1,7 +1,11 @@
 """Tests for the Stage 3A work-item lifecycle transition policy."""
 import unittest
 
-from coden_enterprise.workflow import (\n    validate_work_item_transition,\n    validate_work_item_references,\n    TransitionError,\n)
+from coden_enterprise.workflow import (
+    validate_work_item_transition,
+    validate_work_item_references,
+    TransitionError,
+)
 
 
 class WorkItemLifecycleTests(unittest.TestCase):
