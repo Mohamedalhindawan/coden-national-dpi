@@ -22,6 +22,9 @@ class DAGAwareScheduler:
             task_id = item.get("task_id")
             payload = item.get("payload")
             dependencies = item.get("depends_on", [])
+            max_attempts = item.get("max_attempts", 1)
+            if isinstance(max_attempts, bool) or not isinstance(max_attempts, int) or not 1 <= max_attempts <= 4:
+                raise SchedulerError("max_attempts must be an integer between 1 and 4")
             if not isinstance(task_id, str) or not task_id.strip():
                 raise SchedulerError("task_id is required")
             if task_id in self.tasks:
@@ -30,7 +33,7 @@ class DAGAwareScheduler:
                 raise SchedulerError("task payload requires a string kind")
             if not isinstance(dependencies, list):
                 raise SchedulerError("depends_on must be a list")
-            self.tasks[task_id] = {"payload": payload, "depends_on": dependencies}
+            self.tasks[task_id] = {"payload": payload, "depends_on": dependencies, "max_attempts": max_attempts}
             normalized.append({"task_id": task_id, "depends_on": dependencies})
         try:
             self.plan = build_execution_plan(normalized)
@@ -74,7 +77,7 @@ class DAGAwareScheduler:
                 continue
             task = self.tasks[task_id]
             try:
-                self.queue.enqueue(task_id, task["payload"], now=now)
+                self.queue.enqueue(task_id, task["payload"], max_attempts=task["max_attempts"], now=now)
             except QueueError as exc:
                 raise SchedulerError(str(exc)) from exc
             self._known_queue_ids.add(task_id)
@@ -134,7 +137,7 @@ class DAGAwareScheduler:
         current = self._queue_states()
         try:
             blocked = propagate_blocked(
-                [{"task_id": task_id, "dependencies": item["depends_on"]}
+                [{"task_id": task_id, "depends_on": item["depends_on"]}
                  for task_id, item in self.tasks.items()],
                 current,
             )
