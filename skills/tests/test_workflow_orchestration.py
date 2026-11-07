@@ -91,7 +91,7 @@ class WorkflowOrchestrationTests(unittest.TestCase):
         t["constraints"]["allowed_tools"]=["read_workspace"]
         self.flow.intake(t, {
             "task_type": "benefits_decision", "risk_level": "high",
-            "data_classification": "sensitive", "network_required": False,
+            "data_classification": "synthetic", "network_required": False,
             "requires_code_execution": False
         })
         self.flow.accept_plan("workflow-01", actor="planner")
