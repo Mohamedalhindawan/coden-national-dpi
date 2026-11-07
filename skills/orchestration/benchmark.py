@@ -67,7 +67,7 @@ def score_receipt(benchmark_case, receipt):
     return {
         "run_id": receipt["run_id"], "case_id": benchmark_case["case_id"],
         "case_version": benchmark_case["version"], "dataset_id": benchmark_case["dataset_id"],
-        "criteria_version": benchmark_case["criteria_version"], "provider": receipt["provider"],
+        "criteria_version": benchmark_case["criteria_version"], "minimum_sample_size": _nonnegative_int(benchmark_case["minimum_sample_size"], "minimum_sample_size"), "provider": receipt["provider"],
         "status": receipt["status"], "criteria_passed": passed,
         "criteria_total": len(criteria), "quality_score": quality, "passed": success,
         "duration_ms": duration, "cost_usd": cost, "policy_violations": violations,
