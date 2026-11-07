@@ -42,7 +42,15 @@ Every skill must have an owner, version, scope, inputs, workflow, deliverables, 
 - Require human approval for production changes and high-impact decisions involving identity, benefits, money, health, legal rights, or citizen data.
 - Do not assume any listed tool, cloud credit, partnership, certification, or government authority has been approved.
 
-## Agent benchmark and provider evaluation\n\nThe experimental benchmark suite is documented in `orchestration/benchmark/README.md`. It evaluates submitted evidence receipts only; it does not execute external providers. No provider performance results are currently established.\n\n## Agent routing and model selection\n\nThe experimental policy-first router is documented in `orchestration/routing/README.md`. It recommends logical roles only; it does not invoke providers, execute tools, or rank models.\n\n## How to add a skill
+## Agent benchmark and provider evaluation
+
+The experimental benchmark suite is documented in `orchestration/benchmark/README.md`. It evaluates submitted evidence receipts only; it does not execute external providers. No provider performance results are currently established.
+
+## Agent routing and model selection
+
+The experimental policy-first router is documented in `orchestration/routing/README.md`. It recommends logical roles only; it does not invoke providers, execute tools, or rank models.
+
+## How to add a skill
 
 Copy the template, assign a unique ID, name an accountable owner, define acceptance tests, and submit the skill for review. Do not change a skill to Approved without evidence and an authorized reviewer.
 
