@@ -37,3 +37,18 @@ Do not infer legal authority or institutional approval. Do not select technology
 
 ## Evaluation
 Review traceability from business outcomes to architecture decisions, unresolved risks, integration completeness, operational readiness, and lifecycle cost.
+
+
+## Security
+
+- Draft controls and review requirements must be confirmed by the accountable owner before approval.
+
+
+## Failure and escalation
+
+- Draft controls and review requirements must be confirmed by the accountable owner before approval.
+
+
+## Change history
+
+- Draft controls and review requirements must be confirmed by the accountable owner before approval.
