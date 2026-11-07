@@ -77,6 +77,8 @@ The repository PR search returned the following open PRs in the snapshot. The ke
 | [#14](https://github.com/Mohamedalhindawan/coden-national-dpi/pull/14) | Mobile-only free AI agent setup guide | Open | Yes | Not audited in detail | Review for duplication with #15 |
 | [#13](https://github.com/Mohamedalhindawan/coden-national-dpi/pull/13) | Tamam session persistence and clearing | Open | Yes/needs confirmation | Not audited in detail | Review against current main behavior and tests |
 | [#10](https://github.com/Mohamedalhindawan/coden-national-dpi/pull/10) | Guarded AI coding agent quickstart | Open | Yes/needs confirmation | Not audited in detail | Review for overlap with #24 and #15 |
+| [#28](https://github.com/Mohamedalhindawan/coden-national-dpi/pull/28) | Isolate finance roles from workflow control plane | Open | Yes | 2 | Stacked security fix against #26; CI red/green evidence available; keep Draft pending review |
+| [#27](https://github.com/Mohamedalhindawan/coden-national-dpi/pull/27) | CODEN GitHub Master Audit | Open | Yes | 1 | Audit document; CI run #269 successful; branch is 3 commits ahead of main and not behind |
 
 ### CI evidence and branch divergence
 
@@ -86,6 +88,8 @@ The repository PR search returned the following open PRs in the snapshot. The ke
 | #22 | [run 39488034866](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/39488034866) | Success; preflight, prototype tests, OpenAPI validation steps passed | 5 commits ahead / 3 behind; diverged | Update branch and rerun CI |
 | #24 | [workflow run](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/39835112389) | Success | 1 commit ahead / 3 behind; diverged | Update branch and rerun CI |
 | #20 | [workflow run](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/39485351791) | Success | 2 commits ahead / 3 behind; diverged | Update branch and rerun CI |
+| #27 | [run #269](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/42409567240) | Success | 3 commits ahead / 0 behind; clean comparison with main | Await human review |
+| #28 | [run #271](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/42409698531) | Success; 151 tests passed after regression fix | Stacked on PR #26 | Review and incorporate into parent PR before any acceptance |
 
 A COMMENT review was posted on each of PRs #22, #24, and #20 documenting the successful CI evidence and the need to update each diverged branch against current main before merge. These are comments, not approvals.
 
@@ -158,7 +162,7 @@ The workflow file is configuration evidence only. The latest observed PR #26 run
 | ChatGPT + coding-agent runbook | In review | Draft PR #24 |
 | Original 31-batch inventory | Blocked | Exact source not recovered |
 | Backend/database/authentication | Planned | No current implementation established |
-| Agent Control Plane | Planned / prototype work in PR #26 requires separate review | Not a production agent runtime |
+| Agent Control Plane | Experimental local prototype in PR #26; role-isolation fix proposed in PR #28 | No live provider invocation, no tool execution, no production sandbox or production identity layer |
 | Production deployment / live government integration | Not established | No evidence in this audit |
 
 ## 8. Prioritized next actions
@@ -168,9 +172,10 @@ The workflow file is configuration evidence only. The latest observed PR #26 run
 3. **PR #24:** documentation CI is green on its old head; update the diverged branch against current main and rerun.
 4. **PR #20 / Issue #21:** workflow CI is green on its old head; update branch against main. Exact batch mapping remains blocked until the original source is recovered.
 5. **Resolve duplicate/overlapping mobile-agent documentation:** compare #14 and #15 and decide one canonical guide.
-6. **Verify main-branch CI:** obtain a successful workflow run tied to the current main SHA.
-7. **Prepare a human-reviewed repository governance proposal:** branch protection, required checks, PR template, issue templates, ADR format, and versioning policy.
-8. Only after these foundations are verified, start implementation of the AI Enterprise Operating System and the remaining roadmap components.
+6. **Security blocker on PR #26:** incorporate and independently review PR #28, which adds role-isolation regression tests and restricts workflow controls to operator/admin. Its red run #270 reproduced the flaw (15 failing assertions); green run #271 passed 151 tests.
+7. **Verify main-branch CI:** obtain a successful workflow run tied to the current main SHA.
+8. **Prepare a human-reviewed repository governance proposal:** branch protection, required checks, PR template, issue templates, ADR format, and versioning policy.
+9. Only after these foundations are verified, start implementation of the AI Enterprise Operating System and the remaining roadmap components.
 
 ## 9. Audit limitations
 
@@ -193,6 +198,23 @@ The workflow file is configuration evidence only. The latest observed PR #26 run
 - [PR #22 successful workflow run](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/39488034866)
 - [PR #24 successful workflow run](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/39835112389)
 - [PR #20 successful workflow run](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/39485351791)
+- [PR #27 audit CI run #269](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/42409567240)
+- [PR #28 security-fix red run #270](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/42409667694)
+- [PR #28 security-fix green run #271](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/42409698531)
 - [README](https://github.com/Mohamedalhindawan/coden-national-dpi/blob/main/README.md)
 - [AGENTS.md](https://github.com/Mohamedalhindawan/coden-national-dpi/blob/main/AGENTS.md)
 - [Prototype checks workflow](https://github.com/Mohamedalhindawan/coden-national-dpi/blob/main/.github/workflows/prototype-checks.yml)
+
+
+## 11. Security review detail — PR #26 operator API
+
+A source review of `skills/orchestration/operator_api.py` found that the principal parser accepted both workflow roles (`operator`, `admin`) and finance roles (`finance_operator`, `finance_approver`, `finance_admin`), but the general workflow status, pause, resume, dispatch, and task-audit routes did not enforce a workflow-role allowlist. The test suite originally tested only the operator role, so this authorization gap was not detected.
+
+A regression test was added first in PR #28. The first CI run (#270) failed with 15 role-isolation assertions, demonstrating that finance-only roles could access those workflow routes. A route-level role check was then added, restricting those routes to `operator` and `admin`. The subsequent CI run (#271) passed and reported **151 tests, OK**, along with the prototype contract tests and OpenAPI validation.
+
+- Fix branch: `fix/agent-control-plane-rbac`
+- Stacked PR: [#28](https://github.com/Mohamedalhindawan/coden-national-dpi/pull/28)
+- Red evidence: [run #270](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/42409667694)
+- Green evidence: [run #271](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/42409698531)
+
+**Disposition:** PR #28 is still Draft and not merged. PR #26 remains Draft. This fix must be reviewed and incorporated before the experimental operator API can be considered to have passed the role-separation acceptance check. Passing these tests does not establish production security.
