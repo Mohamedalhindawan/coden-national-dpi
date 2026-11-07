@@ -223,6 +223,7 @@ class BudgetLedger:
         reconciled = [row for row in linked if row["status"] == "reconciled"]
         return {
             "linked_runs": len({row["run_id"] for row in linked}),
+            "run_ids": sorted({row["run_id"] for row in linked}),
             "reconciled_runs": len({row["run_id"] for row in reconciled}),
             "reconciled_actual_usd": round(sum(row["actual_usd"] or 0.0 for row in reconciled), 8),
             "unlinked_reservations": sum(row["run_id"] is None for row in rows),
