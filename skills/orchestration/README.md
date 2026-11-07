@@ -69,6 +69,7 @@ Record run/task/agent IDs, parent-child links, provider/model/version, prompt an
 - State machine: STATE_MACHINE.md
 - Operations runbook: OPERATIONS_RUNBOOK.md
 - Synthetic pilot cases: pilot/README.md
+- Deterministic validators and JSON Schemas: validator.py and schemas/ (tested in skills/tests/test_orchestration_contracts.py).
 
 ## Implementation status
 This is a design and governance package. It does not install or execute Factory AI, Manus, Codex, or other agents. No orchestration runtime, credentials, provider integration, or production deployment is created.
