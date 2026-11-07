@@ -56,6 +56,14 @@ class OrchestrationRuntime:
             details_json TEXT NOT NULL,
             occurred_at TEXT NOT NULL
         );
+        CREATE TRIGGER IF NOT EXISTS audit_events_no_update
+        BEFORE UPDATE ON audit_events BEGIN
+            SELECT RAISE(ABORT, 'audit events are append-only');
+        END;
+        CREATE TRIGGER IF NOT EXISTS audit_events_no_delete
+        BEFORE DELETE ON audit_events BEGIN
+            SELECT RAISE(ABORT, 'audit events are append-only');
+        END;
         """)
         self.db.commit()
 
@@ -100,8 +108,8 @@ class OrchestrationRuntime:
         if after is None:
             raise WorkflowError(f"Transition not allowed: {before} + {event}")
         if event in {"human_approve", "human_reject", "human_request_changes"}:
-            if actor == row["owner"] and (details or {}).get("actor_type") != "independent_human":
-                raise WorkflowError("Review decision requires an explicitly identified independent human reviewer")
+            if (details or {}).get("actor_type") != "independent_human" or actor == row["owner"]:
+                raise WorkflowError("Review decision requires an independent human reviewer distinct from the task owner")
         if event == "human_approve":
             if not artifact_hash or len(artifact_hash) != 64:
                 raise WorkflowError("Approval must bind to a 64-character artifact SHA-256")
