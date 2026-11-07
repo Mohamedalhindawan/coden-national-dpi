@@ -73,3 +73,14 @@ Record run/task/agent IDs, parent-child links, provider/model/version, prompt an
 
 ## Implementation status
 This is a design and governance package. It does not install or execute Factory AI, Manus, Codex, or other agents. No orchestration runtime, credentials, provider integration, or production deployment is created.
+
+## Local runtime prototype
+
+The repository now includes `runtime.py`, a minimal SQLite-backed workflow control plane. It validates task envelopes, persists workflow state, enforces the documented transition graph, requires an independent human reviewer and a SHA-256 artifact digest for approval, and records append-only audit events.
+
+This is deliberately a control-plane prototype only. It does **not** execute agent models, invoke tools, manage credentials, provide distributed locking, or offer production-grade multi-user concurrency. Run tests with:
+
+```bash
+python -m pip install jsonschema==4.23.0
+python -m unittest skills.tests.test_orchestration_contracts skills.tests.test_orchestration_runtime -v
+```
