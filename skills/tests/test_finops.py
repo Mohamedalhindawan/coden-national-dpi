@@ -60,6 +60,7 @@ class FinOpsTests(unittest.TestCase):
 
     def test_monthly_budget_and_threshold_alerts(self):
         self.ledger.set_budget(BudgetLimit("project-a", "monthly", 10.0))
+        self.ledger.set_budget(BudgetLimit("team-a", "daily", 10.0))
         self.ledger.reserve(self.request(amount=8.5))
         alerts = self.ledger.alerts("project-a", "monthly", "2026-11")
         self.assertTrue(any(alert["threshold_percent"] == 80 for alert in alerts))
