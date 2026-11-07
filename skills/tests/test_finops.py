@@ -73,6 +73,22 @@ class FinOpsTests(unittest.TestCase):
         with self.assertRaises(BudgetError):
             self.ledger.set_budget(BudgetLimit("x", "weekly", 1.0))
 
+    def test_reconciliation_snapshot_groups_actual_cost_by_run(self):
+        first = self.ledger.reserve(SpendRequest(
+            "run-spend-1", "project-a", "team-a", 2.0,
+            "2026-11-07T10:00:00+00:00", run_id="run-1"))
+        second = self.ledger.reserve(SpendRequest(
+            "run-spend-2", "project-a", "team-a", 1.0,
+            "2026-11-07T10:05:00+00:00", run_id="run-1"))
+        self.ledger.reconcile(first["reservation_id"], 1.25)
+        self.ledger.reconcile(second["reservation_id"], 0.5)
+        report = self.ledger.reconciliation_snapshot(
+            "project-a", "team-a", "daily", "2026-11-07")
+        self.assertEqual(report["linked_runs"], 1)
+        self.assertEqual(report["reconciled_runs"], 1)
+        self.assertEqual(report["reconciled_actual_usd"], 1.75)
+        self.assertEqual(report["unlinked_reservations"], 0)
+
     def test_persists_reservations_after_restart(self):
         self.ledger.reserve(self.request(amount=2.5))
         reopened = BudgetLedger(self.db)
