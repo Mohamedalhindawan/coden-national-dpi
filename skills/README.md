@@ -115,3 +115,8 @@ See `orchestration/operator-dashboard/README.md` for the Arabic RTL static dashb
 ### Agent Provider Integration
 
 See `orchestration/providers/README.md` for the provider-neutral, simulated-only integration contract and security boundaries.
+
+
+### AI Model Gateway & Intelligent Routing 1.0
+
+See `orchestration/model-gateway/README.md` for simulated model selection, request cost ceilings, and security limitations.
