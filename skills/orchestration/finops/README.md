@@ -97,3 +97,25 @@ drop triggers. Production audit integrity still requires a separately
 controlled append-only sink or externally anchored hash/signature chain,
 restricted database access, backups, and independent monitoring. This
 prototype does not claim regulatory-grade audit immutability.
+
+## Cryptographic audit chain
+
+Each governance audit event now stores a SHA-256 digest over a canonical JSON
+representation of its sequence, request ID, event type, actor, details,
+timestamp, and previous-event hash. The first event uses a 64-character zero
+genesis value. New events are appended in the same SQLite transaction as the
+associated state transition. `verify_audit_chain()` checks sequence continuity,
+the previous-hash links, and every event digest, and returns the verified
+event count and current chain head.
+
+On first startup after this upgrade, legacy audit rows are backfilled in
+sequence order. This migration preserves their recorded content but cannot
+prove that legacy rows were not modified before the migration.
+
+**Security boundary:** a hash chain detects accidental or unsophisticated
+modification when an attacker does not also rewrite all subsequent hashes.
+A database owner who can rewrite the entire database can recompute the chain.
+For independent evidence, production must periodically export and sign or
+externally anchor the chain-head hash in a separately controlled system.
+SHA-256 chaining alone is not a digital signature, trusted timestamp, WORM
+store, or regulatory-grade immutability guarantee.
