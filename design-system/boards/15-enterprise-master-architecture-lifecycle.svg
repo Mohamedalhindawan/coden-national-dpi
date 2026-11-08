@@ -1,6 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
 <defs><linearGradient id="n" x1="0" x2="1"><stop stop-color="#10243E"/><stop offset="1" stop-color="#1B456B"/></linearGradient><filter id="s" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#10243E" flood-opacity=".10"/></filter><style>
-.h{font:700 38px Arial;fill:#10243E}.sub{font:18px Arial;fill:#60758A}.sec{font:700 20px Arial;fill:#10243E}.lab{font:700 16px Arial;fill:#173A5E}.body{font:14px Arial;fill:#536B80}.sm{font:12px Arial;fill:#6B8093}.card{fill:#fff;stroke:#D8E4EC;stroke-width:1.5}.ln{stroke:#8AA4B8;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}</style></defs>
+ text{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
+
+.h{font:700 38px Arial;fill:#10243E}.sub{font:18px Arial;fill:#526B80}.sec{font:700 20px Arial;fill:#10243E}.lab{font:700 16px Arial;fill:#173A5E}.body{font:15px Arial;fill:#536B80}.sm{font:13px Arial;fill:#526B80}.card{fill:#fff;stroke:#D8E4EC;stroke-width:1.5}.ln{stroke:#8AA4B8;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}</style></defs>
 <rect width="1920" height="1080" fill="#F5F8FB"/><rect width="1920" height="12" fill="#20A6B2"/>
 <text x="72" y="82" class="h">CODEN | ENTERPRISE MASTER ARCHITECTURE &amp; LIFECYCLE</text><text x="74" y="116" class="sub">One coherent enterprise blueprint • Governed transition • Product delivery • Operate, measure and evolve</text>
 <rect x="1510" y="48" width="338" height="48" rx="24" fill="#E8F4F7" stroke="#8CCBD0"/><text x="1679" y="78" text-anchor="middle" style="font:700 15px Arial;fill:#147A85;letter-spacing:1px">TARGET STATE • CONCEPTUAL</text>
@@ -16,7 +18,7 @@
 
 <text x="72" y="372" class="sec">02  CODEN ENTERPRISE CAPABILITY MAP</text>
 <rect x="72" y="394" width="1776" height="244" rx="18" fill="url(#n)" filter="url(#s)"/>
-<text x="104" y="434" style="font:700 21px Arial;fill:#fff">INTEGRATED ENTERPRISE PLATFORM</text><text x="104" y="459" style="font:14px Arial;fill:#C4D8E7">Four operating engines underpin shared DPI capabilities and the product portfolio</text>
+<text x="104" y="434" style="font:700 21px Arial;fill:#fff">INTEGRATED ENTERPRISE PLATFORM</text><text x="104" y="459" style="font:15px Arial;fill:#C4D8E7">Four operating engines underpin shared DPI capabilities and the product portfolio</text>
 <g>
 <rect x="104" y="486" width="390" height="96" rx="10" fill="#fff"/><text x="299" y="518" text-anchor="middle" class="lab">AI ENTERPRISE OPERATING SYSTEM</text><text x="299" y="545" text-anchor="middle" class="sm">Governance • Knowledge • Workflow • Agents</text><text x="299" y="564" text-anchor="middle" class="sm">Portfolio • Risk • Decision intelligence</text>
 <rect x="520" y="486" width="390" height="96" rx="10" fill="#EAF5FA"/><text x="715" y="518" text-anchor="middle" class="lab">AI ENGINEERING FACTORY</text><text x="715" y="545" text-anchor="middle" class="sm">Discovery • Design • Build • Test • Release</text><text x="715" y="564" text-anchor="middle" class="sm">DevSecOps • Quality • Supply chain</text>
