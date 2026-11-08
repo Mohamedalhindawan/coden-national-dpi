@@ -8,8 +8,6 @@
  <marker id="arr" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#3984B8"/></marker>
  <style>
  text{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
-
- text{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
 text{font-family:Inter,Arial,sans-serif;fill:#18364F}.ey{font-size:15px;font-weight:700;letter-spacing:2px;fill:#5B7891}.h{font-size:38px;font-weight:750;fill:#102A43}.sub{font-size:18px;fill:#567188}.sec{font-size:16px;font-weight:750;letter-spacing:1px;fill:#fff}.ct{font-size:18px;font-weight:750;fill:#153B59}.bd{font-size:14px;fill:#46647D}.sm{font-size:14px;fill:#526B80}.tag{font-size:14px;font-weight:750;letter-spacing:1px}.arr{fill:none;stroke:#3984B8;stroke-width:2.5;marker-end:url(#arr)}</style>
 </defs>
 <rect width="1920" height="1080" fill="url(#bg)"/><rect width="1920" height="12" fill="#19A6A6"/>
@@ -54,7 +52,7 @@ text{font-family:Inter,Arial,sans-serif;fill:#18364F}.ey{font-size:15px;font-wei
 <g fill="#244F6D" stroke="#5D829B">
  <rect x="104" y="850" width="300" height="64" rx="9"/><rect x="428" y="850" width="300" height="64" rx="9"/><rect x="752" y="850" width="300" height="64" rx="9"/><rect x="1076" y="850" width="300" height="64" rx="9"/><rect x="1400" y="850" width="408" height="64" rx="9"/>
 </g>
-<g class="white" text-anchor="middle"><text x="254" y="877" font-size="15" font-weight="700">Define</text><text x="254" y="898" font-size="12">Policies · Risk appetite · Owners</text><text x="578" y="877" font-size="15" font-weight="700">Prevent</text><text x="578" y="898" font-size="12">Identity · Secure defaults · Training</text><text x="902" y="877" font-size="15" font-weight="700">Detect</text><text x="902" y="898" font-size="12">Telemetry · Scanning · Alerts</text><text x="1226" y="877" font-size="15" font-weight="700">Respond &amp; Recover</text><text x="1226" y="898" font-size="12">Contain · Restore · Learn</text><text x="1604" y="877" font-size="15" font-weight="700">Assure &amp; Improve</text><text x="1604" y="898" font-size="12">Audit · Test · Remediate · Report</text></g>
+<g class="white" text-anchor="middle"><text x="254" y="877" font-size="15" font-weight="700">Define</text><text x="254" y="898" font-size="13">Policies · Risk appetite · Owners</text><text x="578" y="877" font-size="15" font-weight="700">Prevent</text><text x="578" y="898" font-size="13">Identity · Secure defaults · Training</text><text x="902" y="877" font-size="15" font-weight="700">Detect</text><text x="902" y="898" font-size="13">Telemetry · Scanning · Alerts</text><text x="1226" y="877" font-size="15" font-weight="700">Respond &amp; Recover</text><text x="1226" y="898" font-size="13">Contain · Restore · Learn</text><text x="1604" y="877" font-size="15" font-weight="700">Assure &amp; Improve</text><text x="1604" y="898" font-size="13">Audit · Test · Remediate · Report</text></g>
 <path d="M404 882H423 M728 882H747 M1052 882H1071 M1376 882H1395" fill="none" stroke="#55C8C1" stroke-width="2.5" marker-end="url(#arr)"/>
 <rect x="76" y="960" width="1768" height="42" rx="9" fill="#E1F4F3" stroke="#79C9C5"/>
 <text x="100" y="986" font-size="13" font-weight="750" fill="#087C80">NON-NEGOTIABLE PRINCIPLES</text><text x="360" y="986" class="bd">Accountability · Privacy by design · Least privilege · Separation of duties · Evidence-based assurance · Safe failure</text>

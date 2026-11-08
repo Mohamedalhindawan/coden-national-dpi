@@ -1,4 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" role="img" aria-labelledby="title desc">
+<title id="title">CODEN Enterprise Integration Architecture</title>
+<desc id="desc">Conceptual enterprise integration patterns, APIs, events, adapters, security and observability.</desc>
 <defs>
  <linearGradient id="navy" x1="0" x2="1"><stop stop-color="#10243E"/><stop offset="1" stop-color="#183D63"/></linearGradient>
  <linearGradient id="blue" x1="0" x2="1"><stop stop-color="#1769AA"/><stop offset="1" stop-color="#2389C9"/></linearGradient>

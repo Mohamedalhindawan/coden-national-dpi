@@ -10,8 +10,6 @@
   <style>
  text{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
 
- text{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
-
     text{font-family:Inter,Arial,sans-serif;fill:#18364F}
     .eyebrow{font-size:15px;font-weight:700;letter-spacing:2.2px;fill:#5B7891}
     .h1{font-size:39px;font-weight:750;fill:#102A43}
@@ -46,12 +44,12 @@
 <g transform="translate(1332 203)">
  <rect width="220" height="56" rx="10" fill="#244F6D" stroke="#5D829B"/>
  <text x="110" y="23" text-anchor="middle" class="white" font-size="14" font-weight="700">ACCOUNTABLE OWNER</text>
- <text x="110" y="42" text-anchor="middle" class="white" font-size="12">Business + technical</text>
+ <text x="110" y="42" text-anchor="middle" class="white" font-size="13">Business + technical</text>
 </g>
 <g transform="translate(1570 203)">
  <rect width="238" height="56" rx="10" fill="#0E777C" stroke="#49C1BE"/>
  <text x="119" y="23" text-anchor="middle" class="white" font-size="14" font-weight="700">HUMAN APPROVAL</text>
- <text x="119" y="42" text-anchor="middle" class="white" font-size="12">High-impact decisions</text>
+ <text x="119" y="42" text-anchor="middle" class="white" font-size="13">High-impact decisions</text>
 </g>
 <!-- control plane -->
 <g filter="url(#shadow)">

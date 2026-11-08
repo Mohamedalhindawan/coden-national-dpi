@@ -1,4 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" role="img" aria-labelledby="title desc">
+<title id="title">CODEN AI Workforce and Agent Organization</title>
+<desc id="desc">Conceptual AI agent squads, human accountability, controlled execution and assurance.</desc>
 <defs><linearGradient id="n" x1="0" x2="1"><stop stop-color="#10243E"/><stop offset="1" stop-color="#1B456B"/></linearGradient><filter id="s" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#10243E" flood-opacity=".10"/></filter><style>
  text{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
 
