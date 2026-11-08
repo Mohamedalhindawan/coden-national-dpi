@@ -1,6 +1,8 @@
 """Evidence-gated V4 progress scoring. Accepts a JSON baseline."""
 import json
 import sys
+import math
+from urllib.parse import urlparse
 
 PHASES = {f"P{i}" for i in range(1, 9)}
 
@@ -11,7 +13,7 @@ def calculate_progress(b):
     if len(phases) != 8 or {p.get("id") for p in phases} != PHASES or not requirements:
         raise ValueError("Eight phases and requirements are mandatory")
     weights = {p["id"]: p.get("approved_weight") for p in phases}
-    if any(type(w) not in (int, float) or w <= 0 for w in weights.values()) or abs(sum(weights.values()) - 1) > 1e-8:
+    if any(type(w) not in (int, float) or not math.isfinite(w) or w <= 0 for w in weights.values()) or abs(sum(weights.values()) - 1) > 1e-8:
         raise ValueError("Approved phase weights must sum to 1")
     groups, seen = {p: [] for p in PHASES}, set()
     for r in requirements:
@@ -19,9 +21,9 @@ def calculate_progress(b):
         if not isinstance(ident, str) or not ident or ident in seen:
             raise ValueError("Unique requirement ID required")
         seen.add(ident)
-        if phase not in groups or type(weight) not in (int, float) or weight <= 0 or score not in (0, .25, .5, .75, 1):
+        if phase not in groups or type(weight) not in (int, float) or weight <= 0 or type(score) not in (int, float) or score not in (0, .25, .5, .75, 1) or not math.isfinite(weight):
             raise ValueError("Invalid phase, weight or score")
-        if score > .25 and not r.get("evidence_url"):
+        if score > .25 and (not isinstance(r.get("evidence_url"), str) or urlparse(r["evidence_url"].strip()).scheme != "https" or not urlparse(r["evidence_url"].strip()).netloc):
             raise ValueError("Evidence required for score above 0.25")
         if score > .25 and r.get("critical_blocker"):
             raise ValueError("Critical blocker caps score at 0.25")
