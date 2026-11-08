@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coden.example/schemas/result.schema.json",
+  "title": "CODEN Agent Result Contract 1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "run_id",
+    "task_id",
+    "role_id",
+    "status",
+    "summary",
+    "acceptance_results",
+    "requires_human_approval"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "1.0.0"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "role_id": {
+      "enum": [
+        "ORC-01",
+        "PLN-01",
+        "ARC-01",
+        "DPI-01",
+        "DEV-01",
+        "DATA-01",
+        "SEC-01",
+        "QA-01",
+        "DOC-01",
+        "FIN-01",
+        "REL-01"
+      ]
+    },
+    "status": {
+      "enum": [
+        "succeeded",
+        "needs_revision",
+        "blocked",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "acceptance_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "criterion",
+          "status"
+        ],
+        "properties": {
+          "criterion": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "fail",
+              "not_run"
+            ]
+          },
+          "evidence_ref": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "requires_human_approval": {
+      "type": "boolean"
+    }
+  }
+}

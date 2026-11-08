@@ -1,0 +1,311 @@
+library:
+  name: CODEN Enterprise Skills Library
+  version: "1.0.0"
+  status: draft
+  parent_playbook: "CODEN Enterprise Operating & Engineering Playbook 2.2"
+  approval_policy: "A file existing does not imply approval."
+
+lifecycle:
+  states: [draft, reviewed, tested, approved, published, monitored, retired]
+
+skills:
+  - id: STR-01
+    name: "Enterprise Architecture"
+    path: 01-strategy-governance/STR-01-enterprise-architecture/SKILL.md
+    owner: architecture-lead
+    status: draft
+  - id: STR-02
+    name: "Strategic Planning and Governance"
+    path: 01-strategy-governance/str-02-strategic-planning-and-governance/SKILL.md
+    owner: strategy-governance-lead
+    status: draft
+  - id: STR-03
+    name: "Digital Transformation Strategy"
+    path: 01-strategy-governance/str-03-digital-transformation-strategy/SKILL.md
+    owner: strategy-governance-lead
+    status: draft
+  - id: STR-04
+    name: "DPI and GovTech Strategy"
+    path: 01-strategy-governance/str-04-dpi-and-govtech-strategy/SKILL.md
+    owner: strategy-governance-lead
+    status: draft
+  - id: STR-05
+    name: "Portfolio and Program Management"
+    path: 01-strategy-governance/str-05-portfolio-and-program-management/SKILL.md
+    owner: strategy-governance-lead
+    status: draft
+  - id: STR-06
+    name: "Enterprise Risk Management"
+    path: 01-strategy-governance/str-06-enterprise-risk-management/SKILL.md
+    owner: strategy-governance-lead
+    status: draft
+  - id: DPI-01
+    name: "DPI and GovTech Architecture"
+    path: 02-dpi-architecture/DPI-01-dpi-govtech-architecture/SKILL.md
+    owner: dpi-architecture-lead
+    status: draft
+  - id: DPI-02
+    name: "Digital Identity Architecture"
+    path: 02-dpi-architecture/dpi-02-digital-identity-architecture/SKILL.md
+    owner: dpi-architecture-lead
+    status: draft
+  - id: DPI-03
+    name: "Digital Payments Architecture"
+    path: 02-dpi-architecture/dpi-03-digital-payments-architecture/SKILL.md
+    owner: dpi-architecture-lead
+    status: draft
+  - id: DPI-04
+    name: "Interoperability Engineering"
+    path: 02-dpi-architecture/dpi-04-interoperability-engineering/SKILL.md
+    owner: dpi-architecture-lead
+    status: draft
+  - id: DPI-05
+    name: "Open Standards Engineering"
+    path: 02-dpi-architecture/dpi-05-open-standards-engineering/SKILL.md
+    owner: dpi-architecture-lead
+    status: draft
+  - id: PRD-01
+    name: "Digital Product Management"
+    path: 03-product-management/PRD-01-digital-product-management/SKILL.md
+    owner: product-lead
+    status: draft
+  - id: PRD-02
+    name: "Product Discovery"
+    path: 03-product-management/prd-02-product-discovery/SKILL.md
+    owner: product-lead
+    status: draft
+  - id: PRD-03
+    name: "Product Requirements Engineering"
+    path: 03-product-management/prd-03-product-requirements-engineering/SKILL.md
+    owner: product-lead
+    status: draft
+  - id: PRD-04
+    name: "UX and UI Design"
+    path: 03-product-management/prd-04-ux-and-ui-design/SKILL.md
+    owner: product-lead
+    status: draft
+  - id: PRD-05
+    name: "Digital Service Design"
+    path: 03-product-management/prd-05-digital-service-design/SKILL.md
+    owner: product-lead
+    status: draft
+  - id: PRD-06
+    name: "Accessibility and Localization"
+    path: 03-product-management/prd-06-accessibility-and-localization/SKILL.md
+    owner: product-lead
+    status: draft
+  - id: ARC-01
+    name: "Software Architecture"
+    path: 04-software-architecture/ARC-01-software-architecture/SKILL.md
+    owner: software-architecture-lead
+    status: draft
+  - id: ARC-02
+    name: "Solution Architecture"
+    path: 04-software-architecture/arc-02-solution-architecture/SKILL.md
+    owner: software-architecture-lead
+    status: draft
+  - id: ARC-03
+    name: "API Design and Governance"
+    path: 04-software-architecture/arc-03-api-design-and-governance/SKILL.md
+    owner: software-architecture-lead
+    status: draft
+  - id: ARC-04
+    name: "Integration and Messaging Architecture"
+    path: 04-software-architecture/arc-04-integration-and-messaging-architecture/SKILL.md
+    owner: software-architecture-lead
+    status: draft
+  - id: ARC-05
+    name: "Resilience and Distributed Systems Design"
+    path: 04-software-architecture/arc-05-resilience-and-distributed-systems-design/SKILL.md
+    owner: software-architecture-lead
+    status: draft
+  - id: ENG-01
+    name: "Platform Engineering"
+    path: 05-platform-engineering/ENG-01-platform-engineering/SKILL.md
+    owner: platform-lead
+    status: draft
+  - id: ENG-02
+    name: "DevOps Engineering"
+    path: 05-platform-engineering/eng-02-devops-engineering/SKILL.md
+    owner: platform-lead
+    status: draft
+  - id: ENG-03
+    name: "Infrastructure as Code"
+    path: 05-platform-engineering/eng-03-infrastructure-as-code/SKILL.md
+    owner: platform-lead
+    status: draft
+  - id: AI-01
+    name: "AI Agent Engineering"
+    path: 06-ai-agent-engineering/AI-01-ai-agent-engineering/SKILL.md
+    owner: ai-platform-lead
+    status: draft
+  - id: AI-02
+    name: "AI Evaluation and Governance"
+    path: 07-ai-evaluation-governance/AI-02-ai-evaluation-governance/SKILL.md
+    owner: ai-governance-lead
+    status: draft
+  - id: SEC-01
+    name: "DevSecOps"
+    path: 08-devsecops/SEC-01-devsecops/SKILL.md
+    owner: security-engineering-lead
+    status: draft
+  - id: SEC-02
+    name: "Cybersecurity Architecture"
+    path: 09-cybersecurity-architecture/SEC-02-cybersecurity-architecture/SKILL.md
+    owner: security-architecture-lead
+    status: draft
+  - id: QA-01
+    name: "Quality Engineering"
+    path: 10-quality-engineering/QA-01-quality-engineering/SKILL.md
+    owner: quality-lead
+    status: draft
+  - id: ENG-04
+    name: "Container and Runtime Engineering"
+    path: 05-platform-engineering/eng-04-container-and-runtime-engineering/SKILL.md
+    owner: platform-lead
+    status: draft
+  - id: ENG-05
+    name: "Open Source Engineering"
+    path: 05-platform-engineering/eng-05-open-source-engineering/SKILL.md
+    owner: platform-lead
+    status: draft
+  - id: ENG-06
+    name: "Mobile Application Engineering"
+    path: 05-platform-engineering/eng-06-mobile-application-engineering/SKILL.md
+    owner: mobile-platform-lead
+    status: draft
+  - id: AI-03
+    name: "Multi-Agent Orchestration"
+    path: 06-ai-agent-engineering/ai-03-multi-agent-orchestration/SKILL.md
+    owner: ai-platform-lead
+    status: draft
+  - id: AI-04
+    name: "Context Engineering"
+    path: 06-ai-agent-engineering/ai-04-context-engineering/SKILL.md
+    owner: ai-platform-lead
+    status: draft
+  - id: AI-05
+    name: "LLMOps and Model Operations"
+    path: 06-ai-agent-engineering/ai-05-llmops-and-model-operations/SKILL.md
+    owner: ai-platform-lead
+    status: draft
+  - id: AIG-01
+    name: "AI Risk and Impact Assessment"
+    path: 07-ai-evaluation-governance/aig-01-ai-risk-and-impact-assessment/SKILL.md
+    owner: ai-governance-lead
+    status: draft
+  - id: AIG-02
+    name: "Model and Dataset Documentation"
+    path: 07-ai-evaluation-governance/aig-02-model-and-dataset-documentation/SKILL.md
+    owner: ai-governance-lead
+    status: draft
+  - id: AIG-03
+    name: "Human Oversight and Decision Design"
+    path: 07-ai-evaluation-governance/aig-03-human-oversight-and-decision-design/SKILL.md
+    owner: ai-governance-lead
+    status: draft
+  - id: SEC-03
+    name: "Software Supply Chain Security"
+    path: 08-devsecops/sec-03-software-supply-chain-security/SKILL.md
+    owner: security-engineering-lead
+    status: draft
+  - id: SEC-04
+    name: "Secrets and Pipeline Identity Security"
+    path: 08-devsecops/sec-04-secrets-and-pipeline-identity-security/SKILL.md
+    owner: security-engineering-lead
+    status: draft
+  - id: SEC-05
+    name: "Application Security Engineering"
+    path: 09-cybersecurity-architecture/sec-05-application-security-engineering/SKILL.md
+    owner: security-architecture-lead
+    status: draft
+  - id: SEC-06
+    name: "Identity and Access Management"
+    path: 09-cybersecurity-architecture/sec-06-identity-and-access-management/SKILL.md
+    owner: security-architecture-lead
+    status: draft
+  - id: QA-02
+    name: "Test Automation Engineering"
+    path: 10-quality-engineering/qa-02-test-automation-engineering/SKILL.md
+    owner: quality-lead
+    status: draft
+  - id: QA-03
+    name: "Performance and Capacity Engineering"
+    path: 10-quality-engineering/qa-03-performance-and-capacity-engineering/SKILL.md
+    owner: quality-lead
+    status: draft
+  - id: QA-04
+    name: "Accessibility and RTL Quality Testing"
+    path: 10-quality-engineering/qa-04-accessibility-and-rtl-quality-testing/SKILL.md
+    owner: quality-lead
+    status: draft
+  - id: QA-05
+    name: "Release Readiness and Acceptance"
+    path: 10-quality-engineering/qa-05-release-readiness-and-acceptance/SKILL.md
+    owner: quality-lead
+    status: draft
+  - id: DAT-01
+    name: "Data Architecture"
+    path: 11-data-governance/dat-01-data-architecture/SKILL.md
+    owner: data-governance-lead
+    status: draft
+  - id: DAT-02
+    name: "Data Engineering"
+    path: 11-data-governance/dat-02-data-engineering/SKILL.md
+    owner: data-governance-lead
+    status: draft
+  - id: DAT-03
+    name: "Data Governance"
+    path: 11-data-governance/dat-03-data-governance/SKILL.md
+    owner: data-governance-lead
+    status: draft
+  - id: DAT-04
+    name: "Data Quality Management"
+    path: 11-data-governance/dat-04-data-quality-management/SKILL.md
+    owner: data-governance-lead
+    status: draft
+  - id: DAT-05
+    name: "Data Privacy and Sovereignty"
+    path: 11-data-governance/dat-05-data-privacy-and-sovereignty/SKILL.md
+    owner: data-governance-lead
+    status: draft
+  - id: DAT-06
+    name: "Analytics and Business Intelligence"
+    path: 11-data-governance/dat-06-analytics-and-business-intelligence/SKILL.md
+    owner: data-governance-lead
+    status: draft
+  - id: FIN-01
+    name: "Cloud Architecture"
+    path: 12-cloud-finops-procurement/fin-01-cloud-architecture/SKILL.md
+    owner: technology-finance-lead
+    status: draft
+  - id: FIN-02
+    name: "FinOps and Cloud Cost Management"
+    path: 12-cloud-finops-procurement/fin-02-finops-and-cloud-cost-management/SKILL.md
+    owner: technology-finance-lead
+    status: draft
+  - id: FIN-03
+    name: "Technology Financial Modeling"
+    path: 12-cloud-finops-procurement/fin-03-technology-financial-modeling/SKILL.md
+    owner: technology-finance-lead
+    status: draft
+  - id: FIN-04
+    name: "Procurement and Vendor Management"
+    path: 12-cloud-finops-procurement/fin-04-procurement-and-vendor-management/SKILL.md
+    owner: technology-finance-lead
+    status: draft
+  - id: FIN-05
+    name: "Contract and Intellectual Property Management"
+    path: 12-cloud-finops-procurement/fin-05-contract-and-intellectual-property-management/SKILL.md
+    owner: technology-finance-lead
+    status: draft
+  - id: MGT-01
+    name: "Project Management"
+    path: 13-management-delivery/mgt-01-project-management/SKILL.md
+    owner: delivery-operations-lead
+    status: draft
+  - id: MGT-02
+    name: "Change Management"
+    path: 13-management-delivery/mgt-02-change-management/SKILL.md
+    owner: delivery-operations-lead
+    status: draft

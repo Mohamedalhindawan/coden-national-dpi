@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CODEN Routing Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["task_type", "risk_level", "data_classification", "network_required", "requires_code_execution"],
+  "properties": {
+    "task_type": {"enum": ["planning", "architecture", "dpi_design", "software_implementation", "data_engineering", "security_review", "quality_assurance", "documentation", "cost_analysis", "release_review", "benefits_decision", "health_decision", "identity_decision", "financial_transaction"]},
+    "risk_level": {"enum": ["low", "medium", "high", "critical"]},
+    "data_classification": {"enum": ["synthetic", "public", "sensitive"]},
+    "network_required": {"type": "boolean"},
+    "requires_code_execution": {"type": "boolean"},
+    "provider": {"type": ["string", "null"], "minLength": 1}
+  }
+}

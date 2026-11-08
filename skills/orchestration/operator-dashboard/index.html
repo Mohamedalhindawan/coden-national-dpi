@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>CODEN | مركز تشغيل الوكلاء</title>
+<style>
+:root{font-family:Tahoma,Arial,sans-serif;color:#172033;background:#f3f5f8}
+*{box-sizing:border-box}body{margin:0}header{background:#111827;color:#fff;padding:22px clamp(16px,4vw,48px)}
+header h1{margin:0 0 6px;font-size:clamp(22px,3vw,30px)}header p{margin:0;color:#cbd5e1}
+main{max-width:1200px;margin:24px auto;padding:0 16px}.toolbar,.panel,.metric{background:#fff;border:1px solid #e2e8f0;border-radius:14px}
+.toolbar{padding:16px;display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+.field{display:flex;flex-direction:column;gap:6px;min-width:190px;flex:1}label{font-size:13px;color:#475569}
+input{font:inherit;border:1px solid #cbd5e1;border-radius:8px;padding:10px;min-width:0}
+button{font:inherit;border:0;border-radius:8px;padding:11px 16px;background:#1e293b;color:white;cursor:pointer}
+button.secondary{background:#e2e8f0;color:#172033}button.danger{background:#9f2d2d}button:disabled{opacity:.55;cursor:not-allowed}
+.status{margin:14px 0;padding:10px 12px;border-radius:8px;background:#e2e8f0;color:#334155}
+.status[data-kind=error]{background:#fee2e2;color:#991b1b}.status[data-kind=ok]{background:#dcfce7;color:#166534}
+.grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin:16px 0}
+.metric{padding:15px}.metric span{display:block;color:#64748b;font-size:13px}.metric strong{display:block;font-size:27px;margin-top:7px;font-variant-numeric:tabular-nums}
+.panel{padding:18px;margin:16px 0;overflow:hidden}.panel h2{font-size:18px;margin:0 0 14px}
+table{width:100%;border-collapse:collapse;text-align:right}th,td{padding:11px;border-bottom:1px solid #e2e8f0;font-size:14px}th{color:#64748b;font-weight:600}
+.muted{color:#64748b;font-size:13px}.actions{display:flex;gap:8px;flex-wrap:wrap}
+@media(max-width:800px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:480px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.toolbar button{flex:1}}
+</style>
+</head>
+<body>
+<header><h1>CODEN — مركز تشغيل الوكلاء</h1><p>لوحة متابعة تجريبية لسير العمل والعمال والمهام</p></header>
+<main>
+<section class="toolbar" aria-label="إعدادات الاتصال والتحكم">
+<div class="field"><label for="api">عنوان واجهة API</label><input id="api" value="" placeholder="اتركه فارغاً لاستخدام نفس النطاق" autocomplete="url"></div>
+<div class="field"><label for="token">رمز وصول المشغّل</label><input id="token" type="password" autocomplete="off" placeholder="أدخل الرمز لهذه الجلسة فقط"></div>
+<div class="field"><label for="worker">معرّف العامل للإسناد</label><input id="worker" value="worker-a" autocomplete="off"></div>
+<div class="actions"><button id="refresh">تحديث الحالة</button><button id="pause" class="danger">إيقاف الاستقبال</button><button id="resume" class="secondary">استئناف</button><button id="dispatch">إسناد مهمة</button></div>
+</section>
+<div id="notice" class="status" role="status" aria-live="polite">أدخل بيانات الاتصال ثم اضغط «تحديث الحالة».</div>
+<section class="grid" aria-label="ملخص حالات المهام">
+<div class="metric"><span>قيد الانتظار</span><strong id="pending">—</strong></div>
+<div class="metric"><span>قيد التنفيذ</span><strong id="running">—</strong></div>
+<div class="metric"><span>مكتملة</span><strong id="succeeded">—</strong></div>
+<div class="metric"><span>فاشلة</span><strong id="failed">—</strong></div>
+<div class="metric"><span>ملغاة</span><strong id="cancelled">—</strong></div>
+<div class="metric"><span>محجوبة</span><strong id="blocked">—</strong></div>
+</section>
+<section class="toolbar" aria-label="نطاق تقارير المراقبة">
+<div class="field"><label for="project">معرّف المشروع</label><input id="project" value="project-a"></div>
+<div class="field"><label for="team">معرّف الفريق</label><input id="team" value="team-a"></div>
+<div class="field"><label for="period">الفترة</label><select id="period"><option value="daily">يومي</option><option value="monthly">شهري</option></select></div>
+<div class="field"><label for="periodKey">تاريخ/شهر UTC</label><input id="periodKey" value="2026-11-07" placeholder="YYYY-MM-DD أو YYYY-MM"></div>
+<button id="loadMetrics">تحميل مؤشرات المشروع</button>
+</section>
+<section class="panel"><h2>مؤشرات المشروع</h2><p>إجمالي التشغيلات: <strong id="metricRuns">—</strong>　|　نسبة النجاح: <strong id="metricSuccess">—</strong></p>
+<p>إجمالي الرموز: <strong id="metricTokens">—</strong>　|　التكلفة المسجلة: <strong id="metricCost">—</strong></p>
+<p>جودة المخرجات: <strong id="metricQuality">—</strong>　|　مخالفات السياسات: <strong id="metricViolations">—</strong></p>
+<p>المقاييس غير المنسوبة لمشروع/فريق: <strong id="metricUnattributed">—</strong></p>
+<p class="muted">التكلفة والرموز قيم مسجلة وليست بالضرورة قياساً مباشراً من مزود النموذج.</p></section>
+<section class="panel"><h2>مطابقة تكاليف التشغيل</h2>
+<p>حالة المطابقة: <strong id="reconciliationStatus">—</strong></p>
+<p>تكلفة المقاييس المرتبطة: <strong id="reconciliationObserved">—</strong>　|　التكلفة الفعلية المسوّاة في الدفتر: <strong id="reconciliationActual">—</strong></p>
+<p>الفرق (الدفتر ناقص المقاييس): <strong id="reconciliationVariance">—</strong></p>
+<p>تشغيلات مرتبطة: <strong id="reconciliationLinkedRuns">—</strong>　|　تشغيلات مسوّاة: <strong id="reconciliationReconciledRuns">—</strong></p>
+<p>حجوزات غير مرتبطة: <strong id="reconciliationUnlinked">—</strong>　|　حجوزات مرتبطة معلّقة: <strong id="reconciliationPending">—</strong></p>
+<p id="reconciliationNote" class="muted">لا توجد بيانات مطابقة بعد.</p></section>
+<section class="panel"><h2>حوكمة التسويات المالية</h2>
+<p class="muted">تتطلب هذه الوظائف دورًا ماليًا موثقًا من خدمة المصادقة. لا تقبل الواجهة تحديد هوية المعتمد أو دوره من المستخدم.</p>
+<div class="actions"><button id="loadFinops" class="secondary">تحميل طلبات التسوية</button></div>
+<div style="overflow-x:auto"><table><thead><tr><th>رقم الطلب</th><th>الحجز</th><th>القيمة الفعلية USD</th><th>مقدم الطلب</th><th>الحالة</th><th>الإجراء</th></tr></thead><tbody id="finopsRequests"><tr><td colspan="6" class="muted">لم يتم تحميل الطلبات</td></tr></tbody></table></div>
+<h3>سجل التدقيق</h3><div id="finopsAudit" class="muted" aria-live="polite">اختر سجل طلب لمراجعته.</div>
+</section>
+<section class="panel"><h2>حالة المنظومة</h2><p>حالة الاستقبال: <strong id="paused">غير معروفة</strong></p><p>العمال المسجلون: <strong id="registered">—</strong>　|　المهام النشطة: <strong id="active">—</strong></p></section>
+<section class="panel"><h2>العمال</h2><div style="overflow-x:auto"><table><thead><tr><th>العامل</th><th>الحالة</th><th>المهام النشطة</th><th>السعة</th><th>القدرات</th></tr></thead><tbody id="workers"><tr><td colspan="5" class="muted">لا توجد بيانات بعد</td></tr></tbody></table></div></section>
+<p class="muted">هذه الواجهة لا تخزن رمز الوصول في المتصفح، ولا تنفذ المهام بنفسها. يجب تشغيلها خلف خدمة موثوقة مع TLS ومصادقة وصلاحيات فعلية. قد تختلف البيانات المعروضة حسب ما يوفره إصدار API المتصل.</p>
+</main>
+<script>
+(() => {
+  const el = id => document.getElementById(id);
+  const notice = (message, kind="") => { el("notice").textContent=message; el("notice").dataset.kind=kind; };
+  const base = () => el("api").value.trim().replace(/\/$/,"");
+  async function request(path, method="GET", body) {
+    const headers={"Accept":"application/json"};
+    const token=el("token").value.trim();
+    if(token) headers.Authorization="Bearer "+token;
+    if(body!==undefined) headers["Content-Type"]="application/json";
+    const response=await fetch(base()+path,{method,headers,body:body===undefined?undefined:JSON.stringify(body),cache:"no-store",credentials:"same-origin"});
+    const text=await response.text();
+    let data={}; try { data=text?JSON.parse(text):{}; } catch (_) { throw new Error("استجابة غير صالحة من API"); }
+    if(!response.ok) throw new Error(data.error||("HTTP "+response.status));
+    return data;
+  }
+  function render(data) {
+    const tasks=data.tasks||{};
+    ["pending","running","succeeded","failed","cancelled","blocked"].forEach(key=>{el(key).textContent=Number(tasks[key]||0).toLocaleString("en-US");});
+    el("paused").textContent=data.paused?"متوقف":"يستقبل المهام";
+    const workers=data.workers||{};
+    el("registered").textContent=workers.registered_count??"—";
+    el("active").textContent=workers.active_count??"—";
+    const body=el("workers"); body.replaceChildren();
+    (workers.workers||[]).forEach(worker=>{
+      const row=document.createElement("tr");
+      [worker.worker_id,worker.status,worker.active_count,worker.max_concurrency,(worker.capabilities||[]).join("، ")].forEach(value=>{
+        const cell=document.createElement("td"); cell.textContent=String(value??"—"); row.appendChild(cell);
+      });
+      body.appendChild(row);
+    });
+    if(!body.children.length){const row=document.createElement("tr");const cell=document.createElement("td");cell.colSpan=5;cell.textContent="لا توجد بيانات عمال";row.appendChild(cell);body.appendChild(row);}
+  }
+  async function refresh(){try{render(await request("/v1/workflows/status"));notice("تم تحديث الحالة من API.","ok");}catch(error){notice("تعذر تحديث الحالة: "+error.message,"error");}}
+  async function loadMetrics(){
+    const project=el("project").value.trim(), team=el("team").value.trim();
+    const period=el("period").value, periodKey=el("periodKey").value.trim();
+    if(!project||!team||!periodKey){notice("أكمل المشروع والفريق والفترة.","error");return;}
+    const query=new URLSearchParams({project_id:project,team_id:team,period,period_key:periodKey});
+    try{
+      const data=await request("/v1/observability/snapshot?"+query.toString());
+      el("metricRuns").textContent=data.runs.total;
+      el("metricSuccess").textContent=(data.runs.success_rate*100).toFixed(1)+"%";
+      el("metricTokens").textContent=data.usage.total_tokens.toLocaleString("en-US");
+      el("metricCost").textContent=Number(data.usage.observed_cost_usd).toFixed(6)+" USD";
+      el("metricQuality").textContent=Number(data.usage.average_quality).toFixed(3);
+      el("metricViolations").textContent=data.usage.policy_violations;
+      el("metricUnattributed").textContent=data.unattributed_metrics;
+      const reconciliation=data.cost_reconciliation||{};
+      const statusLabels={reconciled:"متطابقة",variance_review:"فرق يحتاج مراجعة",incomplete_review:"مطابقة غير مكتملة"};
+      el("reconciliationStatus").textContent=statusLabels[reconciliation.status]||"غير متاحة";
+      el("reconciliationObserved").textContent=Number(reconciliation.observed_metric_cost_usd||0).toFixed(6)+" USD";
+      el("reconciliationActual").textContent=Number(reconciliation.reconciled_ledger_cost_usd||0).toFixed(6)+" USD";
+      el("reconciliationVariance").textContent=Number(reconciliation.variance_usd||0).toFixed(6)+" USD";
+      el("reconciliationLinkedRuns").textContent=Number(reconciliation.linked_runs||0).toLocaleString("en-US");
+      el("reconciliationReconciledRuns").textContent=Number(reconciliation.reconciled_runs||0).toLocaleString("en-US");
+      el("reconciliationUnlinked").textContent=Number(reconciliation.unlinked_reservations||0).toLocaleString("en-US");
+      el("reconciliationPending").textContent=Number(reconciliation.pending_linked_reservations||0).toLocaleString("en-US");
+      el("reconciliationNote").textContent=reconciliation.data_note||"لا تتوفر ملاحظة مصدر البيانات.";
+      notice("تم تحميل مؤشرات النطاق المحدد.","ok");
+    }catch(error){notice("تعذر تحميل المؤشرات: "+error.message,"error");}
+  }
+  async function loadFinops(){
+    try{
+      const data=await request("/v1/finops/reconciliations");
+      const body=el("finopsRequests"); body.replaceChildren();
+      (data.requests||[]).forEach(item=>{
+        const row=document.createElement("tr");
+        [item.request_id,item.reservation_id,Number(item.actual_usd).toFixed(6),item.submitted_by,item.status].forEach(value=>{
+          const cell=document.createElement("td"); cell.textContent=String(value??"—"); row.appendChild(cell);
+        });
+        const cell=document.createElement("td"), controls=document.createElement("div"); controls.className="actions";
+        const audit=document.createElement("button"); audit.className="secondary"; audit.textContent="السجل";
+        audit.addEventListener("click",()=>loadFinopsAudit(item.request_id)); controls.appendChild(audit);
+        if(item.status==="pending"){
+          ["approve","reject"].forEach(decision=>{
+            const button=document.createElement("button"); button.textContent=decision==="approve"?"اعتماد":"رفض";
+            button.className=decision==="reject"?"danger":"";
+            button.addEventListener("click",()=>decideFinops(item.request_id,decision)); controls.appendChild(button);
+          });
+        }
+        cell.appendChild(controls); row.appendChild(cell); body.appendChild(row);
+      });
+      if(!body.children.length){const row=document.createElement("tr"),cell=document.createElement("td");cell.colSpan=6;cell.textContent="لا توجد طلبات تسوية";row.appendChild(cell);body.appendChild(row);}
+      notice("تم تحميل طلبات التسوية.","ok");
+    }catch(error){notice("تعذر تحميل طلبات التسوية: "+error.message,"error");}
+  }
+  async function loadFinopsAudit(requestId){
+    try{
+      const data=await request("/v1/finops/reconciliations/"+encodeURIComponent(requestId)+"/audit");
+      el("finopsAudit").textContent=(data.events||[]).map(event=>[event.occurred_at,event.event_type,event.actor_id].join(" — ")).join(" | ")||"لا توجد أحداث.";
+    }catch(error){notice("تعذر تحميل سجل التدقيق: "+error.message,"error");}
+  }
+  async function decideFinops(requestId,decision){
+    if(!window.confirm(decision==="approve"?"تأكيد اعتماد التسوية؟":"تأكيد رفض التسوية؟")) return;
+    try{await request("/v1/finops/reconciliations/"+encodeURIComponent(requestId)+"/"+decision,"POST",{});
+      notice("تم تسجيل القرار.","ok"); await loadFinops(); await loadFinopsAudit(requestId);
+    }catch(error){notice("تعذر تسجيل القرار: "+error.message,"error");}
+  }
+  async function action(path,body){try{const result=await request(path,"POST",body);notice("تم إرسال الطلب بنجاح.","ok");if(result&&result.task_id)notice("تم إسناد المهمة: "+result.task_id,"ok");await refresh();}catch(error){notice("تعذر تنفيذ الطلب: "+error.message,"error");}}
+  el("refresh").addEventListener("click",refresh);
+  el("loadFinops").addEventListener("click",loadFinops);
+  el("loadMetrics").addEventListener("click",loadMetrics);
+  el("pause").addEventListener("click",()=>action("/v1/workflows/pause",{}));
+  el("resume").addEventListener("click",()=>action("/v1/workflows/resume",{}));
+  el("dispatch").addEventListener("click",()=>{const worker=el("worker").value.trim();if(!worker){notice("أدخل معرّف العامل.","error");return;}action("/v1/workflows/dispatch",{worker_id:worker});});
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+{
+  "benchmark_suite": "CODEN Agent Benchmark",
+  "version": "1.0.0",
+  "data_classification": "synthetic",
+  "provider_execution": "disabled",
+  "cases": [
+    {
+      "case_id": "ENG-01",
+      "version": "1.0.0",
+      "domain": "engineering",
+      "dataset_id": "synthetic-engineering-fixture-01",
+      "criteria_version": "1.0",
+      "acceptance_criteria": ["contract_valid", "tests_defined", "security_boundary_documented"],
+      "minimum_sample_size": 3
+    },
+    {
+      "case_id": "DPI-01",
+      "version": "1.0.0",
+      "domain": "dpi",
+      "dataset_id": "synthetic-dpi-fixture-01",
+      "criteria_version": "1.0",
+      "acceptance_criteria": ["architecture_layers_identified", "interoperability_defined", "data_governance_defined"],
+      "minimum_sample_size": 3
+    },
+    {
+      "case_id": "SEC-01",
+      "version": "1.0.0",
+      "domain": "devsecops",
+      "dataset_id": "synthetic-security-fixture-01",
+      "criteria_version": "1.0",
+      "acceptance_criteria": ["threats_identified", "controls_mapped", "no_secret_material"],
+      "minimum_sample_size": 3
+    },
+    {
+      "case_id": "QA-01",
+      "version": "1.0.0",
+      "domain": "quality",
+      "dataset_id": "synthetic-qa-fixture-01",
+      "criteria_version": "1.0",
+      "acceptance_criteria": ["acceptance_criteria_tested", "negative_cases_included", "evidence_attached"],
+      "minimum_sample_size": 3
+    }
+  ]
+}

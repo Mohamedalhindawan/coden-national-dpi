@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coden.example/schemas/task-graph.schema.json",
+  "title": "CODEN Task Dependency Graph 1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["graph_version", "tasks"],
+  "properties": {
+    "graph_version": {"const": "1.0.0"},
+    "tasks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["task_id", "depends_on"],
+        "properties": {
+          "task_id": {"type": "string", "minLength": 1},
+          "depends_on": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "max_retries": {"type": "integer", "minimum": 0, "maximum": 3}
+        }
+      }
+    }
+  }
+}
