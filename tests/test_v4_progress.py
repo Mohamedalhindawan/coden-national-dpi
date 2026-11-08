@@ -29,3 +29,22 @@ class ProgressTests(unittest.TestCase):
         b = baseline()
         for r in b["requirements"]: r["score"] = 0
         self.assertEqual(calculate_progress(b)["remaining_percent"], 100.0)
+
+    def test_boolean_score_rejected(self):
+        b = baseline(); b["requirements"][0]["score"] = True
+        with self.assertRaises(ValueError): calculate_progress(b)
+    def test_nonfinite_phase_weight_rejected(self):
+        b = baseline(); b["phases"][0]["approved_weight"] = float("nan")
+        with self.assertRaises(ValueError): calculate_progress(b)
+    def test_nonfinite_requirement_weight_rejected(self):
+        b = baseline(); b["requirements"][0]["weight"] = float("inf")
+        with self.assertRaises(ValueError): calculate_progress(b)
+    def test_blank_evidence_rejected(self):
+        b = baseline(); b["requirements"][0]["evidence_url"] = "  "
+        with self.assertRaises(ValueError): calculate_progress(b)
+    def test_non_https_evidence_rejected(self):
+        b = baseline(); b["requirements"][0]["evidence_url"] = "javascript:alert(1)"
+        with self.assertRaises(ValueError): calculate_progress(b)
+    def test_duplicate_phase_rejected(self):
+        b = baseline(); b["phases"][1]["id"] = "P1"
+        with self.assertRaises(ValueError): calculate_progress(b)
