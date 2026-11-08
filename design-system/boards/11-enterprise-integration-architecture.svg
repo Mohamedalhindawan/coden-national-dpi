@@ -4,7 +4,9 @@
  <linearGradient id="blue" x1="0" x2="1"><stop stop-color="#1769AA"/><stop offset="1" stop-color="#2389C9"/></linearGradient>
  <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#10243E" flood-opacity=".10"/></filter>
  <style>
- .h1{font:700 38px Arial,sans-serif;fill:#10243E}.sub{font:18px Arial,sans-serif;fill:#60758A}.section{font:700 20px Arial,sans-serif;fill:#10243E}.label{font:700 17px Arial,sans-serif;fill:#173A5E}.body{font:15px Arial,sans-serif;fill:#536B80}.small{font:13px Arial,sans-serif;fill:#6B8093}.white{fill:#fff}.line{stroke:#8AA4B8;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}.card{fill:#fff;stroke:#D8E4EC;stroke-width:1.5}
+ text{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
+
+ .h1{font:700 38px Arial,sans-serif;fill:#10243E}.sub{font:18px Arial,sans-serif;fill:#526B80}.section{font:700 20px Arial,sans-serif;fill:#10243E}.label{font:700 17px Arial,sans-serif;fill:#173A5E}.body{font:15px Arial,sans-serif;fill:#536B80}.small{font:13px Arial,sans-serif;fill:#526B80}.white{fill:#fff}.line{stroke:#8AA4B8;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}.card{fill:#fff;stroke:#D8E4EC;stroke-width:1.5}
  </style>
 </defs>
 <rect width="1920" height="1080" fill="#F5F8FB"/>
@@ -33,7 +35,7 @@
 <!-- integration backbone -->
 <rect x="72" y="386" width="1776" height="170" rx="18" fill="url(#navy)" filter="url(#shadow)"/>
 <text x="104" y="425" style="font:700 22px Arial;fill:#fff">02  GOVERNED INTEGRATION BACKBONE</text>
-<text x="104" y="451" style="font:14px Arial;fill:#B9D1E3">Central policy and observability; distributed ownership remains with each source system</text>
+<text x="104" y="451" style="font:15px Arial;fill:#B9D1E3">Central policy and observability; distributed ownership remains with each source system</text>
 <g>
  <rect x="104" y="470" width="300" height="64" rx="10" fill="#fff"/><text x="254" y="496" text-anchor="middle" class="label">API MANAGEMENT</text><text x="254" y="518" text-anchor="middle" class="small">Gateway • Catalog • Developer portal</text>
  <rect x="428" y="470" width="300" height="64" rx="10" fill="#EAF5FA"/><text x="578" y="496" text-anchor="middle" class="label">IDENTITY &amp; TRUST</text><text x="578" y="518" text-anchor="middle" class="small">OAuth2/OIDC • mTLS • Federation</text>
