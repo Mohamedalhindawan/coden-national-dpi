@@ -1,0 +1,27 @@
+{
+  "$schema": "https://design-tokens.github.io/community-group/format/",
+  "name": "CODEN",
+  "status": "draft-provisional",
+  "description": "Approximate starting palette inferred from the owner-approved CODEN reference image. Not final brand color specifications.",
+  "color": {
+    "brand": {
+      "navy": { "value": "#0B2D4A", "status": "provisional", "usage": "Primary headings, dark panels, navigation" },
+      "blue": { "value": "#0878C9", "status": "provisional", "usage": "Primary diagrams, links, emphasis" },
+      "turquoise": { "value": "#00BFA6", "status": "provisional", "usage": "Accent, highlights, positive flow" },
+      "sky": { "value": "#E8F4FA", "status": "provisional", "usage": "Soft information panels" }
+    },
+    "neutral": {
+      "white": { "value": "#FFFFFF", "status": "baseline", "usage": "Document canvas" },
+      "ink": { "value": "#142536", "status": "provisional", "usage": "Body text" },
+      "muted": { "value": "#607080", "status": "provisional", "usage": "Captions and secondary text" },
+      "line": { "value": "#D7E1E8", "status": "provisional", "usage": "Dividers and borders" },
+      "surface": { "value": "#F4F8FA", "status": "provisional", "usage": "Subtle card backgrounds" }
+    },
+    "status": {
+      "success": { "value": "#16865B", "status": "provisional" },
+      "warning": { "value": "#C58A20", "status": "provisional" },
+      "danger": { "value": "#C74343", "status": "provisional" },
+      "info": { "value": "#0878C9", "status": "provisional" }
+    }
+  }
+}
