@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+<defs><linearGradient id="n" x1="0" x2="1"><stop stop-color="#10243E"/><stop offset="1" stop-color="#1B456B"/></linearGradient><filter id="s" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#10243E" flood-opacity=".10"/></filter><style>
+.h{font:700 38px Arial;fill:#10243E}.sub{font:18px Arial;fill:#60758A}.sec{font:700 20px Arial;fill:#10243E}.lab{font:700 16px Arial;fill:#173A5E}.body{font:14px Arial;fill:#536B80}.sm{font:12px Arial;fill:#6B8093}.card{fill:#fff;stroke:#D8E4EC;stroke-width:1.5}.ln{stroke:#8AA4B8;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}</style></defs>
+<rect width="1920" height="1080" fill="#F5F8FB"/><rect width="1920" height="12" fill="#20A6B2"/>
+<text x="72" y="82" class="h">CODEN | AI WORKFORCE &amp; AGENT ORGANIZATION</text><text x="74" y="116" class="sub">Human accountability • Specialized AI squads • Governed execution • Evidence-based quality</text>
+<rect x="1510" y="48" width="338" height="48" rx="24" fill="#E8F4F7" stroke="#8CCBD0"/><text x="1679" y="78" text-anchor="middle" style="font:700 15px Arial;fill:#147A85;letter-spacing:1px">TARGET STATE • CONCEPTUAL</text>
+<text x="72" y="176" class="sec">01  HUMAN LEADERSHIP &amp; ACCOUNTABILITY</text>
+<g filter="url(#s)"><rect x="72" y="198" width="1776" height="118" rx="16" class="card"/></g>
+<g>
+<rect x="98" y="220" width="300" height="74" rx="10" fill="#EAF2F8" stroke="#C7D9E6"/><text x="248" y="249" text-anchor="middle" class="lab">EXECUTIVE SPONSORSHIP</text><text x="248" y="274" text-anchor="middle" class="sm">Strategy • Mandate • Risk appetite</text>
+<path d="M398 257 H440" class="ln"/><path d="M430 249 L442 257 L430 265" class="ln"/>
+<rect x="444" y="220" width="300" height="74" rx="10" fill="#EAF2F8" stroke="#C7D9E6"/><text x="594" y="249" text-anchor="middle" class="lab">HUMAN PRODUCT / SERVICE OWNERS</text><text x="594" y="274" text-anchor="middle" class="sm">Priorities • Acceptance • Outcomes</text>
+<path d="M744 257 H786" class="ln"/><path d="M776 249 L788 257 L776 265" class="ln"/>
+<rect x="790" y="220" width="340" height="74" rx="10" fill="#DDF3F1" stroke="#9ED7D2"/><text x="960" y="249" text-anchor="middle" class="lab">AI WORKFORCE CONTROL PLANE</text><text x="960" y="274" text-anchor="middle" class="sm">Policy • Identity • Routing • Audit</text>
+<path d="M1130 257 H1172" class="ln"/><path d="M1162 249 L1174 257 L1162 265" class="ln"/>
+<rect x="1176" y="220" width="300" height="74" rx="10" fill="#EAF2F8" stroke="#C7D9E6"/><text x="1326" y="249" text-anchor="middle" class="lab">HUMAN REVIEW &amp; APPROVAL</text><text x="1326" y="274" text-anchor="middle" class="sm">Risk gates • Release • Exceptions</text>
+<path d="M1476 257 H1518" class="ln"/><path d="M1508 249 L1520 257 L1508 265" class="ln"/>
+<rect x="1522" y="220" width="294" height="74" rx="10" fill="#EAF2F8" stroke="#C7D9E6"/><text x="1669" y="249" text-anchor="middle" class="lab">ASSURANCE &amp; AUDIT</text><text x="1669" y="274" text-anchor="middle" class="sm">Independent checks • Evidence</text>
+</g>
+<text x="72" y="368" class="sec">02  SPECIALIST AI SQUADS — EXAMPLE ORGANIZATION</text>
+<rect x="72" y="390" width="1776" height="286" rx="18" fill="url(#n)" filter="url(#s)"/>
+<text x="104" y="430" style="font:700 21px Arial;fill:#fff">MISSION-ALIGNED AGENT TEAMS</text><text x="104" y="455" style="font:14px Arial;fill:#C4D8E7">Agents operate with scoped identities, bounded tools, explicit tasks and measurable output contracts</text>
+<g>
+<rect x="104" y="482" width="390" height="78" rx="10" fill="#fff"/><text x="299" y="512" text-anchor="middle" class="lab">01  DISCOVERY &amp; PRODUCT</text><text x="299" y="537" text-anchor="middle" class="sm">Research • Requirements • UX • Product analysis</text>
+<rect x="520" y="482" width="390" height="78" rx="10" fill="#EAF5FA"/><text x="715" y="512" text-anchor="middle" class="lab">02  ARCHITECTURE &amp; DESIGN</text><text x="715" y="537" text-anchor="middle" class="sm">Solution design • Data • API • Threat modeling</text>
+<rect x="936" y="482" width="390" height="78" rx="10" fill="#EAF5FA"/><text x="1131" y="512" text-anchor="middle" class="lab">03  ENGINEERING &amp; INTEGRATION</text><text x="1131" y="537" text-anchor="middle" class="sm">Frontend • Backend • Platform • Adapters</text>
+<rect x="1352" y="482" width="464" height="78" rx="10" fill="#DDF3F1"/><text x="1584" y="512" text-anchor="middle" class="lab">04  QUALITY &amp; SECURITY</text><text x="1584" y="537" text-anchor="middle" class="sm">Testing • AppSec • Compliance • Accessibility</text>
+<rect x="104" y="576" width="390" height="78" rx="10" fill="#EAF5FA"/><text x="299" y="606" text-anchor="middle" class="lab">05  DELIVERY &amp; OPERATIONS</text><text x="299" y="631" text-anchor="middle" class="sm">CI/CD • SRE • Release • Incident support</text>
+<rect x="520" y="576" width="390" height="78" rx="10" fill="#EAF5FA"/><text x="715" y="606" text-anchor="middle" class="lab">06  DATA &amp; INTELLIGENCE</text><text x="715" y="631" text-anchor="middle" class="sm">Data quality • Analytics • Knowledge retrieval</text>
+<rect x="936" y="576" width="390" height="78" rx="10" fill="#EAF5FA"/><text x="1131" y="606" text-anchor="middle" class="lab">07  FINOPS &amp; VENDOR INTELLIGENCE</text><text x="1131" y="631" text-anchor="middle" class="sm">Cost analysis • Capacity • Procurement support</text>
+<rect x="1352" y="576" width="464" height="78" rx="10" fill="#EAF5FA"/><text x="1584" y="606" text-anchor="middle" class="lab">08  KNOWLEDGE &amp; IMPROVEMENT</text><text x="1584" y="631" text-anchor="middle" class="sm">Documentation • Evaluation • Learning loops</text>
+</g>
+<text x="72" y="730" class="sec">03  CONTROLLED AGENT EXECUTION LIFECYCLE</text>
+<g filter="url(#s)"><rect x="72" y="752" width="1776" height="104" rx="16" class="card"/></g>
+<g>
+<rect x="96" y="774" width="245" height="62" rx="9" fill="#EDF4FA"/><text x="218" y="799" text-anchor="middle" class="lab">TASK &amp; CONTEXT</text><text x="218" y="820" text-anchor="middle" class="sm">Scope • Owner • Acceptance</text>
+<path d="M341 805 H382" class="ln"/><path d="M372 797 L384 805 L372 813" class="ln"/>
+<rect x="386" y="774" width="245" height="62" rx="9" fill="#EDF4FA"/><text x="508" y="799" text-anchor="middle" class="lab">POLICY CHECK</text><text x="508" y="820" text-anchor="middle" class="sm">Identity • Permissions • Risk</text>
+<path d="M631 805 H672" class="ln"/><path d="M662 797 L674 805 L662 813" class="ln"/>
+<rect x="676" y="774" width="245" height="62" rx="9" fill="#EDF4FA"/><text x="798" y="799" text-anchor="middle" class="lab">EXECUTE IN SANDBOX</text><text x="798" y="820" text-anchor="middle" class="sm">Scoped tools • Limits • Logs</text>
+<path d="M921 805 H962" class="ln"/><path d="M952 797 L964 805 L952 813" class="ln"/>
+<rect x="966" y="774" width="245" height="62" rx="9" fill="#EDF4FA"/><text x="1088" y="799" text-anchor="middle" class="lab">VERIFY EVIDENCE</text><text x="1088" y="820" text-anchor="middle" class="sm">Tests • Review • Traceability</text>
+<path d="M1211 805 H1252" class="ln"/><path d="M1242 797 L1254 805 L1242 813" class="ln"/>
+<rect x="1256" y="774" width="245" height="62" rx="9" fill="#DDF3F1"/><text x="1378" y="799" text-anchor="middle" class="lab">HUMAN GATE</text><text x="1378" y="820" text-anchor="middle" class="sm">Approve sensitive actions</text>
+<path d="M1501 805 H1542" class="ln"/><path d="M1532 797 L1544 805 L1532 813" class="ln"/>
+<rect x="1546" y="774" width="270" height="62" rx="9" fill="#EDF4FA"/><text x="1681" y="799" text-anchor="middle" class="lab">RECORD &amp; LEARN</text><text x="1681" y="820" text-anchor="middle" class="sm">Audit • Metrics • Evaluation</text>
+</g>
+<rect x="72" y="884" width="1776" height="108" rx="16" fill="#EAF1F6" stroke="#C9D9E4"/>
+<text x="104" y="919" class="sec">04  NON-NEGOTIABLE CONTROL BOUNDARIES</text>
+<text x="104" y="955" class="lab">Least privilege</text><text x="270" y="955" class="sm">Per-agent identity and minimum permissions</text>
+<text x="650" y="955" class="lab">Human accountability</text><text x="840" y="955" class="sm">People own decisions, impact and acceptance</text>
+<text x="1240" y="955" class="lab">Kill switch</text><text x="1350" y="955" class="sm">Revoke credentials, stop runs, rollback safely</text>
+<text x="72" y="1034" class="sm">DESIGN PRINCIPLE: AI agents produce work; accountable humans authorize high-impact decisions and remain responsible for outcomes.</text><text x="1848" y="1034" text-anchor="end" class="sm">CODEN • ARCHITECTURE SERIES 14</text>
+</svg>
