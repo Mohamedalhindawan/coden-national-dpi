@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+<defs><linearGradient id="n" x1="0" x2="1"><stop stop-color="#10243E"/><stop offset="1" stop-color="#1B456B"/></linearGradient><filter id="s" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#10243E" flood-opacity=".10"/></filter><style>
+.h{font:700 38px Arial;fill:#10243E}.sub{font:18px Arial;fill:#60758A}.sec{font:700 20px Arial;fill:#10243E}.lab{font:700 16px Arial;fill:#173A5E}.body{font:14px Arial;fill:#536B80}.sm{font:12px Arial;fill:#6B8093}.card{fill:#fff;stroke:#D8E4EC;stroke-width:1.5}.ln{stroke:#8AA4B8;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}</style></defs>
+<rect width="1920" height="1080" fill="#F5F8FB"/><rect width="1920" height="12" fill="#20A6B2"/>
+<text x="72" y="82" class="h">CODEN | ENTERPRISE MASTER ARCHITECTURE &amp; LIFECYCLE</text><text x="74" y="116" class="sub">One coherent enterprise blueprint • Governed transition • Product delivery • Operate, measure and evolve</text>
+<rect x="1510" y="48" width="338" height="48" rx="24" fill="#E8F4F7" stroke="#8CCBD0"/><text x="1679" y="78" text-anchor="middle" style="font:700 15px Arial;fill:#147A85;letter-spacing:1px">TARGET STATE • CONCEPTUAL</text>
+<text x="72" y="176" class="sec">01  ENTERPRISE NORTH STAR &amp; ARCHITECTURE DOMAINS</text>
+<g filter="url(#s)"><rect x="72" y="198" width="1776" height="122" rx="16" class="card"/></g>
+<rect x="96" y="220" width="340" height="78" rx="10" fill="#EAF2F8" stroke="#C7D9E6"/><text x="266" y="249" text-anchor="middle" class="lab">MISSION &amp; PUBLIC VALUE</text><text x="266" y="275" text-anchor="middle" class="sm">National digital capability • Trust • Inclusion</text>
+<path d="M436 259 H478" class="ln"/><path d="M468 251 L480 259 L468 267" class="ln"/>
+<rect x="482" y="220" width="340" height="78" rx="10" fill="#EAF2F8" stroke="#C7D9E6"/><text x="652" y="249" text-anchor="middle" class="lab">BUSINESS &amp; OPERATING MODEL</text><text x="652" y="275" text-anchor="middle" class="sm">Capabilities • Products • Partners • People</text>
+<path d="M822 259 H864" class="ln"/><path d="M854 251 L866 259 L854 267" class="ln"/>
+<rect x="868" y="220" width="340" height="78" rx="10" fill="#DDF3F1" stroke="#9ED7D2"/><text x="1038" y="249" text-anchor="middle" class="lab">MASTER ARCHITECTURE</text><text x="1038" y="275" text-anchor="middle" class="sm">Business • Data • Apps • Technology • AI</text>
+<path d="M1208 259 H1250" class="ln"/><path d="M1240 251 L1252 259 L1240 267" class="ln"/>
+<rect x="1254" y="220" width="568" height="78" rx="10" fill="#EAF2F8" stroke="#C7D9E6"/><text x="1538" y="249" text-anchor="middle" class="lab">TRANSITION ROADMAP &amp; VALUE REALIZATION</text><text x="1538" y="275" text-anchor="middle" class="sm">Sequencing • Funding • Dependencies • Outcomes</text>
+
+<text x="72" y="372" class="sec">02  CODEN ENTERPRISE CAPABILITY MAP</text>
+<rect x="72" y="394" width="1776" height="244" rx="18" fill="url(#n)" filter="url(#s)"/>
+<text x="104" y="434" style="font:700 21px Arial;fill:#fff">INTEGRATED ENTERPRISE PLATFORM</text><text x="104" y="459" style="font:14px Arial;fill:#C4D8E7">Four operating engines underpin shared DPI capabilities and the product portfolio</text>
+<g>
+<rect x="104" y="486" width="390" height="96" rx="10" fill="#fff"/><text x="299" y="518" text-anchor="middle" class="lab">AI ENTERPRISE OPERATING SYSTEM</text><text x="299" y="545" text-anchor="middle" class="sm">Governance • Knowledge • Workflow • Agents</text><text x="299" y="564" text-anchor="middle" class="sm">Portfolio • Risk • Decision intelligence</text>
+<rect x="520" y="486" width="390" height="96" rx="10" fill="#EAF5FA"/><text x="715" y="518" text-anchor="middle" class="lab">AI ENGINEERING FACTORY</text><text x="715" y="545" text-anchor="middle" class="sm">Discovery • Design • Build • Test • Release</text><text x="715" y="564" text-anchor="middle" class="sm">DevSecOps • Quality • Supply chain</text>
+<rect x="936" y="486" width="390" height="96" rx="10" fill="#EAF5FA"/><text x="1131" y="518" text-anchor="middle" class="lab">CONTINUOUS IMPROVEMENT ENGINE</text><text x="1131" y="545" text-anchor="middle" class="sm">SRE • FinOps • Evaluation • Optimization</text><text x="1131" y="564" text-anchor="middle" class="sm">Reliability • Performance • Learning</text>
+<rect x="1352" y="486" width="464" height="96" rx="10" fill="#DDF3F1"/><text x="1584" y="518" text-anchor="middle" class="lab">KNOWLEDGE &amp; INTELLIGENCE</text><text x="1584" y="545" text-anchor="middle" class="sm">Enterprise knowledge • Data governance</text><text x="1584" y="564" text-anchor="middle" class="sm">Analytics • Search • Evidence</text>
+<rect x="104" y="596" width="1712" height="26" rx="8" fill="#DCEAF2"/><text x="960" y="614" text-anchor="middle" style="font:700 13px Arial;fill:#234B6B">SHARED DIGITAL PLATFORM: Identity • Interoperability • Payments • Registries • Consent • Messaging • Security • Observability • FinOps</text>
+</g>
+
+<text x="72" y="694" class="sec">03  ARCHITECTURE-TO-DELIVERY LIFECYCLE</text>
+<g filter="url(#s)"><rect x="72" y="716" width="1776" height="132" rx="16" class="card"/></g>
+<g>
+<rect x="94" y="741" width="220" height="82" rx="10" fill="#EDF4FA"/><text x="204" y="770" text-anchor="middle" class="lab">VISION</text><text x="204" y="795" text-anchor="middle" class="sm">Outcomes • Principles</text>
+<path d="M314 782 H348" class="ln"/><path d="M338 774 L350 782 L338 790" class="ln"/>
+<rect x="352" y="741" width="220" height="82" rx="10" fill="#EDF4FA"/><text x="462" y="770" text-anchor="middle" class="lab">BASELINE</text><text x="462" y="795" text-anchor="middle" class="sm">Inventory • Capability gaps</text>
+<path d="M572 782 H606" class="ln"/><path d="M596 774 L608 782 L596 790" class="ln"/>
+<rect x="610" y="741" width="220" height="82" rx="10" fill="#EDF4FA"/><text x="720" y="770" text-anchor="middle" class="lab">TARGET DESIGN</text><text x="720" y="795" text-anchor="middle" class="sm">Options • Standards • Risks</text>
+<path d="M830 782 H864" class="ln"/><path d="M854 774 L866 782 L854 790" class="ln"/>
+<rect x="868" y="741" width="220" height="82" rx="10" fill="#DDF3F1"/><text x="978" y="770" text-anchor="middle" class="lab">TRANSITION</text><text x="978" y="795" text-anchor="middle" class="sm">Roadmap • Funding • Gates</text>
+<path d="M1088 782 H1122" class="ln"/><path d="M1112 774 L1124 782 L1112 790" class="ln"/>
+<rect x="1126" y="741" width="220" height="82" rx="10" fill="#EDF4FA"/><text x="1236" y="770" text-anchor="middle" class="lab">DELIVER</text><text x="1236" y="795" text-anchor="middle" class="sm">Products • DPI • Integration</text>
+<path d="M1346 782 H1380" class="ln"/><path d="M1370 774 L1382 782 L1370 790" class="ln"/>
+<rect x="1384" y="741" width="220" height="82" rx="10" fill="#EDF4FA"/><text x="1494" y="770" text-anchor="middle" class="lab">OPERATE</text><text x="1494" y="795" text-anchor="middle" class="sm">SRE • Security • Support</text>
+<path d="M1604 782 H1638" class="ln"/><path d="M1628 774 L1640 782 L1628 790" class="ln"/>
+<rect x="1642" y="741" width="174" height="82" rx="10" fill="#EDF4FA"/><text x="1729" y="770" text-anchor="middle" class="lab">EVOLVE</text><text x="1729" y="795" text-anchor="middle" class="sm">Measure • Learn</text>
+</g>
+
+<rect x="72" y="876" width="1776" height="116" rx="16" fill="#EAF1F6" stroke="#C9D9E4"/>
+<text x="104" y="911" class="sec">04  MASTER CONTROL &amp; TRACEABILITY</text>
+<text x="104" y="949" class="lab">Single source of truth</text><text x="282" y="949" class="sm">Versioned architecture repository and linked decision records</text>
+<text x="720" y="949" class="lab">Traceability</text><text x="842" y="949" class="sm">Strategy → capability → product → component → control → KPI</text>
+<text x="1385" y="949" class="lab">Change control</text><text x="1515" y="949" class="sm">Owners • Reviews • Retirement</text>
+<text x="72" y="1034" class="sm">DESIGN PRINCIPLE: One governed enterprise blueprint, many independently delivered products; evolve through evidence, explicit ownership and controlled transitions.</text><text x="1848" y="1034" text-anchor="end" class="sm">CODEN • ARCHITECTURE SERIES 15</text>
+</svg>
