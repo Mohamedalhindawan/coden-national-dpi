@@ -22,7 +22,7 @@
 <g filter="url(#shadow)"><rect x="76" y="180" width="1768" height="100" rx="16" fill="url(#navy)"/></g>
 <text x="104" y="217" class="section">01  PRODUCT INTAKE &amp; DISCOVERY</text>
 <text x="104" y="249" class="white" font-size="16">Problem statement · User needs · Service owner · Business value · Constraints · Success measures</text>
-<g transform="translate(1438 200)"><rect width="370" height="58" rx="10" fill="#244F6D" stroke="#5D829B"/><text x="185" y="24" text-anchor="middle" class="white" font-size="14" font-weight="700">HUMAN PRODUCT OWNER</text><text x="185" y="44" text-anchor="middle" class="white" font-size="12">Prioritizes and accepts outcomes</text></g>
+<g transform="translate(1438 200)"><rect width="370" height="58" rx="10" fill="#244F6D" stroke="#5D829B"/><text x="185" y="24" text-anchor="middle" class="white" font-size="14" font-weight="700">HUMAN PRODUCT OWNER</text><text x="185" y="44" text-anchor="middle" class="white" font-size="13">Prioritizes and accepts outcomes</text></g>
 <!-- specification -->
 <text x="76" y="326" class="eyebrow">02  SPECIFICATION &amp; PLANNING</text>
 <g filter="url(#shadow)">
