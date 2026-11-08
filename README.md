@@ -3,12 +3,12 @@
 AI-Native Open-Source National Digital Public Infrastructure for Yemen.
 
 ## Project status
-
 CODEN / YDS / Tamam is a proposal and prototype, not an approved national production system. Use synthetic data only. No real beneficiary records or payment decisions belong in the current demo.
 
 ## Start here
 
 - [**Master engineering playbook**](CODEN_MASTER_ENGINEERING_PLAYBOOK.md) — full vision, 31-sector/DPI scope, workflow, and status
+- [CODEN Visual Documentation & Design Skills](skills/visual-documentation/README.md) — brand identity, enterprise document design, architecture diagrams, dashboards, visual QA, accessibility, and PDF production
 - [Project overview](docs/PROJECT_OVERVIEW.md)
 - [Open-source reuse assessment](docs/OPEN_SOURCE_REUSE_ASSESSMENT.md)
 - [Open-source reuse register and integration gates](docs/OPEN_SOURCE_REUSE_REGISTER.md)
