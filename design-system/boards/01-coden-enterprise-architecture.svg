@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" role="img" aria-labelledby="title desc">
+<title id="title">CODEN Enterprise Architecture — Target Operating Model</title>
+<desc id="desc">Conceptual target architecture showing governance, four enterprise engines, shared platform capabilities, products and external ecosystem, with cross-cutting trust controls and human approval.</desc>
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#F7FAFE"/><stop offset="1" stop-color="#EDF4FA"/></linearGradient>
+  <linearGradient id="navy" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#102A43"/><stop offset="1" stop-color="#173F5F"/></linearGradient>
+  <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#102A43" flood-opacity=".10"/></filter>
+  <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10Z" fill="#3984B8"/></marker>
+  <marker id="arrow2" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10Z" fill="#18A6A6"/></marker>
+  <style>
+    text{font-family:Inter,Arial,sans-serif;fill:#18364F}
+    .eyebrow{font-size:15px;font-weight:700;letter-spacing:2.2px;fill:#5B7891}
+    .h1{font-size:39px;font-weight:750;fill:#102A43}
+    .sub{font-size:18px;fill:#567188}
+    .section{font-size:17px;font-weight:750;letter-spacing:1.2px;fill:#fff}
+    .cardtitle{font-size:20px;font-weight:750;fill:#153B59}
+    .body{font-size:15px;fill:#46647D}
+    .small{font-size:13px;fill:#607D94}
+    .tag{font-size:12px;font-weight:700;letter-spacing:1px}
+    .white{fill:#fff}
+    .line{fill:none;stroke:#3984B8;stroke-width:3;marker-end:url(#arrow)}
+    .line2{fill:none;stroke:#18A6A6;stroke-width:3;marker-end:url(#arrow2)}
+  </style>
+</defs>
+<rect width="1920" height="1080" fill="url(#bg)"/>
+<rect x="0" y="0" width="1920" height="12" fill="#19A6A6"/>
+<!-- Header -->
+<text x="76" y="58" class="eyebrow">CODEN  /  ENTERPRISE ARCHITECTURE SERIES</text>
+<text x="76" y="112" class="h1">Enterprise Architecture</text>
+<text x="76" y="146" class="sub">A unified AI-native operating and engineering model for national digital public infrastructure</text>
+<g transform="translate(1510 48)">
+  <rect width="334" height="74" rx="14" fill="#E5F1F8" stroke="#B8D3E5"/>
+  <text x="22" y="29" class="tag" fill="#176A91">ARCHITECTURE VIEW</text>
+  <text x="22" y="54" font-size="18" font-weight="750" fill="#153B59">TARGET STATE · CONCEPTUAL</text>
+</g>
+<!-- governance band -->
+<g filter="url(#shadow)">
+ <rect x="76" y="180" width="1768" height="112" rx="18" fill="url(#navy)"/>
+</g>
+<text x="106" y="216" class="section">01  GOVERNANCE &amp; HUMAN OVERSIGHT</text>
+<text x="106" y="251" font-size="17" class="white">Strategy · Architecture principles · Portfolio priorities · Risk ownership · Stage gates</text>
+<g transform="translate(1332 203)">
+ <rect width="220" height="56" rx="10" fill="#244F6D" stroke="#5D829B"/>
+ <text x="110" y="23" text-anchor="middle" class="white" font-size="14" font-weight="700">ACCOUNTABLE OWNER</text>
+ <text x="110" y="42" text-anchor="middle" class="white" font-size="12">Business + technical</text>
+</g>
+<g transform="translate(1570 203)">
+ <rect width="238" height="56" rx="10" fill="#0E777C" stroke="#49C1BE"/>
+ <text x="119" y="23" text-anchor="middle" class="white" font-size="14" font-weight="700">HUMAN APPROVAL</text>
+ <text x="119" y="42" text-anchor="middle" class="white" font-size="12">High-impact decisions</text>
+</g>
+<!-- control plane -->
+<g filter="url(#shadow)">
+ <rect x="76" y="322" width="1768" height="92" rx="16" fill="#E1F4F3" stroke="#79C9C5" stroke-width="2"/>
+</g>
+<text x="104" y="356" font-size="17" font-weight="750" fill="#087C80">02  AI ENTERPRISE CONTROL PLANE</text>
+<text x="104" y="385" class="body">Agent registry &amp; identity</text>
+<text x="380" y="385" class="body">Task orchestration &amp; routing</text>
+<text x="700" y="385" class="body">Policy enforcement</text>
+<text x="944" y="385" class="body">Evaluation &amp; observability</text>
+<text x="1250" y="385" class="body">Human-in-the-loop gates</text>
+<text x="1575" y="385" class="body">Audit trail</text>
+<!-- engines -->
+<text x="76" y="456" class="eyebrow">03  FOUR ENTERPRISE ENGINES</text>
+<g filter="url(#shadow)">
+ <rect x="76" y="478" width="414" height="204" rx="16" fill="#fff" stroke="#B9D3E4" stroke-width="2"/>
+ <rect x="506" y="478" width="414" height="204" rx="16" fill="#fff" stroke="#B9D3E4" stroke-width="2"/>
+ <rect x="936" y="478" width="414" height="204" rx="16" fill="#fff" stroke="#B9D3E4" stroke-width="2"/>
+ <rect x="1366" y="478" width="478" height="204" rx="16" fill="#fff" stroke="#B9D3E4" stroke-width="2"/>
+</g>
+<g>
+ <rect x="76" y="478" width="414" height="10" rx="5" fill="#236A9B"/>
+ <text x="104" y="529" class="cardtitle">AI Enterprise OS</text>
+ <text x="104" y="560" class="body">Operating model · Portfolio</text>
+ <text x="104" y="585" class="body">Workforce · Policies · KPIs</text>
+ <text x="104" y="635" class="tag" fill="#236A9B">MANAGE THE ENTERPRISE</text>
+ <rect x="506" y="478" width="414" height="10" rx="5" fill="#18A6A6"/>
+ <text x="534" y="529" class="cardtitle">AI Engineering Factory</text>
+ <text x="534" y="560" class="body">Discover · Specify · Build</text>
+ <text x="534" y="585" class="body">Test · Secure · Release</text>
+ <text x="534" y="635" class="tag" fill="#087C80">ENGINEER DIGITAL PRODUCTS</text>
+ <rect x="936" y="478" width="414" height="10" rx="5" fill="#4B78A8"/>
+ <text x="964" y="529" class="cardtitle">Continuous Improvement</text>
+ <text x="964" y="560" class="body">Telemetry · Feedback · Incidents</text>
+ <text x="964" y="585" class="body">Experiments · Learning loops</text>
+ <text x="964" y="635" class="tag" fill="#315E8A">IMPROVE RELIABILITY &amp; VALUE</text>
+ <rect x="1366" y="478" width="478" height="10" rx="5" fill="#6A83A0"/>
+ <text x="1394" y="529" class="cardtitle">Knowledge &amp; Intelligence</text>
+ <text x="1394" y="560" class="body">Enterprise knowledge · Standards</text>
+ <text x="1394" y="585" class="body">DPG/DPI registry · Search · Evidence</text>
+ <text x="1394" y="635" class="tag" fill="#496681">GROUND DECISIONS IN EVIDENCE</text>
+</g>
+<!-- shared platform -->
+<g filter="url(#shadow)">
+ <rect x="76" y="714" width="1768" height="112" rx="16" fill="#EAF1F7" stroke="#B6CADA" stroke-width="2"/>
+</g>
+<text x="104" y="748" font-size="17" font-weight="750" fill="#234F70">04  SHARED DIGITAL PLATFORM &amp; ENGINEERING FOUNDATIONS</text>
+<g font-size="14" font-weight="650" fill="#315E7C">
+ <rect x="104" y="768" width="190" height="38" rx="8" fill="#fff" stroke="#C5D7E3"/><text x="199" y="792" text-anchor="middle">Identity &amp; Access</text>
+ <rect x="306" y="768" width="190" height="38" rx="8" fill="#fff" stroke="#C5D7E3"/><text x="401" y="792" text-anchor="middle">API &amp; Integration</text>
+ <rect x="508" y="768" width="190" height="38" rx="8" fill="#fff" stroke="#C5D7E3"/><text x="603" y="792" text-anchor="middle">Data &amp; Interoperability</text>
+ <rect x="710" y="768" width="190" height="38" rx="8" fill="#fff" stroke="#C5D7E3"/><text x="805" y="792" text-anchor="middle">Payments &amp; Messaging</text>
+ <rect x="912" y="768" width="190" height="38" rx="8" fill="#fff" stroke="#C5D7E3"/><text x="1007" y="792" text-anchor="middle">DevSecOps &amp; CI/CD</text>
+ <rect x="1114" y="768" width="190" height="38" rx="8" fill="#fff" stroke="#C5D7E3"/><text x="1209" y="792" text-anchor="middle">Cloud &amp; Runtime</text>
+ <rect x="1316" y="768" width="190" height="38" rx="8" fill="#fff" stroke="#C5D7E3"/><text x="1411" y="792" text-anchor="middle">Security &amp; Privacy</text>
+ <rect x="1518" y="768" width="290" height="38" rx="8" fill="#fff" stroke="#C5D7E3"/><text x="1663" y="792" text-anchor="middle">Observability &amp; Resilience</text>
+</g>
+<!-- products -->
+<text x="76" y="876" class="eyebrow">05  PRODUCTS, SERVICES &amp; ECOSYSTEM</text>
+<g filter="url(#shadow)">
+ <rect x="76" y="898" width="1090" height="94" rx="15" fill="#fff" stroke="#AFC9D9" stroke-width="2"/>
+ <rect x="1190" y="898" width="654" height="94" rx="15" fill="#fff" stroke="#AFC9D9" stroke-width="2"/>
+</g>
+<text x="104" y="934" class="cardtitle">CODEN-built products</text>
+<text x="104" y="964" class="body">TAMAM · Government &amp; sector platforms · Reusable national digital components</text>
+<text x="1218" y="934" class="cardtitle">External ecosystem</text>
+<text x="1218" y="964" class="body">Government entities · SFD &amp; partners · DPGs · Donors · Private sector</text>
+<!-- connectors -->
+<path d="M960 292 V322" class="line2"/>
+<path d="M960 414 V454" class="line2"/>
+<path d="M283 682 V714 M713 682 V714 M1143 682 V714 M1605 682 V714" fill="none" stroke="#3984B8" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M960 826 V878" class="line"/>
+<path d="M620 945 H1175" fill="none" stroke="#18A6A6" stroke-width="2.5" stroke-dasharray="8 7" marker-end="url(#arrow2)"/>
+<!-- footer -->
+<line x1="76" y1="1020" x2="1844" y2="1020" stroke="#C5D6E1" stroke-width="1.5"/>
+<text x="76" y="1050" class="small">FIG. 01  ·  CODEN ENTERPRISE ARCHITECTURE</text>
+<text x="960" y="1050" text-anchor="middle" class="small">Target-state reference · Conceptual design · Not a claim of deployed production capability</text>
+<text x="1844" y="1050" text-anchor="end" class="small">DRAFT 1.0  |  16:9 SVG MASTER</text>
+</svg>
