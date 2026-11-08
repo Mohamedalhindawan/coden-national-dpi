@@ -1,0 +1,52 @@
+# Proposed planning records, not verified phase completion.
+playbook_version: "4.0"
+status: draft
+phases:
+  - id: CODEN-P1
+    name: "Enterprise Foundation"
+    status: planned
+    accountable_owner: unassigned
+    evidence: []
+    exit_criteria_approved: false
+  - id: CODEN-P2
+    name: "AI-Native Foundation"
+    status: planned
+    accountable_owner: unassigned
+    evidence: []
+    exit_criteria_approved: false
+  - id: CODEN-P3
+    name: "AI Engineering Factory"
+    status: planned
+    accountable_owner: unassigned
+    evidence: []
+    exit_criteria_approved: false
+  - id: CODEN-P4
+    name: "Enterprise Intelligence"
+    status: planned
+    accountable_owner: unassigned
+    evidence: []
+    exit_criteria_approved: false
+  - id: CODEN-P5
+    name: "Product Engineering"
+    status: planned
+    accountable_owner: unassigned
+    evidence: []
+    exit_criteria_approved: false
+  - id: CODEN-P6
+    name: "DPI Engineering"
+    status: planned
+    accountable_owner: unassigned
+    evidence: []
+    exit_criteria_approved: false
+  - id: CODEN-P7
+    name: "Production Operations"
+    status: planned
+    accountable_owner: unassigned
+    evidence: []
+    exit_criteria_approved: false
+  - id: CODEN-P8
+    name: "National Delivery Readiness"
+    status: planned
+    accountable_owner: unassigned
+    evidence: []
+    exit_criteria_approved: false
