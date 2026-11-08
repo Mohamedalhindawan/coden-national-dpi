@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+<defs>
+ <linearGradient id="navy" x1="0" x2="1"><stop stop-color="#10243E"/><stop offset="1" stop-color="#1B456B"/></linearGradient>
+ <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#10243E" flood-opacity=".10"/></filter>
+ <style>
+ text{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
+
+ .h1{font:700 38px Arial,sans-serif;fill:#10243E}.sub{font:18px Arial,sans-serif;fill:#526B80}.section{font:700 20px Arial,sans-serif;fill:#10243E}.label{font:700 16px Arial,sans-serif;fill:#173A5E}.body{font:15px Arial,sans-serif;fill:#536B80}.small{font:13px Arial,sans-serif;fill:#526B80}.card{fill:#fff;stroke:#D8E4EC;stroke-width:1.5}.line{stroke:#8AA4B8;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+ </style>
+</defs>
+<rect width="1920" height="1080" fill="#F5F8FB"/><rect width="1920" height="12" fill="#20A6B2"/>
+<text x="72" y="82" class="h1">CODEN | ENTERPRISE ARCHITECTURE &amp; GOVERNANCE</text>
+<text x="74" y="116" class="sub">Strategic alignment • Architecture standards • Investment decisions • Controlled change</text>
+<rect x="1510" y="48" width="338" height="48" rx="24" fill="#E8F4F7" stroke="#8CCBD0"/><text x="1679" y="78" text-anchor="middle" style="font:700 15px Arial;fill:#147A85;letter-spacing:1px">TARGET STATE • CONCEPTUAL</text>
+
+<text x="72" y="176" class="section">01  STRATEGY, ACCOUNTABILITY &amp; DECISION RIGHTS</text>
+<g filter="url(#shadow)"><rect x="72" y="198" width="1776" height="138" rx="16" class="card"/></g>
+<g>
+ <rect x="94" y="220" width="310" height="92" rx="10" fill="#EAF2F8" stroke="#C7D9E6"/><text x="249" y="249" text-anchor="middle" class="label">BUSINESS &amp; PUBLIC VALUE</text><text x="249" y="274" text-anchor="middle" class="small">Mission • Outcomes • National priorities</text><text x="249" y="292" text-anchor="middle" class="small">User needs • Service performance</text>
+ <path d="M404 266 H444" class="line"/><path d="M434 258 L446 266 L434 274" class="line"/>
+ <rect x="448" y="220" width="310" height="92" rx="10" fill="#EAF2F8" stroke="#C7D9E6"/><text x="603" y="249" text-anchor="middle" class="label">EXECUTIVE GOVERNANCE</text><text x="603" y="274" text-anchor="middle" class="small">Mandate • Risk appetite • Funding</text><text x="603" y="292" text-anchor="middle" class="small">Accountability • Strategic priorities</text>
+ <path d="M758 266 H798" class="line"/><path d="M788 258 L800 266 L788 274" class="line"/>
+ <rect x="802" y="220" width="310" height="92" rx="10" fill="#DDF3F1" stroke="#9ED7D2"/><text x="957" y="249" text-anchor="middle" class="label">ARCHITECTURE GOVERNANCE</text><text x="957" y="274" text-anchor="middle" class="small">Principles • Standards • Exceptions</text><text x="957" y="292" text-anchor="middle" class="small">Design authority • Decision records</text>
+ <path d="M1112 266 H1152" class="line"/><path d="M1142 258 L1154 266 L1142 274" class="line"/>
+ <rect x="1156" y="220" width="310" height="92" rx="10" fill="#EAF2F8" stroke="#C7D9E6"/><text x="1311" y="249" text-anchor="middle" class="label">PORTFOLIO &amp; DELIVERY</text><text x="1311" y="274" text-anchor="middle" class="small">Roadmaps • Prioritization • Benefits</text><text x="1311" y="292" text-anchor="middle" class="small">Funding gates • Delivery assurance</text>
+ <path d="M1466 266 H1506" class="line"/><path d="M1496 258 L1508 266 L1496 274" class="line"/>
+ <rect x="1510" y="220" width="310" height="92" rx="10" fill="#EAF2F8" stroke="#C7D9E6"/><text x="1665" y="249" text-anchor="middle" class="label">ASSURANCE &amp; OVERSIGHT</text><text x="1665" y="274" text-anchor="middle" class="small">Security • Privacy • Audit</text><text x="1665" y="292" text-anchor="middle" class="small">Compliance • Independent review</text>
+</g>
+
+<text x="72" y="388" class="section">02  ENTERPRISE ARCHITECTURE DOMAINS</text>
+<rect x="72" y="410" width="1776" height="218" rx="18" fill="url(#navy)" filter="url(#shadow)"/>
+<text x="104" y="450" style="font:700 21px Arial;fill:#fff">SHARED ARCHITECTURE PRACTICE</text>
+<text x="104" y="475" style="font:15px Arial;fill:#C4D8E7">Connect strategy to delivery through consistent views, standards and traceable decisions</text>
+<g>
+ <rect x="104" y="500" width="390" height="100" rx="10" fill="#fff"/><text x="299" y="532" text-anchor="middle" class="label">BUSINESS ARCHITECTURE</text><text x="299" y="558" text-anchor="middle" class="small">Capabilities • Value streams • Services</text><text x="299" y="578" text-anchor="middle" class="small">Operating model • Stakeholders</text>
+ <rect x="520" y="500" width="390" height="100" rx="10" fill="#EAF5FA"/><text x="715" y="532" text-anchor="middle" class="label">DATA &amp; INFORMATION</text><text x="715" y="558" text-anchor="middle" class="small">Data ownership • Quality • Lineage</text><text x="715" y="578" text-anchor="middle" class="small">Privacy • Interoperability</text>
+ <rect x="936" y="500" width="390" height="100" rx="10" fill="#EAF5FA"/><text x="1131" y="532" text-anchor="middle" class="label">APPLICATION &amp; INTEGRATION</text><text x="1131" y="558" text-anchor="middle" class="small">Platforms • APIs • DPG reuse</text><text x="1131" y="578" text-anchor="middle" class="small">Lifecycle • Contracts</text>
+ <rect x="1352" y="500" width="464" height="100" rx="10" fill="#DDF3F1"/><text x="1584" y="532" text-anchor="middle" class="label">TECHNOLOGY &amp; SECURITY</text><text x="1584" y="558" text-anchor="middle" class="small">Infrastructure • Cloud • DevSecOps</text><text x="1584" y="578" text-anchor="middle" class="small">Resilience • Identity • AI governance</text>
+</g>
+
+<text x="72" y="682" class="section">03  ARCHITECTURE LIFECYCLE &amp; CONTROL GATES</text>
+<g filter="url(#shadow)"><rect x="72" y="706" width="1776" height="136" rx="16" class="card"/></g>
+<g>
+ <rect x="94" y="731" width="240" height="84" rx="10" fill="#EDF4FA" stroke="#C7D9E6"/><text x="214" y="760" text-anchor="middle" class="label">DISCOVER</text><text x="214" y="785" text-anchor="middle" class="small">Strategy • Baseline • Gaps</text>
+ <path d="M334 773 H372" class="line"/><path d="M362 765 L374 773 L362 781" class="line"/>
+ <rect x="376" y="731" width="240" height="84" rx="10" fill="#EDF4FA" stroke="#C7D9E6"/><text x="496" y="760" text-anchor="middle" class="label">DESIGN</text><text x="496" y="785" text-anchor="middle" class="small">Options • Principles • Target</text>
+ <path d="M616 773 H654" class="line"/><path d="M644 765 L656 773 L644 781" class="line"/>
+ <rect x="658" y="731" width="240" height="84" rx="10" fill="#EDF4FA" stroke="#C7D9E6"/><text x="778" y="760" text-anchor="middle" class="label">ASSESS</text><text x="778" y="785" text-anchor="middle" class="small">Security • Privacy • Cost • Risk</text>
+ <path d="M898 773 H936" class="line"/><path d="M926 765 L938 773 L926 781" class="line"/>
+ <rect x="940" y="731" width="240" height="84" rx="10" fill="#DDF3F1" stroke="#9ED7D2"/><text x="1060" y="760" text-anchor="middle" class="label">APPROVE</text><text x="1060" y="785" text-anchor="middle" class="small">Decision • Exception • Funding</text>
+ <path d="M1180 773 H1218" class="line"/><path d="M1208 765 L1220 773 L1208 781" class="line"/>
+ <rect x="1222" y="731" width="240" height="84" rx="10" fill="#EDF4FA" stroke="#C7D9E6"/><text x="1342" y="760" text-anchor="middle" class="label">DELIVER</text><text x="1342" y="785" text-anchor="middle" class="small">Build • Verify • Transition</text>
+ <path d="M1462 773 H1500" class="line"/><path d="M1490 765 L1502 773 L1490 781" class="line"/>
+ <rect x="1504" y="731" width="316" height="84" rx="10" fill="#EDF4FA" stroke="#C7D9E6"/><text x="1662" y="760" text-anchor="middle" class="label">OPERATE &amp; EVOLVE</text><text x="1662" y="785" text-anchor="middle" class="small">Measure • Review • Modernize</text>
+</g>
+
+<rect x="72" y="870" width="1776" height="120" rx="16" fill="#EAF1F6" stroke="#C9D9E4"/>
+<text x="104" y="905" class="section">04  GOVERNANCE ARTIFACTS &amp; PERFORMANCE</text>
+<g>
+ <text x="104" y="941" class="label">PRINCIPLES &amp; STANDARDS</text><text x="104" y="965" class="small">Approved patterns • Reference architectures</text>
+ <text x="520" y="941" class="label">DECISION RECORDS</text><text x="520" y="965" class="small">ADRs • Waivers • Risk acceptance</text>
+ <text x="940" y="941" class="label">PORTFOLIO TRACEABILITY</text><text x="940" y="965" class="small">Roadmaps • Dependencies • Benefits</text>
+ <text x="1390" y="941" class="label">MEASUREMENT</text><text x="1390" y="965" class="small">Reuse • Standards conformance • Technical debt</text>
+</g>
+<text x="72" y="1034" class="small">DESIGN PRINCIPLE: Governance should enable safe, fast delivery through clear decision rights—not become a centralized approval bottleneck.</text>
+<text x="1848" y="1034" text-anchor="end" class="small">CODEN • ARCHITECTURE SERIES 13</text>
+</svg>

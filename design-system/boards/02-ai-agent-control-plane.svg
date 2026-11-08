@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" role="img" aria-labelledby="title desc">
+<title id="title">CODEN AI Agent Control Plane Architecture</title>
+<desc id="desc">Target-state control plane for agent registration, identity, policy, planning, execution, evaluation, human approval, audit and observability.</desc>
+<defs>
+ <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#F7FAFE"/><stop offset="1" stop-color="#EAF2F8"/></linearGradient>
+ <linearGradient id="navy" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#102A43"/><stop offset="1" stop-color="#1C4A6A"/></linearGradient>
+ <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#102A43" flood-opacity=".10"/></filter>
+ <marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#3984B8"/></marker>
+ <marker id="t" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#18A6A6"/></marker>
+ <style>
+ text{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
+
+ text{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
+
+ text{font-family:Inter,Arial,sans-serif;fill:#18364F}.eyebrow{font-size:15px;font-weight:700;letter-spacing:2px;fill:#5B7891}.h1{font-size:38px;font-weight:750;fill:#102A43}.sub{font-size:18px;fill:#567188}.section{font-size:16px;font-weight:750;letter-spacing:1px;fill:#fff}.ct{font-size:18px;font-weight:750;fill:#153B59}.body{font-size:14px;fill:#46647D}.small{font-size:14px;fill:#526B80}.tag{font-size:14px;font-weight:750;letter-spacing:1px}.white{fill:#fff}.flow{fill:none;stroke:#3984B8;stroke-width:2.8;marker-end:url(#a)}.flowt{fill:none;stroke:#18A6A6;stroke-width:2.8;marker-end:url(#t)}
+ </style>
+</defs>
+<rect width="1920" height="1080" fill="url(#bg)"/><rect width="1920" height="12" fill="#19A6A6"/>
+<text x="76" y="58" class="eyebrow">CODEN  /  AI GOVERNANCE &amp; ORCHESTRATION</text>
+<text x="76" y="112" class="h1">AI Agent Control Plane</text>
+<text x="76" y="146" class="sub">A governed control layer for registering, assigning, supervising and evaluating AI agents</text>
+<g transform="translate(1510 48)"><rect width="334" height="74" rx="14" fill="#E5F1F8" stroke="#B8D3E5"/><text x="22" y="29" class="tag" fill="#176A91">ARCHITECTURE VIEW</text><text x="22" y="54" font-size="18" font-weight="750">TARGET STATE · CONCEPTUAL</text></g>
+<!-- human governance -->
+<g filter="url(#shadow)"><rect x="76" y="180" width="1768" height="94" rx="16" fill="url(#navy)"/></g>
+<text x="104" y="216" class="section">01  HUMAN GOVERNANCE &amp; RISK OWNERSHIP</text>
+<text x="104" y="247" class="white" font-size="16">Business owner · System owner · Security approver · Data owner · Service owner</text>
+<g transform="translate(1440 199)"><rect width="166" height="54" rx="9" fill="#0E777C" stroke="#49C1BE"/><text x="83" y="22" text-anchor="middle" class="white" font-size="13" font-weight="700">APPROVAL GATE</text><text x="83" y="41" text-anchor="middle" class="white" font-size="11">HITL required</text></g>
+<g transform="translate(1620 199)"><rect width="190" height="54" rx="9" fill="#244F6D" stroke="#5D829B"/><text x="95" y="22" text-anchor="middle" class="white" font-size="13" font-weight="700">AUDIT &amp; APPEAL</text><text x="95" y="41" text-anchor="middle" class="white" font-size="11">Traceable decisions</text></g>
+<!-- registry -->
+<g filter="url(#shadow)"><rect x="76" y="308" width="1768" height="106" rx="16" fill="#E1F4F3" stroke="#79C9C5" stroke-width="2"/></g>
+<text x="104" y="342" font-size="17" font-weight="750" fill="#087C80">02  AGENT REGISTRY &amp; IDENTITY</text>
+<g>
+ <rect x="104" y="358" width="260" height="40" rx="8" fill="#fff" stroke="#B8DCD8"/><text x="234" y="383" text-anchor="middle" class="body">Agent catalogue &amp; owner</text>
+ <rect x="380" y="358" width="260" height="40" rx="8" fill="#fff" stroke="#B8DCD8"/><text x="510" y="383" text-anchor="middle" class="body">Version &amp; capability manifest</text>
+ <rect x="656" y="358" width="260" height="40" rx="8" fill="#fff" stroke="#B8DCD8"/><text x="786" y="383" text-anchor="middle" class="body">Workload identity</text>
+ <rect x="932" y="358" width="260" height="40" rx="8" fill="#fff" stroke="#B8DCD8"/><text x="1062" y="383" text-anchor="middle" class="body">Risk tier &amp; trust status</text>
+ <rect x="1208" y="358" width="260" height="40" rx="8" fill="#fff" stroke="#B8DCD8"/><text x="1338" y="383" text-anchor="middle" class="body">Tool permissions</text>
+ <rect x="1484" y="358" width="326" height="40" rx="8" fill="#fff" stroke="#B8DCD8"/><text x="1647" y="383" text-anchor="middle" class="body">Lifecycle: draft → approved → retired</text>
+</g>
+<!-- central control -->
+<g filter="url(#shadow)"><rect x="76" y="452" width="1768" height="170" rx="18" fill="#fff" stroke="#9DBCD0" stroke-width="2"/></g>
+<rect x="76" y="452" width="1768" height="43" rx="16" fill="#173F5F"/>
+<text x="104" y="480" class="section">03  CONTROL PLANE — POLICY-DRIVEN ORCHESTRATION</text>
+<g>
+ <rect x="104" y="516" width="250" height="78" rx="11" fill="#EAF2F8" stroke="#C4D8E5"/><text x="229" y="546" text-anchor="middle" class="ct">Request Intake</text><text x="229" y="570" text-anchor="middle" class="small">Goal · Context · Constraints</text>
+ <rect x="380" y="516" width="250" height="78" rx="11" fill="#EAF2F8" stroke="#C4D8E5"/><text x="505" y="546" text-anchor="middle" class="ct">Policy &amp; Risk Engine</text><text x="505" y="570" text-anchor="middle" class="small">Scope · Data · Tool allowlist</text>
+ <rect x="656" y="516" width="250" height="78" rx="11" fill="#EAF2F8" stroke="#C4D8E5"/><text x="781" y="546" text-anchor="middle" class="ct">Planner &amp; Router</text><text x="781" y="570" text-anchor="middle" class="small">Decompose · Select · Assign</text>
+ <rect x="932" y="516" width="250" height="78" rx="11" fill="#EAF2F8" stroke="#C4D8E5"/><text x="1057" y="546" text-anchor="middle" class="ct">Workflow Runtime</text><text x="1057" y="570" text-anchor="middle" class="small">Queue · State · Retry · Timeout</text>
+ <rect x="1208" y="516" width="250" height="78" rx="11" fill="#E1F4F3" stroke="#79C9C5"/><text x="1333" y="546" text-anchor="middle" class="ct">Approval Service</text><text x="1333" y="570" text-anchor="middle" class="small">Pause · Review · Resume</text>
+ <rect x="1484" y="516" width="326" height="78" rx="11" fill="#E1F4F3" stroke="#79C9C5"/><text x="1647" y="546" text-anchor="middle" class="ct">Evidence &amp; Audit Ledger</text><text x="1647" y="570" text-anchor="middle" class="small">Inputs · Actions · Outputs · Actor</text>
+</g>
+<path d="M354 555H375 M630 555H651 M906 555H927 M1182 555H1203 M1458 555H1479" class="flow"/>
+<!-- agent squads -->
+<text x="76" y="666" class="eyebrow">04  EXECUTION LAYER — SPECIALIST AGENT SQUADS</text>
+<g filter="url(#shadow)">
+ <rect x="76" y="688" width="414" height="130" rx="14" fill="#fff" stroke="#B9D3E4" stroke-width="2"/>
+ <rect x="506" y="688" width="414" height="130" rx="14" fill="#fff" stroke="#B9D3E4" stroke-width="2"/>
+ <rect x="936" y="688" width="414" height="130" rx="14" fill="#fff" stroke="#B9D3E4" stroke-width="2"/>
+ <rect x="1366" y="688" width="478" height="130" rx="14" fill="#fff" stroke="#B9D3E4" stroke-width="2"/>
+</g>
+<g>
+ <rect x="76" y="688" width="414" height="8" rx="4" fill="#236A9B"/><text x="102" y="728" class="ct">Discovery &amp; Product Squad</text><text x="102" y="756" class="body">Research · Requirements · UX · Analysis</text><text x="102" y="788" class="tag" fill="#236A9B">SPECIFY THE RIGHT OUTCOME</text>
+ <rect x="506" y="688" width="414" height="8" rx="4" fill="#18A6A6"/><text x="532" y="728" class="ct">Engineering Squad</text><text x="532" y="756" class="body">Implementation · Testing · Refactoring</text><text x="532" y="788" class="tag" fill="#087C80">BUILD &amp; VERIFY</text>
+ <rect x="936" y="688" width="414" height="8" rx="4" fill="#4B78A8"/><text x="962" y="728" class="ct">Security &amp; Assurance Squad</text><text x="962" y="756" class="body">Threat review · Compliance · QA</text><text x="962" y="788" class="tag" fill="#315E8A">REDUCE RISK</text>
+ <rect x="1366" y="688" width="478" height="8" rx="4" fill="#6A83A0"/><text x="1392" y="728" class="ct">Operations &amp; Knowledge Squad</text><text x="1392" y="756" class="body">SRE · Support · Documentation · Learning</text><text x="1392" y="788" class="tag" fill="#496681">OPERATE &amp; IMPROVE</text>
+</g>
+<!-- tool sandbox and quality -->
+<g filter="url(#shadow)"><rect x="76" y="850" width="840" height="108" rx="14" fill="#EAF1F7" stroke="#B6CADA" stroke-width="2"/><rect x="936" y="850" width="908" height="108" rx="14" fill="#EAF1F7" stroke="#B6CADA" stroke-width="2"/></g>
+<text x="102" y="884" class="ct">05  ISOLATED TOOL EXECUTION</text><text x="102" y="914" class="body">Scoped credentials · Sandboxed workspaces · Network controls · Secret broker</text><text x="102" y="938" class="small">No unrestricted shell, credentials, production writes or external actions by default</text>
+<text x="962" y="884" class="ct">06  EVALUATION &amp; TELEMETRY</text><text x="962" y="914" class="body">Task success · Quality tests · Cost/latency · Safety events · Drift · Trace coverage</text><text x="962" y="938" class="small">Promote, pause, rollback or retire agents based on measured evidence</text>
+<!-- flows -->
+<path d="M960 274V302 M960 414V446 M960 622V676 M283 818V844 M713 818V844 M1143 818V844 M1605 818V844" class="flowt"/>
+<path d="M916 904H928" class="flow"/>
+<path d="M1380 850V836H1770V632" fill="none" stroke="#18A6A6" stroke-width="2.4" stroke-dasharray="7 7" marker-end="url(#t)"/>
+<!-- footer -->
+<line x1="76" y1="990" x2="1844" y2="990" stroke="#C5D6E1" stroke-width="1.5"/>
+<text x="76" y="1022" class="small">FIG. 02  ·  AI AGENT CONTROL PLANE</text>
+<text x="960" y="1022" text-anchor="middle" class="small">Conceptual target architecture · Tool access is least-privilege and policy-controlled</text>
+<text x="1844" y="1022" text-anchor="end" class="small">DRAFT 1.0  |  16:9 SVG MASTER</text>
+</svg>

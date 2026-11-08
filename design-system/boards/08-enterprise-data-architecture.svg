@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" role="img" aria-labelledby="title desc">
+<title id="title">CODEN Enterprise Data Architecture</title>
+<desc id="desc">Enterprise data architecture showing source systems, ingestion, governed data platform, data products, analytics and AI consumption, with security, quality, lineage and lifecycle governance.</desc>
+<defs>
+ <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#F8FBFE"/><stop offset="1" stop-color="#EAF2F8"/></linearGradient>
+ <linearGradient id="navy" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#102A43"/><stop offset="1" stop-color="#1B4A68"/></linearGradient>
+ <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#102A43" flood-opacity=".10"/></filter>
+ <marker id="arr" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#3984B8"/></marker>
+ <style>
+ text{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
+
+ text{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
+text{font-family:Inter,Arial,sans-serif;fill:#18364F}.ey{font-size:15px;font-weight:700;letter-spacing:2px;fill:#5B7891}.h{font-size:38px;font-weight:750;fill:#102A43}.sub{font-size:18px;fill:#567188}.sec{font-size:15px;font-weight:750;letter-spacing:1px;fill:#fff}.ct{font-size:17px;font-weight:750;fill:#153B59}.bd{font-size:14px;fill:#46647D}.sm{font-size:14px;fill:#526B80}.tag{font-size:14px;font-weight:750;letter-spacing:1px}.arr{fill:none;stroke:#3984B8;stroke-width:2.5;marker-end:url(#arr)}</style>
+</defs>
+<rect width="1920" height="1080" fill="url(#bg)"/><rect width="1920" height="12" fill="#19A6A6"/>
+<text x="76" y="58" class="ey">CODEN  /  ENTERPRISE DATA &amp; INTELLIGENCE</text>
+<text x="76" y="112" class="h">Enterprise Data Architecture</text>
+<text x="76" y="146" class="sub">Governed data flows from operational systems into trusted products, analytics and AI-enabled decisions</text>
+<g transform="translate(1510 48)"><rect width="334" height="74" rx="14" fill="#E5F1F8" stroke="#B8D3E5"/><text x="22" y="29" class="tag" fill="#176A91">ARCHITECTURE VIEW</text><text x="22" y="54" font-size="18" font-weight="750">TARGET STATE · CONCEPTUAL</text></g>
+<!-- source systems -->
+<g filter="url(#shadow)"><rect x="76" y="180" width="1768" height="112" rx="14" fill="url(#navy)"/></g>
+<text x="104" y="216" class="sec">01  DATA SOURCES &amp; SYSTEMS OF RECORD</text>
+<g fill="#244F6D" stroke="#5D829B">
+ <rect x="104" y="236" width="260" height="40" rx="8"/><rect x="382" y="236" width="260" height="40" rx="8"/><rect x="660" y="236" width="260" height="40" rx="8"/><rect x="938" y="236" width="260" height="40" rx="8"/><rect x="1216" y="236" width="260" height="40" rx="8"/><rect x="1494" y="236" width="314" height="40" rx="8"/>
+</g>
+<g class="white" font-size="13" font-weight="650" text-anchor="middle"><text x="234" y="261">TAMAM &amp; Product Services</text><text x="512" y="261">Government / Sector Systems</text><text x="790" y="261">Finance &amp; Operations</text><text x="1068" y="261">Partners &amp; External APIs</text><text x="1346" y="261">Events &amp; Service Telemetry</text><text x="1651" y="261">Approved Open Data Sources</text></g>
+<!-- ingestion -->
+<text x="76" y="337" class="ey">02  INGESTION &amp; DATA MOVEMENT</text>
+<g filter="url(#shadow)">
+ <rect x="76" y="358" width="410" height="128" rx="14" fill="#fff" stroke="#B9D3E4" stroke-width="2"/>
+ <rect x="506" y="358" width="410" height="128" rx="14" fill="#fff" stroke="#B9D3E4" stroke-width="2"/>
+ <rect x="936" y="358" width="410" height="128" rx="14" fill="#fff" stroke="#B9D3E4" stroke-width="2"/>
+ <rect x="1366" y="358" width="478" height="128" rx="14" fill="#fff" stroke="#B9D3E4" stroke-width="2"/>
+</g>
+<g>
+ <rect x="76" y="358" width="410" height="8" rx="4" fill="#236A9B"/><text x="102" y="400" class="ct">Batch &amp; File Ingestion</text><text x="102" y="430" class="bd">Scheduled extracts · Secure file transfer</text><text x="102" y="455" class="sm">Schema validation · Reconciliation</text>
+ <rect x="506" y="358" width="410" height="8" rx="4" fill="#18A6A6"/><text x="532" y="400" class="ct">API &amp; Change Data Capture</text><text x="532" y="430" class="bd">API pulls · CDC · Incremental sync</text><text x="532" y="455" class="sm">Idempotency · Retry · Error handling</text>
+ <rect x="936" y="358" width="410" height="8" rx="4" fill="#4B78A8"/><text x="962" y="400" class="ct">Event &amp; Stream Ingestion</text><text x="962" y="430" class="bd">Domain events · Telemetry · Webhooks</text><text x="962" y="455" class="sm">Ordering · Replay · Dead-letter queues</text>
+ <rect x="1366" y="358" width="478" height="8" rx="4" fill="#6A83A0"/><text x="1392" y="400" class="ct">Integration &amp; Contract Management</text><text x="1392" y="430" class="bd">Data contracts · Schema registry · Versioning</text><text x="1392" y="455" class="sm">Purpose, owner, source and access policy attached</text>
+</g>
+<path d="M486 422H501 M916 422H931 M1346 422H1361" class="arr"/>
+<!-- data platform -->
+<g filter="url(#shadow)"><rect x="76" y="520" width="1768" height="216" rx="18" fill="#fff" stroke="#9DBCD0" stroke-width="2"/></g>
+<rect x="76" y="520" width="1768" height="44" rx="16" fill="#173F5F"/><text x="104" y="549" class="sec">03  GOVERNED DATA PLATFORM</text>
+<g>
+ <rect x="104" y="588" width="370" height="120" rx="11" fill="#EAF2F8" stroke="#C4D8E5"/><text x="289" y="624" text-anchor="middle" class="ct">Landing &amp; Raw Zone</text><text x="289" y="653" text-anchor="middle" class="sm">Immutable source snapshots</text><text x="289" y="677" text-anchor="middle" class="sm">Quarantine · Provenance</text>
+ <rect x="500" y="588" width="370" height="120" rx="11" fill="#E1F4F3" stroke="#79C9C5"/><text x="685" y="624" text-anchor="middle" class="ct">Validated &amp; Conformed</text><text x="685" y="653" text-anchor="middle" class="sm">Standardized schemas · MDM</text><text x="685" y="677" text-anchor="middle" class="sm">Quality rules · Reconciliation</text>
+ <rect x="896" y="588" width="370" height="120" rx="11" fill="#EAF2F8" stroke="#C4D8E5"/><text x="1081" y="624" text-anchor="middle" class="ct">Curated Data Products</text><text x="1081" y="653" text-anchor="middle" class="sm">Domain datasets · Metrics</text><text x="1081" y="677" text-anchor="middle" class="sm">Documented owner &amp; SLA</text>
+ <rect x="1292" y="588" width="518" height="120" rx="11" fill="#EAF2F8" stroke="#C4D8E5"/><text x="1551" y="624" text-anchor="middle" class="ct">Metadata, Catalog &amp; Lineage</text><text x="1551" y="653" text-anchor="middle" class="sm">Business glossary · Technical metadata</text><text x="1551" y="677" text-anchor="middle" class="sm">Discoverability · Impact analysis · Lifecycle</text>
+</g>
+<path d="M474 648H495 M870 648H891 M1266 648H1287" class="arr"/>
+<!-- consumption -->
+<text x="76" y="784" class="ey">04  DATA CONSUMPTION &amp; DECISION SUPPORT</text>
+<g filter="url(#shadow)">
+ <rect x="76" y="806" width="414" height="112" rx="14" fill="#fff" stroke="#B9D3E4" stroke-width="2"/>
+ <rect x="506" y="806" width="414" height="112" rx="14" fill="#fff" stroke="#B9D3E4" stroke-width="2"/>
+ <rect x="936" y="806" width="414" height="112" rx="14" fill="#fff" stroke="#B9D3E4" stroke-width="2"/>
+ <rect x="1366" y="806" width="478" height="112" rx="14" fill="#fff" stroke="#B9D3E4" stroke-width="2"/>
+</g>
+<g>
+ <rect x="76" y="806" width="414" height="8" rx="4" fill="#236A9B"/><text x="102" y="849" class="ct">Operational Reporting</text><text x="102" y="880" class="bd">Service dashboards · Reconciliation</text><text x="102" y="900" class="sm">Near-real-time operational indicators</text>
+ <rect x="506" y="806" width="414" height="8" rx="4" fill="#18A6A6"/><text x="532" y="849" class="ct">Analytics &amp; Planning</text><text x="532" y="880" class="bd">Trends · Forecasts · Program evaluation</text><text x="532" y="900" class="sm">Governed aggregate and statistical views</text>
+ <rect x="936" y="806" width="414" height="8" rx="4" fill="#4B78A8"/><text x="962" y="849" class="ct">AI &amp; Decision Support</text><text x="962" y="880" class="bd">Approved feature sets · Retrieval context</text><text x="962" y="900" class="sm">Human review for consequential decisions</text>
+ <rect x="1366" y="806" width="478" height="8" rx="4" fill="#6A83A0"/><text x="1392" y="849" class="ct">Data Sharing &amp; APIs</text><text x="1392" y="880" class="bd">Purpose-bound access · Data products</text><text x="1392" y="900" class="sm">Controlled exchange with authorized partners</text>
+</g>
+<!-- governance -->
+<rect x="76" y="940" width="1768" height="62" rx="12" fill="#E1F4F3" stroke="#79C9C5"/>
+<text x="100" y="967" font-size="13" font-weight="750" fill="#087C80">CROSS-CUTTING DATA GOVERNANCE &amp; PROTECTION</text>
+<text x="100" y="988" class="bd">Ownership &amp; stewardship · Classification · Privacy &amp; consent · Access controls · Encryption · Retention/deletion · Quality · Lineage · Audit · Backup/DR</text>
+<line x1="76" y1="1020" x2="1844" y2="1020" stroke="#C5D6E1" stroke-width="1.5"/>
+<text x="76" y="1050" class="sm">FIG. 08  ·  ENTERPRISE DATA ARCHITECTURE</text><text x="960" y="1050" text-anchor="middle" class="sm">Conceptual target architecture · Federated ownership with governed data products</text><text x="1844" y="1050" text-anchor="end" class="sm">DRAFT 1.0  |  16:9 SVG MASTER</text>
+</svg>

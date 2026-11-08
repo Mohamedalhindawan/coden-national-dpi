@@ -1,0 +1,26 @@
+flowchart TB
+    %% CODEN Architecture Board — editable starter template
+    %% Replace placeholders with verified components and flows.
+    %% Suggested palette: navy / blue / turquoise / neutral.
+    subgraph GOV["01 — Governance & Human Oversight"]
+        OWNER["Accountable Owner"]
+        APPROVAL["Human Approval"]
+    end
+
+    subgraph PLATFORM["02 — Platform & Shared Services"]
+        API["API / Integration Layer"]
+        IAM["Identity & Access"]
+        DATA["Data Services"]
+    end
+
+    subgraph SYSTEMS["03 — Products & External Systems"]
+        PRODUCT["CODEN Product / Service"]
+        EXTERNAL["External Partner System"]
+    end
+
+    OWNER --> API
+    APPROVAL --> PRODUCT
+    PRODUCT <--> API
+    API <--> EXTERNAL
+    API --> IAM
+    API --> DATA

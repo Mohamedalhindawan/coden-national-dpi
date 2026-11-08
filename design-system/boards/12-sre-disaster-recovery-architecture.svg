@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+<defs>
+ <linearGradient id="navy" x1="0" x2="1"><stop stop-color="#10243E"/><stop offset="1" stop-color="#1B456B"/></linearGradient>
+ <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#10243E" flood-opacity=".10"/></filter>
+ <style>
+ text{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
+
+ .h1{font:700 38px Arial,sans-serif;fill:#10243E}.sub{font:18px Arial,sans-serif;fill:#526B80}.section{font:700 20px Arial,sans-serif;fill:#10243E}.label{font:700 16px Arial,sans-serif;fill:#173A5E}.body{font:15px Arial,sans-serif;fill:#536B80}.small{font:13px Arial,sans-serif;fill:#526B80}.card{fill:#fff;stroke:#D8E4EC;stroke-width:1.5}.line{stroke:#8AA4B8;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+ </style>
+</defs>
+<rect width="1920" height="1080" fill="#F5F8FB"/><rect width="1920" height="12" fill="#20A6B2"/>
+<text x="72" y="82" class="h1">CODEN | SRE &amp; DISASTER RECOVERY ARCHITECTURE</text>
+<text x="74" y="116" class="sub">Reliability engineering • Resilience patterns • Recoverable services • Measurable operational objectives</text>
+<rect x="1510" y="48" width="338" height="48" rx="24" fill="#E8F4F7" stroke="#8CCBD0"/><text x="1679" y="78" text-anchor="middle" style="font:700 15px Arial;fill:#147A85;letter-spacing:1px">TARGET STATE • CONCEPTUAL</text>
+
+<text x="72" y="176" class="section">01  SERVICE RELIABILITY MANAGEMENT</text>
+<g filter="url(#shadow)"><rect x="72" y="198" width="1776" height="116" rx="16" class="card"/></g>
+<g>
+ <rect x="94" y="219" width="270" height="74" rx="10" fill="#EAF2F8" stroke="#C7D9E6"/><text x="229" y="247" text-anchor="middle" class="label">SERVICE CATALOG</text><text x="229" y="270" text-anchor="middle" class="small">Owners • Criticality • Dependencies</text>
+ <rect x="388" y="219" width="270" height="74" rx="10" fill="#EAF2F8" stroke="#C7D9E6"/><text x="523" y="247" text-anchor="middle" class="label">SLOs &amp; SLIs</text><text x="523" y="270" text-anchor="middle" class="small">Availability • Latency • Freshness</text>
+ <rect x="682" y="219" width="270" height="74" rx="10" fill="#EAF2F8" stroke="#C7D9E6"/><text x="817" y="247" text-anchor="middle" class="label">ERROR BUDGETS</text><text x="817" y="270" text-anchor="middle" class="small">Release risk • Reliability trade-offs</text>
+ <rect x="976" y="219" width="270" height="74" rx="10" fill="#EAF2F8" stroke="#C7D9E6"/><text x="1111" y="247" text-anchor="middle" class="label">ON-CALL &amp; INCIDENTS</text><text x="1111" y="270" text-anchor="middle" class="small">Escalation • Runbooks • Comms</text>
+ <rect x="1270" y="219" width="550" height="74" rx="10" fill="#DDF3F1" stroke="#9ED7D2"/><text x="1545" y="247" text-anchor="middle" class="label">CONTINUOUS SERVICE IMPROVEMENT</text><text x="1545" y="270" text-anchor="middle" class="small">Postmortems • Capacity • Risk remediation • Resilience tests</text>
+</g>
+
+<text x="72" y="366" class="section">02  PRODUCTION RESILIENCE &amp; FAILURE CONTAINMENT</text>
+<rect x="72" y="388" width="1776" height="212" rx="18" fill="url(#navy)" filter="url(#shadow)"/>
+<text x="104" y="428" style="font:700 21px Arial;fill:#fff">RESILIENT SERVICE RUNTIME</text>
+<text x="104" y="453" style="font:15px Arial;fill:#C4D8E7">Design for partial failure; isolate faults and preserve critical journeys</text>
+<g>
+ <rect x="104" y="476" width="250" height="94" rx="10" fill="#fff"/><text x="229" y="507" text-anchor="middle" class="label">LOAD MANAGEMENT</text><text x="229" y="532" text-anchor="middle" class="small">Health checks • Autoscaling</text><text x="229" y="551" text-anchor="middle" class="small">Admission control</text>
+ <rect x="376" y="476" width="250" height="94" rx="10" fill="#EAF5FA"/><text x="501" y="507" text-anchor="middle" class="label">FAULT ISOLATION</text><text x="501" y="532" text-anchor="middle" class="small">Bulkheads • Timeouts</text><text x="501" y="551" text-anchor="middle" class="small">Circuit breakers</text>
+ <rect x="648" y="476" width="250" height="94" rx="10" fill="#EAF5FA"/><text x="773" y="507" text-anchor="middle" class="label">DEGRADED MODES</text><text x="773" y="532" text-anchor="middle" class="small">Graceful fallback</text><text x="773" y="551" text-anchor="middle" class="small">Queue / read-only options</text>
+ <rect x="920" y="476" width="250" height="94" rx="10" fill="#EAF5FA"/><text x="1045" y="507" text-anchor="middle" class="label">DATA PROTECTION</text><text x="1045" y="532" text-anchor="middle" class="small">Backups • Replication</text><text x="1045" y="551" text-anchor="middle" class="small">Integrity verification</text>
+ <rect x="1192" y="476" width="250" height="94" rx="10" fill="#EAF5FA"/><text x="1317" y="507" text-anchor="middle" class="label">RECOVERY CONTROL</text><text x="1317" y="532" text-anchor="middle" class="small">Failover • Restore</text><text x="1317" y="551" text-anchor="middle" class="small">Rollback • Reconcile</text>
+ <rect x="1464" y="476" width="352" height="94" rx="10" fill="#DDF3F1"/><text x="1640" y="507" text-anchor="middle" class="label">OBSERVABILITY</text><text x="1640" y="532" text-anchor="middle" class="small">Metrics • Logs • Traces</text><text x="1640" y="551" text-anchor="middle" class="small">Synthetic checks • Alerting</text>
+</g>
+
+<text x="72" y="654" class="section">03  BACKUP, RESTORE &amp; DISASTER RECOVERY LIFECYCLE</text>
+<g filter="url(#shadow)">
+ <rect x="72" y="678" width="1776" height="150" rx="16" class="card"/>
+</g>
+<g>
+ <rect x="96" y="705" width="250" height="94" rx="10" fill="#EDF4FA" stroke="#C7D9E6"/><text x="221" y="735" text-anchor="middle" class="label">CLASSIFY &amp; PLAN</text><text x="221" y="760" text-anchor="middle" class="small">Tier • RTO • RPO</text><text x="221" y="779" text-anchor="middle" class="small">Dependencies • Owners</text>
+ <path d="M346 752 H390" class="line"/><path d="M380 744 L392 752 L380 760" class="line"/>
+ <rect x="394" y="705" width="250" height="94" rx="10" fill="#EDF4FA" stroke="#C7D9E6"/><text x="519" y="735" text-anchor="middle" class="label">PROTECT</text><text x="519" y="760" text-anchor="middle" class="small">Encrypted backups</text><text x="519" y="779" text-anchor="middle" class="small">Immutable / off-site copies</text>
+ <path d="M644 752 H688" class="line"/><path d="M678 744 L690 752 L678 760" class="line"/>
+ <rect x="692" y="705" width="250" height="94" rx="10" fill="#EDF4FA" stroke="#C7D9E6"/><text x="817" y="735" text-anchor="middle" class="label">DETECT &amp; DECLARE</text><text x="817" y="760" text-anchor="middle" class="small">Incident severity</text><text x="817" y="779" text-anchor="middle" class="small">DR activation authority</text>
+ <path d="M942 752 H986" class="line"/><path d="M976 744 L988 752 L976 760" class="line"/>
+ <rect x="990" y="705" width="250" height="94" rx="10" fill="#EDF4FA" stroke="#C7D9E6"/><text x="1115" y="735" text-anchor="middle" class="label">RESTORE / FAIL OVER</text><text x="1115" y="760" text-anchor="middle" class="small">Infrastructure • Apps • Data</text><text x="1115" y="779" text-anchor="middle" class="small">Secrets • Network • DNS</text>
+ <path d="M1240 752 H1284" class="line"/><path d="M1274 744 L1286 752 L1274 760" class="line"/>
+ <rect x="1288" y="705" width="250" height="94" rx="10" fill="#EDF4FA" stroke="#C7D9E6"/><text x="1413" y="735" text-anchor="middle" class="label">VALIDATE</text><text x="1413" y="760" text-anchor="middle" class="small">Integrity • Security</text><text x="1413" y="779" text-anchor="middle" class="small">Business acceptance</text>
+ <path d="M1538 752 H1582" class="line"/><path d="M1572 744 L1584 752 L1572 760" class="line"/>
+ <rect x="1586" y="705" width="230" height="94" rx="10" fill="#DDF3F1" stroke="#9ED7D2"/><text x="1701" y="735" text-anchor="middle" class="label">LEARN &amp; IMPROVE</text><text x="1701" y="760" text-anchor="middle" class="small">Exercise • Review</text><text x="1701" y="779" text-anchor="middle" class="small">Corrective actions</text>
+</g>
+
+<rect x="72" y="858" width="1776" height="128" rx="16" fill="#EAF1F6" stroke="#C9D9E4"/>
+<text x="104" y="894" class="section">04  RECOVERY OBJECTIVES &amp; GOVERNANCE</text>
+<g>
+ <text x="104" y="930" class="label">RTO</text><text x="104" y="954" class="small">Maximum acceptable service downtime</text>
+ <text x="520" y="930" class="label">RPO</text><text x="520" y="954" class="small">Maximum acceptable data-loss window</text>
+ <text x="940" y="930" class="label">SERVICE TIERS</text><text x="940" y="954" class="small">Criticality-based targets; approved by owners</text>
+ <text x="1390" y="930" class="label">TEST EVIDENCE</text><text x="1390" y="954" class="small">Restore drills • Failover • Tabletop exercises</text>
+</g>
+<text x="72" y="1032" class="small">DESIGN PRINCIPLE: A backup is not proven until it has been restored and validated. Recovery targets must be realistic, funded and regularly exercised.</text>
+<text x="1848" y="1032" text-anchor="end" class="small">CODEN • ARCHITECTURE SERIES 12</text>
+</svg>

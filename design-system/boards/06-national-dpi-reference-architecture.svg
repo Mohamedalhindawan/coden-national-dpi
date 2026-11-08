@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" role="img" aria-labelledby="title desc">
+<title id="title">CODEN National Digital Public Infrastructure Reference Architecture</title>
+<desc id="desc">Layered national DPI reference architecture connecting channels, service delivery, shared platforms, registries and data exchange, trust and security, and foundational infrastructure under governance.</desc>
+<defs>
+ <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#F8FBFE"/><stop offset="1" stop-color="#EAF2F8"/></linearGradient>
+ <linearGradient id="navy" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#102A43"/><stop offset="1" stop-color="#1B4A68"/></linearGradient>
+ <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="4" stdDeviation="7" flood-color="#102A43" flood-opacity=".09"/></filter>
+ <marker id="arr" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#3984B8"/></marker>
+ <style>
+ text{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
+
+ text{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
+text{font-family:Inter,Arial,sans-serif;fill:#18364F}.ey{font-size:15px;font-weight:700;letter-spacing:2px;fill:#5B7891}.h{font-size:38px;font-weight:750;fill:#102A43}.sub{font-size:18px;fill:#567188}.sec{font-size:15px;font-weight:750;letter-spacing:.8px;fill:#fff}.ct{font-size:17px;font-weight:750;fill:#153B59}.bd{font-size:14px;fill:#46647D}.sm{font-size:14px;fill:#526B80}.tag{font-size:14px;font-weight:750;letter-spacing:1px}.arr{fill:none;stroke:#3984B8;stroke-width:2.5;marker-end:url(#arr)}</style>
+</defs>
+<rect width="1920" height="1080" fill="url(#bg)"/><rect width="1920" height="12" fill="#19A6A6"/>
+<text x="76" y="58" class="ey">CODEN  /  NATIONAL DIGITAL PUBLIC INFRASTRUCTURE</text>
+<text x="76" y="112" class="h">National DPI Reference Architecture</text>
+<text x="76" y="146" class="sub">A modular, interoperable foundation for trusted public services across government and the economy</text>
+<g transform="translate(1510 48)"><rect width="334" height="74" rx="14" fill="#E5F1F8" stroke="#B8D3E5"/><text x="22" y="29" class="tag" fill="#176A91">REFERENCE VIEW</text><text x="22" y="54" font-size="18" font-weight="750">TARGET STATE · CONCEPTUAL</text></g>
+<!-- governance header -->
+<g filter="url(#shadow)"><rect x="76" y="180" width="1768" height="76" rx="14" fill="url(#navy)"/></g>
+<text x="104" y="211" class="sec">NATIONAL GOVERNANCE &amp; ECOSYSTEM STEWARDSHIP</text>
+<text x="104" y="237" class="white" fill="#fff" font-size="14">Policy &amp; legal framework · Institutional mandates · Standards · Funding · Inclusion · Public accountability · Architecture assurance</text>
+<!-- channels -->
+<g filter="url(#shadow)"><rect x="76" y="280" width="1768" height="100" rx="14" fill="#fff" stroke="#B9D3E4" stroke-width="2"/></g>
+<rect x="76" y="280" width="190" height="100" rx="14" fill="#236A9B"/><text x="171" y="321" text-anchor="middle" class="sec">01</text><text x="171" y="347" text-anchor="middle" class="sec">ACCESS CHANNELS</text>
+<g fill="#EAF2F8" stroke="#C4D8E5">
+ <rect x="292" y="298" width="235" height="64" rx="9"/><rect x="545" y="298" width="235" height="64" rx="9"/><rect x="798" y="298" width="235" height="64" rx="9"/><rect x="1051" y="298" width="235" height="64" rx="9"/><rect x="1304" y="298" width="235" height="64" rx="9"/><rect x="1557" y="298" width="259" height="64" rx="9"/>
+</g>
+<g text-anchor="middle"><text x="409" y="326" class="ct">Web &amp; Mobile</text><text x="409" y="347" class="sm">Portals · Apps · PWA</text><text x="662" y="326" class="ct">Assisted Access</text><text x="662" y="347" class="sm">Service centers · Agents</text><text x="915" y="326" class="ct">Business APIs</text><text x="915" y="347" class="sm">Private sector · Partners</text><text x="1168" y="326" class="ct">USSD / Messaging</text><text x="1168" y="347" class="sm">Low-bandwidth channels</text><text x="1421" y="326" class="ct">Call Centers</text><text x="1421" y="347" class="sm">Human support</text><text x="1686" y="326" class="ct">Offline / Edge</text><text x="1686" y="347" class="sm">Resilient local workflows</text></g>
+<!-- service layer -->
+<g filter="url(#shadow)"><rect x="76" y="400" width="1768" height="126" rx="14" fill="#fff" stroke="#B9D3E4" stroke-width="2"/></g>
+<rect x="76" y="400" width="190" height="126" rx="14" fill="#18A6A6"/><text x="171" y="445" text-anchor="middle" class="sec">02</text><text x="171" y="471" text-anchor="middle" class="sec">SERVICE LAYER</text><text x="171" y="495" text-anchor="middle" font-size="11" fill="#fff">Citizen &amp; business journeys</text>
+<g fill="#E1F4F3" stroke="#79C9C5">
+ <rect x="292" y="419" width="270" height="88" rx="9"/><rect x="580" y="419" width="270" height="88" rx="9"/><rect x="868" y="419" width="270" height="88" rx="9"/><rect x="1156" y="419" width="270" height="88" rx="9"/><rect x="1444" y="419" width="372" height="88" rx="9"/>
+</g>
+<g text-anchor="middle"><text x="427" y="453" class="ct">Service Orchestration</text><text x="427" y="478" class="sm">Workflow · Case management</text><text x="715" y="453" class="ct">Digital Identity Journeys</text><text x="715" y="478" class="sm">Enrollment · Authentication</text><text x="1003" y="453" class="ct">Payments &amp; Benefits</text><text x="1003" y="478" class="sm">Collections · Transfers</text><text x="1291" y="453" class="ct">Notifications &amp; Consent</text><text x="1291" y="478" class="sm">Messaging · User permissions</text><text x="1630" y="453" class="ct">Sector Service Platforms</text><text x="1630" y="478" class="sm">Health · Education · Social protection · Business</text></g>
+<!-- shared core -->
+<g filter="url(#shadow)"><rect x="76" y="546" width="1768" height="150" rx="14" fill="#fff" stroke="#9DBCD0" stroke-width="2"/></g>
+<rect x="76" y="546" width="190" height="150" rx="14" fill="#315F86"/><text x="171" y="594" text-anchor="middle" class="sec">03</text><text x="171" y="620" text-anchor="middle" class="sec">SHARED DPI</text><text x="171" y="644" text-anchor="middle" font-size="11" fill="#fff">Reusable building blocks</text>
+<g fill="#EAF2F8" stroke="#C4D8E5">
+ <rect x="292" y="566" width="270" height="110" rx="9"/><rect x="580" y="566" width="270" height="110" rx="9"/><rect x="868" y="566" width="270" height="110" rx="9"/><rect x="1156" y="566" width="270" height="110" rx="9"/><rect x="1444" y="566" width="372" height="110" rx="9"/>
+</g>
+<g text-anchor="middle"><text x="427" y="602" class="ct">Digital Identity</text><text x="427" y="627" class="sm">Identity proofing · AuthN</text><text x="427" y="648" class="sm">Credentials · Federation</text><text x="715" y="602" class="ct">Interoperability</text><text x="715" y="627" class="sm">API gateway · X-Road patterns</text><text x="715" y="648" class="sm">Secure data exchange</text><text x="1003" y="602" class="ct">Payments</text><text x="1003" y="627" class="sm">Payment rails · Reconciliation</text><text x="1003" y="648" class="sm">Digital disbursements</text><text x="1291" y="602" class="ct">Registries &amp; Consent</text><text x="1291" y="627" class="sm">Authoritative records</text><text x="1291" y="648" class="sm">Consent · Delegation</text><text x="1630" y="602" class="ct">Messaging &amp; Workflow</text><text x="1630" y="627" class="sm">Notifications · Case/workflow</text><text x="1630" y="648" class="sm">Event exchange · Scheduling</text></g>
+<!-- data layer -->
+<g filter="url(#shadow)"><rect x="76" y="716" width="1768" height="116" rx="14" fill="#fff" stroke="#B9D3E4" stroke-width="2"/></g>
+<rect x="76" y="716" width="190" height="116" rx="14" fill="#4B78A8"/><text x="171" y="758" text-anchor="middle" class="sec">04</text><text x="171" y="784" text-anchor="middle" class="sec">DATA &amp; EXCHANGE</text>
+<g fill="#EAF2F8" stroke="#C4D8E5">
+ <rect x="292" y="734" width="340" height="80" rx="9"/><rect x="650" y="734" width="340" height="80" rx="9"/><rect x="1008" y="734" width="340" height="80" rx="9"/><rect x="1366" y="734" width="450" height="80" rx="9"/>
+</g>
+<g text-anchor="middle"><text x="462" y="766" class="ct">Authoritative Data Sources</text><text x="462" y="790" class="sm">Civil · Business · Land · Sector records</text><text x="820" y="766" class="ct">Data Exchange &amp; APIs</text><text x="820" y="790" class="sm">Schemas · Events · Data contracts</text><text x="1178" y="766" class="ct">Analytics &amp; Statistics</text><text x="1178" y="790" class="sm">Dashboards · Planning · Evaluation</text><text x="1591" y="766" class="ct">Data Governance</text><text x="1591" y="790" class="sm">Quality · Metadata · Lineage · Classification</text></g>
+<!-- trust and infra -->
+<g filter="url(#shadow)"><rect x="76" y="852" width="1768" height="74" rx="14" fill="#173F5F"/></g>
+<text x="104" y="882" class="sec">05  TRUST, SECURITY &amp; RESILIENCE</text><text x="104" y="908" font-size="13" fill="#fff">Cybersecurity · Privacy · PKI / certificates · IAM · Audit · Fraud controls · Backup · Disaster recovery · Monitoring</text>
+<g filter="url(#shadow)"><rect x="76" y="944" width="1768" height="58" rx="12" fill="#DCEAF3" stroke="#B5CDDD"/></g>
+<text x="104" y="979" class="ct">06  FOUNDATIONAL INFRASTRUCTURE</text><text x="480" y="979" class="bd">Connectivity · Cloud / data centers · Compute · Storage · DNS · Power · Edge · Open standards · Developer platform</text>
+<line x1="76" y1="1020" x2="1844" y2="1020" stroke="#C5D6E1" stroke-width="1.5"/>
+<text x="76" y="1050" class="sm">FIG. 06  ·  NATIONAL DPI REFERENCE ARCHITECTURE</text><text x="960" y="1050" text-anchor="middle" class="sm">Conceptual reference model · Modular adoption · Government and ecosystem interoperability</text><text x="1844" y="1050" text-anchor="end" class="sm">DRAFT 1.0  |  16:9 SVG MASTER</text>
+</svg>
