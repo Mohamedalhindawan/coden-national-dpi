@@ -1,0 +1,13 @@
+schema_version: "0.1.0"
+status: draft
+contracts: []
+required_fields:
+  - contract_id
+  - counterparty
+  - authorized_signatory
+  - legal_review_status
+  - signature_status
+  - effective_date
+  - funding_source
+  - evidence_url
+# No partnership, donor agreement or government authorization is implied.
