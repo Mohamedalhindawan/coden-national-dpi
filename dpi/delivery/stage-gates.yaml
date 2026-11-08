@@ -1,0 +1,76 @@
+playbook_version: "4.0"
+status: proposed_template
+# Enterprise G1-G12, not the distinct national delivery G1-G10 lifecycle.
+gates:
+  - id: G1
+    name: "Strategic alignment"
+    status: not_assessed
+    approval_authority: unassigned
+    evidence_urls: []
+    approved_at: null
+  - id: G2
+    name: "Business case"
+    status: not_assessed
+    approval_authority: unassigned
+    evidence_urls: []
+    approved_at: null
+  - id: G3
+    name: "Funding"
+    status: not_assessed
+    approval_authority: unassigned
+    evidence_urls: []
+    approved_at: null
+  - id: G4
+    name: "Requirements"
+    status: not_assessed
+    approval_authority: unassigned
+    evidence_urls: []
+    approved_at: null
+  - id: G5
+    name: "Architecture"
+    status: not_assessed
+    approval_authority: unassigned
+    evidence_urls: []
+    approved_at: null
+  - id: G6
+    name: "Security and privacy"
+    status: not_assessed
+    approval_authority: unassigned
+    evidence_urls: []
+    approved_at: null
+  - id: G7
+    name: "Implementation"
+    status: not_assessed
+    approval_authority: unassigned
+    evidence_urls: []
+    approved_at: null
+  - id: G8
+    name: "Quality assurance"
+    status: not_assessed
+    approval_authority: unassigned
+    evidence_urls: []
+    approved_at: null
+  - id: G9
+    name: "Acceptance"
+    status: not_assessed
+    approval_authority: unassigned
+    evidence_urls: []
+    approved_at: null
+  - id: G10
+    name: "Production readiness"
+    status: not_assessed
+    approval_authority: unassigned
+    evidence_urls: []
+    approved_at: null
+  - id: G11
+    name: "Operational verification"
+    status: not_assessed
+    approval_authority: unassigned
+    evidence_urls: []
+    approved_at: null
+  - id: G12
+    name: "Benefits review"
+    status: not_assessed
+    approval_authority: unassigned
+    evidence_urls: []
+    approved_at: null
