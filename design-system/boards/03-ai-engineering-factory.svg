@@ -10,6 +10,8 @@
  <style>
  text{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
 
+ text{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
+
  text{font-family:Inter,Arial,sans-serif;fill:#18364F}.eyebrow{font-size:15px;font-weight:700;letter-spacing:2px;fill:#5B7891}.h1{font-size:38px;font-weight:750;fill:#102A43}.sub{font-size:18px;fill:#567188}.section{font-size:16px;font-weight:750;letter-spacing:1px;fill:#fff}.ct{font-size:18px;font-weight:750;fill:#153B59}.body{font-size:14px;fill:#46647D}.small{font-size:14px;fill:#526B80}.tag{font-size:14px;font-weight:750;letter-spacing:1px}.white{fill:#fff}.flow{fill:none;stroke:#3984B8;stroke-width:2.8;marker-end:url(#a)}.flowt{fill:none;stroke:#18A6A6;stroke-width:2.8;marker-end:url(#t)}
  </style>
 </defs>
