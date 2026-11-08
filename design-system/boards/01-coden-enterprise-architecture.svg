@@ -10,8 +10,6 @@
   <style>
  text{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
 
- text{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
-
     text{font-family:Inter,Arial,sans-serif;fill:#18364F}
     .eyebrow{font-size:15px;font-weight:700;letter-spacing:2.2px;fill:#5B7891}
     .h1{font-size:39px;font-weight:750;fill:#102A43}
