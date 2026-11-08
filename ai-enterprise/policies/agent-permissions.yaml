@@ -1,0 +1,21 @@
+schema_version: "0.1.0"
+status: proposed_policy_not_enforced
+default_access: deny
+agents: []
+required_agent_fields:
+  - agent_id
+  - human_owner
+  - approved_tools
+  - allowed_repositories
+  - permitted_actions
+  - spending_limit
+  - approval_required_for
+  - expiration_date
+  - audit_log_reference
+mandatory_human_approval:
+  - production_deployment
+  - financial_spending
+  - security_policy_change
+  - permission_escalation
+  - identity_payment_or_eligibility_decision
+  - government_data_access
