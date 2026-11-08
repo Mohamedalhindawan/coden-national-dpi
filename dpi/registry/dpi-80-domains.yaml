@@ -1,0 +1,15 @@
+schema_version: "0.1.0"
+playbook_version: "4.0"
+status: awaiting_authoritative_catalog
+expected_domain_count: 80
+# Do not fabricate names or claim this registry is complete.
+domains: []
+required_domain_fields:
+  - id
+  - name_ar
+  - name_en
+  - scope
+  - accountable_owner
+  - implementation_status
+  - evidence_urls
+  - last_reviewed
