@@ -1,0 +1,23 @@
+schema_version: "0.1.0"
+status: draft
+modules:
+  - id: tamam-social-support
+    name: "TAMAM Social Support"
+    status: prototype_only
+    evidence_url: "https://github.com/Mohamedalhindawan/coden-national-dpi/blob/main/app/index.html"
+  - id: tamam-takafol
+    name: "TAMAM Takafol"
+    status: planned
+  - id: tamam-business
+    name: "TAMAM for Business"
+    status: planned
+  - id: tamam-marketplace
+    name: "TAMAM Marketplace"
+    status: planned
+  - id: tamam-mini-apps
+    name: "TAMAM Mini Apps"
+    status: planned
+  - id: tamam-government-services
+    name: "TAMAM Government Services"
+    status: planned
+# Statuses reflect product planning, not government approval.
