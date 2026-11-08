@@ -3,7 +3,9 @@
  <linearGradient id="navy" x1="0" x2="1"><stop stop-color="#10243E"/><stop offset="1" stop-color="#1B456B"/></linearGradient>
  <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#10243E" flood-opacity=".10"/></filter>
  <style>
- .h1{font:700 38px Arial,sans-serif;fill:#10243E}.sub{font:18px Arial,sans-serif;fill:#60758A}.section{font:700 20px Arial,sans-serif;fill:#10243E}.label{font:700 16px Arial,sans-serif;fill:#173A5E}.body{font:14px Arial,sans-serif;fill:#536B80}.small{font:12px Arial,sans-serif;fill:#6B8093}.card{fill:#fff;stroke:#D8E4EC;stroke-width:1.5}.line{stroke:#8AA4B8;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+ text{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
+
+ .h1{font:700 38px Arial,sans-serif;fill:#10243E}.sub{font:18px Arial,sans-serif;fill:#526B80}.section{font:700 20px Arial,sans-serif;fill:#10243E}.label{font:700 16px Arial,sans-serif;fill:#173A5E}.body{font:15px Arial,sans-serif;fill:#536B80}.small{font:13px Arial,sans-serif;fill:#526B80}.card{fill:#fff;stroke:#D8E4EC;stroke-width:1.5}.line{stroke:#8AA4B8;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
  </style>
 </defs>
 <rect width="1920" height="1080" fill="#F5F8FB"/><rect width="1920" height="12" fill="#20A6B2"/>
@@ -28,7 +30,7 @@
 <text x="72" y="388" class="section">02  ENTERPRISE ARCHITECTURE DOMAINS</text>
 <rect x="72" y="410" width="1776" height="218" rx="18" fill="url(#navy)" filter="url(#shadow)"/>
 <text x="104" y="450" style="font:700 21px Arial;fill:#fff">SHARED ARCHITECTURE PRACTICE</text>
-<text x="104" y="475" style="font:14px Arial;fill:#C4D8E7">Connect strategy to delivery through consistent views, standards and traceable decisions</text>
+<text x="104" y="475" style="font:15px Arial;fill:#C4D8E7">Connect strategy to delivery through consistent views, standards and traceable decisions</text>
 <g>
  <rect x="104" y="500" width="390" height="100" rx="10" fill="#fff"/><text x="299" y="532" text-anchor="middle" class="label">BUSINESS ARCHITECTURE</text><text x="299" y="558" text-anchor="middle" class="small">Capabilities • Value streams • Services</text><text x="299" y="578" text-anchor="middle" class="small">Operating model • Stakeholders</text>
  <rect x="520" y="500" width="390" height="100" rx="10" fill="#EAF5FA"/><text x="715" y="532" text-anchor="middle" class="label">DATA &amp; INFORMATION</text><text x="715" y="558" text-anchor="middle" class="small">Data ownership • Quality • Lineage</text><text x="715" y="578" text-anchor="middle" class="small">Privacy • Interoperability</text>
