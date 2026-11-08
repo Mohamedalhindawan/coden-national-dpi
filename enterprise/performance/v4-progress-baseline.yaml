@@ -1,0 +1,22 @@
+schema_version: "0.1.0"
+playbook_version: "4.0"
+status: awaiting_full_master_and_human_approval
+method: "docs/V4_PROGRESS_MEASUREMENT_STANDARD.md"
+full_master_text_committed: false
+requirements_decomposed_and_audited: false
+weights_approved: false
+baseline_approved_by: null
+baseline_approved_at: null
+measured_completion_percent: null
+measured_remaining_percent: null
+# Provisional weights are intentionally null; never fabricate progress percentages.
+phases:
+  - {id: P1, name: Enterprise Foundation, approved_weight: null, audited_requirements: 0}
+  - {id: P2, name: AI-Native Foundation, approved_weight: null, audited_requirements: 0}
+  - {id: P3, name: AI Engineering Factory, approved_weight: null, audited_requirements: 0}
+  - {id: P4, name: Enterprise Intelligence, approved_weight: null, audited_requirements: 0}
+  - {id: P5, name: Product Engineering, approved_weight: null, audited_requirements: 0}
+  - {id: P6, name: DPI Engineering, approved_weight: null, audited_requirements: 0}
+  - {id: P7, name: Production Operations, approved_weight: null, audited_requirements: 0}
+  - {id: P8, name: National Delivery Readiness, approved_weight: null, audited_requirements: 0}
+requirements: []
