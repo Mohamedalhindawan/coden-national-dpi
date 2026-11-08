@@ -1,0 +1,13 @@
+schema_version: "0.1.0"
+status: draft
+vendors: []
+required_fields:
+  - vendor_id
+  - name
+  - product_or_service
+  - risk_tier
+  - data_access_scope
+  - license_or_terms
+  - security_review
+  - procurement_approval
+  - contract_reference
