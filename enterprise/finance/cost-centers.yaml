@@ -1,0 +1,17 @@
+schema_version: "0.1.0"
+status: draft
+currency: null
+cost_centers: []
+segregation_rules:
+  - "CODEN corporate funds must remain separate from public, donor and beneficiary funds."
+  - "No spending or binding financial commitment without authorized human approval."
+  - "Donor restricted funding must follow signed grant terms and applicable controls."
+required_fields:
+  - id
+  - name
+  - legal_entity
+  - budget_owner
+  - approved_budget
+  - actual_spend
+  - source_of_funds
+  - approval_reference
