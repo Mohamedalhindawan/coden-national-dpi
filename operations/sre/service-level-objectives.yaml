@@ -1,0 +1,15 @@
+schema_version: "0.1.0"
+status: design_only
+services: []
+required_fields:
+  - service_id
+  - environment
+  - owner
+  - sli_name
+  - sli_formula
+  - slo_target
+  - measurement_window
+  - telemetry_source
+  - alert_route
+  - error_budget_policy
+# No production services or uptime measurements are claimed.

@@ -1,0 +1,14 @@
+schema_version: "0.1.0"
+status: draft
+opportunities: []
+required_fields:
+  - opportunity_id
+  - client_or_program
+  - opportunity_stage
+  - estimated_value
+  - currency
+  - accountable_owner
+  - proposal_reference
+  - legal_authority
+  - evidence_url
+# An opportunity is not a signed contract or confirmed revenue.
