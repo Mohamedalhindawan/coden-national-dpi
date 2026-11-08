@@ -1,0 +1,23 @@
+schema_version: "0.1.0"
+status: awaiting_source_snapshot
+source: "https://www.digitalpublicgoods.net/registry/"
+source_snapshot_date: null
+verified_item_count: null
+# Reference counts mentioned in planning are not automatically verified.
+items: []
+allowed_asset_types:
+  - open_source_software
+  - open_data
+  - open_ai_system
+  - open_content
+  - standard
+  - api
+  - infrastructure
+required_item_fields:
+  - id
+  - name
+  - source_url
+  - asset_type
+  - license
+  - evaluation_status
+  - evidence_urls
