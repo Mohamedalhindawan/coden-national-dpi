@@ -3,6 +3,8 @@
 ## Project context
 **Master guide:** See [CODEN_MASTER_ENGINEERING_PLAYBOOK.md](CODEN_MASTER_ENGINEERING_PLAYBOOK.md) for the complete vision, 31-sector/DPI scope, agent workflow, safety gates, and implementation status.
 
+**Visual documentation skills:** For playbooks, architecture diagrams, dashboards, proposals, and PDFs, follow [skills/visual-documentation/README.md](skills/visual-documentation/README.md) and the relevant skill file. The owner-approved CODEN reference image is the visual source of truth; do not substitute a generic brand.
+
 CODEN is a proposed Yemeni GovTech / Digital Public Infrastructure project. Tamam is a prototype citizen-facing super-app. This repository is a prototype and planning workspace, not an approved government production system.
 
 ## Rules
