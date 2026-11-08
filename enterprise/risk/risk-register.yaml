@@ -1,0 +1,18 @@
+version: "0.1.0"
+status: draft
+risks:
+  - id: RISK-001
+    title: "Unprotected main branch"
+    description: "Main branch protection was reported disabled during the 2026-11-08 repository audit; recheck current settings."
+    severity: high
+    status: open
+    owner: unassigned
+    mitigation: "Configure protected branch or ruleset with required PR review and CI checks; verify enforcement."
+    evidence: "https://github.com/Mohamedalhindawan/coden-national-dpi/tree/main"
+  - id: RISK-002
+    title: "Repository master reference is older than approved V4.0"
+    severity: high
+    status: open
+    owner: unassigned
+    mitigation: "Commit approved full V4.0 and update README and AGENTS references through reviewed PR."
+    evidence: "https://github.com/Mohamedalhindawan/coden-national-dpi/blob/main/CODEN_MASTER_ENGINEERING_PLAYBOOK.md"
