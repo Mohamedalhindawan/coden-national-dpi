@@ -1,0 +1,14 @@
+# Evidence is not automatically trusted; links must be reviewed.
+version: "0.1.0"
+status: draft
+records: []
+required_fields:
+  - evidence_id
+  - claim
+  - playbook_section
+  - artifact_url
+  - source_commit
+  - observed_result
+  - reviewer
+  - reviewed_at
+  - verification_status
