@@ -1,0 +1,17 @@
+# CODEN V4.0 section 65: KPI dictionary template. No measured values are asserted.
+schema_version: "0.1.0"
+status: draft
+kpis: []
+required_fields:
+  - id
+  - name
+  - definition
+  - formula
+  - data_source
+  - accountable_owner
+  - measurement_frequency
+  - baseline
+  - target
+  - observed_value
+  - evidence_url
+  - reviewed_at
