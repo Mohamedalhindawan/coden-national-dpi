@@ -48,3 +48,15 @@ class ProgressTests(unittest.TestCase):
     def test_duplicate_phase_rejected(self):
         b = baseline(); b["phases"][1]["id"] = "P1"
         with self.assertRaises(ValueError): calculate_progress(b)
+
+    def test_url_with_credentials_rejected(self):
+        b = baseline(); b["requirements"][0]["evidence_url"] = "https://attacker@example.com/evidence"
+        with self.assertRaises(ValueError): calculate_progress(b)
+
+    def test_url_with_whitespace_rejected(self):
+        b = baseline(); b["requirements"][0]["evidence_url"] = "https://github.com/example/ evidence"
+        with self.assertRaises(ValueError): calculate_progress(b)
+
+    def test_url_without_hostname_rejected(self):
+        b = baseline(); b["requirements"][0]["evidence_url"] = "https:///missing-host"
+        with self.assertRaises(ValueError): calculate_progress(b)
