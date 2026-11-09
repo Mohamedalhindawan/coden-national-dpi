@@ -30,6 +30,18 @@ class AuditTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             audit({})
 
+    def test_duplicate_pr_number_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'duplicate PR number'):
+            audit([pr(1, 'a', 'main'), pr(1, 'b', 'main')])
+
+    def test_malformed_record_rejected(self):
+        with self.assertRaises(ValueError):
+            audit([{'number': 1, 'head': None, 'base': {'ref': 'main'}}])
+
+    def test_self_based_pr_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'cycle'):
+            audit([pr(1, 'same', 'same')])
+
     def test_order_independent(self):
         self.assertEqual(audit([pr(3, 'c', 'b'), pr(2, 'b', 'a'), pr(1, 'a', 'main')])['stacked'], [{'pr': 2, 'depends_on_pr': 1}, {'pr': 3, 'depends_on_pr': 2}])
 
