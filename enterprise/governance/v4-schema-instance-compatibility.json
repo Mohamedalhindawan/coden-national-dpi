@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "status": "draft",
+  "issue": 55,
+  "source_prs": [
+    43,
+    44,
+    46,
+    51,
+    53
+  ],
+  "contracts": {
+    "risk": {
+      "schema": "schemas/enterprise/risk.schema.json",
+      "pr": 46,
+      "registry": "enterprise/risk/risk-register.yaml",
+      "registry_pr": 51,
+      "field_map": {
+        "id": "risk_id",
+        "title": "title",
+        "description": "description",
+        "status": null,
+        "owner": null,
+        "mitigation": "mitigation_plan",
+        "severity": null,
+        "evidence": null
+      },
+      "required_missing": [
+        "initiative_id",
+        "likelihood",
+        "impact",
+        "identified_at"
+      ],
+      "unmapped_values": {
+        "status": [
+          "open"
+        ],
+        "owner": [
+          "unassigned"
+        ],
+        "severity": [
+          "high"
+        ]
+      },
+      "migration": "blocked_pending_human_mapping"
+    },
+    "kpi": {
+      "schema": "schemas/enterprise/kpi.schema.json",
+      "pr": 43,
+      "measurement_schema": "schemas/enterprise/kpi-measurement.schema.json",
+      "measurement_pr": 44,
+      "registry": "enterprise/performance/kpi-registry.yaml",
+      "registry_pr": 53,
+      "field_map": {
+        "id": "kpi_id",
+        "name": "name",
+        "definition": "definition",
+        "baseline": "baseline",
+        "target": "target",
+        "measurement_frequency": "measurement_frequency"
+      },
+      "required_missing": [
+        "objective_id",
+        "unit",
+        "direction",
+        "status",
+        "created_at"
+      ],
+      "template_only": [
+        "formula",
+        "data_source",
+        "accountable_owner",
+        "observed_value",
+        "evidence_url",
+        "reviewed_at"
+      ],
+      "migration": "blocked_pending_human_mapping"
+    }
+  }
+}
