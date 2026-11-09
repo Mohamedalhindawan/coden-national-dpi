@@ -23,7 +23,7 @@ def approval_url_is_scoped(value):
     return (parts.scheme == "https" and parts.netloc == "github.com"
             and not parts.query and not parts.fragment
             and not parts.username and not parts.password
-            and parts.port is None
+            and parts.netloc == "github.com"
             and len(segments) == 4
             and segments[:3] == ["Mohamedalhindawan", "coden-national-dpi", "pull"]
             and segments[3].isascii() and segments[3].isdecimal()
