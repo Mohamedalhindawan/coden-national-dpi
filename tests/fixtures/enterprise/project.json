@@ -1,0 +1,10 @@
+{
+  "project_id": "proj-tamam-demo",
+  "name": "TAMAM Synthetic Pilot",
+  "owner_principal_id": "human-demo-owner",
+  "status": "planned",
+  "risk_tier": "medium",
+  "data_class": "synthetic",
+  "created_at": "2026-11-07T20:00:00Z",
+  "description": "Synthetic project fixture only."
+}

@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coden.it.com/schemas/enterprise/coden-approval.schema.json",
+  "title": "CODEN Approval",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "approval_id",
+    "subject_type",
+    "subject_id",
+    "artifact_digest",
+    "action",
+    "environment",
+    "requested_by",
+    "decision",
+    "created_at"
+  ],
+  "properties": {
+    "approval_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 100,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]*$"
+    },
+    "subject_type": {
+      "enum": [
+        "work_item",
+        "project",
+        "release",
+        "deployment",
+        "budget",
+        "policy",
+        "other"
+      ]
+    },
+    "subject_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 100,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]*$"
+    },
+    "artifact_digest": {
+      "type": "string",
+      "pattern": "^(sha256:)?[a-f0-9]{64}$"
+    },
+    "action": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "environment": {
+      "enum": [
+        "development",
+        "test",
+        "staging",
+        "production"
+      ]
+    },
+    "requested_by": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 100,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]*$"
+    },
+    "approver_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 100,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]*$"
+    },
+    "decision": {
+      "enum": [
+        "pending",
+        "approved",
+        "rejected",
+        "expired",
+        "revoked"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "decided_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

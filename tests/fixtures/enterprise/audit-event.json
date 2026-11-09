@@ -1,0 +1,15 @@
+{
+  "event_id": "event-demo-001",
+  "actor_type": "system",
+  "actor_id": "system-test-runner",
+  "action": "schema_validation",
+  "subject_type": "work_item",
+  "subject_id": "task-contract-demo",
+  "timestamp": "2026-11-07T20:00:00Z",
+  "correlation_id": "corr-demo-001",
+  "outcome": "success",
+  "metadata_redacted": {
+    "mode": "synthetic",
+    "result": "pass"
+  }
+}
