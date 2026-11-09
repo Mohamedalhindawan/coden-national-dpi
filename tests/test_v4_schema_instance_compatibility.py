@@ -27,7 +27,9 @@ def approval_url_is_scoped(value):
             and len(segments) == 4
             and segments[:3] == ["Mohamedalhindawan", "coden-national-dpi", "pull"]
             and segments[3].isascii() and segments[3].isdecimal()
-            and int(segments[3]) > 0)
+            and int(segments[3]) > 0
+            and value == ("https://github.com/Mohamedalhindawan/"
+                          "coden-national-dpi/pull/" + str(int(segments[3]))))
 
 
 def migration_allowed(entry):
@@ -136,6 +138,9 @@ class SchemaInstanceCompatibilityTests(unittest.TestCase):
                     "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/76/",
                     "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/76//",
                     "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/76%2F",
+                    "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/0076",
+                    "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/76\n",
+                    "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/76\t",
                     None):
             with self.subTest(url=url):
                 self.assertFalse(approval_url_is_scoped(url))
