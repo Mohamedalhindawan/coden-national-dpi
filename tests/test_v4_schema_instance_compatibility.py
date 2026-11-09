@@ -19,9 +19,11 @@ def approval_url_is_scoped(value):
         parts = urlsplit(value)
     except ValueError:
         return False
-    segments = parts.path.strip("/").split("/")
+    segments = parts.path.split("/")[1:]
     return (parts.scheme == "https" and parts.netloc == "github.com"
             and not parts.query and not parts.fragment
+            and not parts.username and not parts.password
+            and parts.netloc == "github.com"
             and len(segments) == 4
             and segments[:3] == ["Mohamedalhindawan", "coden-national-dpi", "pull"]
             and segments[3].isascii() and segments[3].isdecimal()
@@ -131,6 +133,9 @@ class SchemaInstanceCompatibilityTests(unittest.TestCase):
                     "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/not-a-number",
                     "https://github.com.evil.test/Mohamedalhindawan/coden-national-dpi/pull/76",
                     "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/0",
+                    "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/76/",
+                    "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/76//",
+                    "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/76%2F",
                     None):
             with self.subTest(url=url):
                 self.assertFalse(approval_url_is_scoped(url))
