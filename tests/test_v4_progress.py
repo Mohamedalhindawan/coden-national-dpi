@@ -81,3 +81,23 @@ class MalformedBaselineTests(unittest.TestCase):
     def test_unhashable_requirement_phase_rejected(self):
         b = baseline(); b["requirements"][0]["phase"] = ["P1"]
         with self.assertRaises(ValueError): calculate_progress(b)
+
+class ApprovalIntegrityTests(unittest.TestCase):
+    def test_nonobject_baseline_rejected(self):
+        with self.assertRaises(ValueError): calculate_progress([])
+
+    def test_truthy_string_approval_not_accepted(self):
+        b = baseline(); b["weights_approved"] = "false"
+        self.assertEqual(calculate_progress(b)["status"], "not_measurable")
+
+    def test_numeric_approval_not_accepted(self):
+        b = baseline(); b["full_master_text_committed"] = 1
+        self.assertEqual(calculate_progress(b)["status"], "not_measurable")
+
+    def test_whitespace_approver_not_accepted(self):
+        b = baseline(); b["baseline_approved_by"] = "   "
+        self.assertEqual(calculate_progress(b)["status"], "not_measurable")
+
+    def test_nonstring_approver_not_accepted(self):
+        b = baseline(); b["baseline_approved_by"] = ["human"]
+        self.assertEqual(calculate_progress(b)["status"], "not_measurable")
