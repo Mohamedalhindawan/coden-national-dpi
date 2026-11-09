@@ -19,6 +19,7 @@ def completion_rates(data):
         return None
     total = 0.0
     done = 0.0
+    seen_requirement_ids = set()
     for p in phases:
         if p.get('verified') is not True or not isinstance(p.get('title'), str) or not p['title'].strip():
             return None
@@ -32,6 +33,10 @@ def completion_rates(data):
         for r in requirements:
             if not isinstance(r, dict) or type(r.get('completed')) is not bool or r.get('domain') not in DOMAINS:
                 return None
+            rid = r.get('id')
+            if not isinstance(rid, str) or not rid.strip() or rid in seen_requirement_ids:
+                return None
+            seen_requirement_ids.add(rid)
             if r['completed']:
                 if any(not isinstance(r.get(k), str) or not r[k].strip() for k in ('reviewed_evidence', 'executed_tests', 'acceptance_reference')):
                     return None
@@ -49,7 +54,7 @@ class BaselineTests(unittest.TestCase):
         d = self.data
         d['source_verified'] = True
         for i, p in enumerate(d['phases']):
-            p.update(title=f'Fixture phase {i+1}', weight=1, verified=True, requirements=[{'completed': i < 4, 'domain':'governance_documentation', 'reviewed_evidence':'commit:fixture', 'executed_tests':'run:fixture', 'acceptance_reference':'approval:fixture', 'human_accepted':True}])
+            p.update(title=f'Fixture phase {i+1}', weight=1, verified=True, requirements=[{'id':f'FIXTURE-REQ-{i+1}', 'completed': i < 4, 'domain':'governance_documentation', 'reviewed_evidence':'commit:fixture', 'executed_tests':'run:fixture', 'acceptance_reference':'approval:fixture', 'human_accepted':True}])
         return d
 
     def test_unverified_baseline_unmeasurable(self):
@@ -89,6 +94,18 @@ class BaselineTests(unittest.TestCase):
 
     def test_duplicate_phase_rejected(self):
         d=self.fixture(); d['phases'][1]['id']='V4-P1'
+        self.assertIsNone(completion_rates(d))
+
+    def test_missing_requirement_id_rejected(self):
+        d=self.fixture(); del d['phases'][0]['requirements'][0]['id']
+        self.assertIsNone(completion_rates(d))
+
+    def test_duplicate_requirement_id_rejected(self):
+        d=self.fixture(); d['phases'][1]['requirements'][0]['id']=d['phases'][0]['requirements'][0]['id']
+        self.assertIsNone(completion_rates(d))
+
+    def test_blank_requirement_id_rejected(self):
+        d=self.fixture(); d['phases'][0]['requirements'][0]['id']='  '
         self.assertIsNone(completion_rates(d))
 
     def test_missing_human_acceptance_rejected(self):
