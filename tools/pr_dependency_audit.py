@@ -3,7 +3,9 @@ import argparse
 import json
 
 
-def audit(pulls):
+def audit(pulls, default_branch='main'):
+    if not isinstance(default_branch, str) or not default_branch.strip():
+        raise ValueError('invalid default branch')
     if not isinstance(pulls, list):
         raise ValueError('pulls must be a list')
     by_head = {}
@@ -43,7 +45,12 @@ def audit(pulls):
         seen.add(n)
     for n in dependencies:
         visit(n)
-    return {'open_pr_count': len(pulls), 'stacked': [{'pr': n, 'depends_on_pr': parent} for n, parent in sorted(dependencies.items()) if parent is not None], 'independent': sorted(n for n, parent in dependencies.items() if parent is None)}
+    unresolved = sorted(
+        [{'pr': pr['number'], 'base_ref': pr['base']['ref']} for pr in pulls
+         if dependencies[pr['number']] is None and pr['base']['ref'] != default_branch],
+        key=lambda item: item['pr'],
+    )
+    return {'unresolved_bases': unresolved, 'open_pr_count': len(pulls), 'stacked': [{'pr': n, 'depends_on_pr': parent} for n, parent in sorted(dependencies.items()) if parent is not None], 'independent': sorted(pr['number'] for pr in pulls if dependencies[pr['number']] is None and pr['base']['ref'] == default_branch)}
 
 
 def main():
