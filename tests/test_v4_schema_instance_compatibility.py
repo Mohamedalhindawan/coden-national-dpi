@@ -5,9 +5,27 @@ This does not claim that YAML registries conform to enterprise JSON Schemas.
 import json
 import unittest
 from pathlib import Path
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 MAPPING = ROOT / "enterprise/governance/v4-schema-instance-compatibility.json"
+
+
+def approval_url_is_scoped(value):
+    """Require a canonical PR link in this repository; not proof of approval."""
+    if not isinstance(value, str):
+        return False
+    try:
+        parts = urlsplit(value)
+    except ValueError:
+        return False
+    segments = parts.path.strip("/").split("/")
+    return (parts.scheme == "https" and parts.netloc == "github.com"
+            and not parts.query and not parts.fragment
+            and len(segments) == 4
+            and segments[:3] == ["Mohamedalhindawan", "coden-national-dpi", "pull"]
+            and segments[3].isascii() and segments[3].isdecimal()
+            and int(segments[3]) > 0)
 
 
 def migration_allowed(entry):
@@ -25,7 +43,7 @@ def migration_allowed(entry):
         and isinstance(entry.get("approved_by"), str)
         and bool(entry["approved_by"].strip())
         and isinstance(entry.get("approval_evidence_url"), str)
-        and entry["approval_evidence_url"].startswith("https://github.com/")
+        and approval_url_is_scoped(entry["approval_evidence_url"])
         and isinstance(entry.get("schema"), str)
         and bool(entry["schema"].strip())
         and isinstance(entry.get("registry"), str)
@@ -84,7 +102,7 @@ class SchemaInstanceCompatibilityTests(unittest.TestCase):
                   "unmapped_values": {}, "field_map": {"id": "risk_id"},
                   "schema": "schemas/risk.json", "registry": "enterprise/risk.yaml",
                   "approved_by": "human-reviewer",
-                  "approval_evidence_url": "https://github.com/example/repo/pull/1"}
+                  "approval_evidence_url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/76"}
         self.assertTrue(migration_allowed(record))
         record["field_map"]["status"] = None
         self.assertFalse(migration_allowed(record))
@@ -104,6 +122,20 @@ class SchemaInstanceCompatibilityTests(unittest.TestCase):
         self.assertFalse(migration_allowed(None))
         self.assertFalse(migration_allowed([]))
 
+
+    def test_approval_url_scope_rejects_untrusted_or_ambiguous_links(self):
+        for url in ("https://github.com/example/repo/pull/1",
+                    "https://github.com/Mohamedalhindawan/coden-national-dpi/issues/55",
+                    "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/76?x=1",
+                    "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/76#review",
+                    "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/not-a-number",
+                    "https://github.com.evil.test/Mohamedalhindawan/coden-national-dpi/pull/76",
+                    "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/0",
+                    None):
+            with self.subTest(url=url):
+                self.assertFalse(approval_url_is_scoped(url))
+        self.assertTrue(approval_url_is_scoped(
+            "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/76"))
 
 if __name__ == "__main__":
     unittest.main()
