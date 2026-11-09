@@ -56,9 +56,10 @@ def audit(pulls, default_branch='main'):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('pulls_json', help='Saved GitHub REST /pulls?state=open JSON; no API access or credentials')
+    parser.add_argument('--default-branch', default='main', help='Repository default branch (default: main)')
     args = parser.parse_args()
     with open(args.pulls_json, encoding='utf-8') as f:
-        print(json.dumps(audit(json.load(f)), indent=2))
+        print(json.dumps(audit(json.load(f), default_branch=args.default_branch), indent=2))
 
 
 if __name__ == '__main__':
