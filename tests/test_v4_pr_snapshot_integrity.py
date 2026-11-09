@@ -19,6 +19,8 @@ def validate_inventory(data):
     rows = data.get("pull_requests")
     if not isinstance(rows, list):
         raise ValueError("pull_requests must be a list")
+    if any(not isinstance(row, dict) or not isinstance(row.get("number"), int) or isinstance(row.get("number"), bool) for row in rows):
+        raise ValueError("PR rows must be objects with integer numbers")
     numbers = [row["number"] for row in rows]
     if len(numbers) != len(set(numbers)):
         raise ValueError("duplicate PR numbers")
@@ -27,6 +29,13 @@ def validate_inventory(data):
         raise ValueError("incomplete inventory scope")
     active_heads = {}
     for row in rows:
+        required = ("state", "draft", "head_sha", "url", "head", "base", "depends_on_pr")
+        if any(field not in row for field in required):
+            raise ValueError("incomplete PR row")
+        if not isinstance(row["head"], str) or not row["head"] or not isinstance(row["base"], str) or not row["base"]:
+            raise ValueError("invalid branch name")
+        if row["depends_on_pr"] is not None and (not isinstance(row["depends_on_pr"], int) or isinstance(row["depends_on_pr"], bool)):
+            raise ValueError("invalid dependency number")
         n = row["number"]
         if row["state"] not in ("open", "closed"):
             raise ValueError("unknown PR state")
@@ -65,6 +74,30 @@ class SnapshotIntegrityTests(unittest.TestCase):
 
     def test_current_snapshot_integrity(self):
         validate_inventory(self.snapshot)
+
+    def test_rejects_non_object_row(self):
+        changed = copy.deepcopy(self.snapshot)
+        changed["pull_requests"][0] = None
+        with self.assertRaises(ValueError):
+            validate_inventory(changed)
+
+    def test_rejects_boolean_pr_number(self):
+        changed = copy.deepcopy(self.snapshot)
+        changed["pull_requests"][0]["number"] = True
+        with self.assertRaises(ValueError):
+            validate_inventory(changed)
+
+    def test_rejects_missing_dependency_field(self):
+        changed = copy.deepcopy(self.snapshot)
+        del changed["pull_requests"][0]["depends_on_pr"]
+        with self.assertRaises(ValueError):
+            validate_inventory(changed)
+
+    def test_rejects_boolean_dependency(self):
+        changed = copy.deepcopy(self.snapshot)
+        changed["pull_requests"][1]["depends_on_pr"] = False
+        with self.assertRaises(ValueError):
+            validate_inventory(changed)
 
     def test_rejects_forged_pr_url(self):
         changed = copy.deepcopy(self.snapshot)
