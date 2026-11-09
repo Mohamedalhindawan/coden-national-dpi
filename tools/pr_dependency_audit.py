@@ -7,9 +7,21 @@ def audit(pulls):
     if not isinstance(pulls, list):
         raise ValueError('pulls must be a list')
     by_head = {}
+    by_number = set()
     for pr in pulls:
-        number = pr['number']
-        head = pr['head']['ref']
+        try:
+            number = pr['number']
+            head = pr['head']['ref']
+            base = pr['base']['ref']
+        except (TypeError, KeyError) as exc:
+            raise ValueError('malformed PR record') from exc
+        if isinstance(number, bool) or not isinstance(number, int) or number <= 0:
+            raise ValueError('invalid PR number')
+        if not isinstance(head, str) or not head.strip() or not isinstance(base, str) or not base.strip():
+            raise ValueError('invalid PR branch ref')
+        if number in by_number:
+            raise ValueError(f'duplicate PR number: {number}')
+        by_number.add(number)
         if head in by_head:
             raise ValueError(f'duplicate head branch: {head}')
         by_head[head] = number
