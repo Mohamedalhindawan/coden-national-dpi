@@ -1,0 +1,215 @@
+{
+  "schema_version": 1,
+  "observed_date": "2026-11-09",
+  "repository": "Mohamedalhindawan/coden-national-dpi",
+  "source": "GitHub connector PR metadata",
+  "scope": "PR #26, #37–#54, #56; issue #55 coordination",
+  "limitations": [
+    "Point-in-time snapshot; refresh before merge",
+    "Base branch link does not prove CI success or mergeability",
+    "Closed PR #48 shares a branch name with open #49 and is excluded from active dependency resolution",
+    "No completion percentage inferred"
+  ],
+  "pull_requests": [
+    {
+      "number": 26,
+      "base": "main",
+      "head": "feat/coden-enterprise-skills-library-v1",
+      "head_sha": "2c775421baa89a5dc89d34a2777d90dad4690a8f",
+      "state": "open",
+      "draft": true,
+      "depends_on_pr": null,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/26"
+    },
+    {
+      "number": 37,
+      "base": "main",
+      "head": "feat/stage-3a-canonical-json-schemas",
+      "head_sha": "06053c06cf4f3567b6b00d1aed47c6703719f162",
+      "state": "open",
+      "draft": true,
+      "depends_on_pr": null,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/37"
+    },
+    {
+      "number": 38,
+      "base": "feat/stage-3a-canonical-json-schemas",
+      "head": "feat/stage-3a-work-item-lifecycle",
+      "head_sha": "98d5941cdc5d560d04ac96f39483d0f7938aaf5c",
+      "state": "open",
+      "draft": true,
+      "depends_on_pr": 37,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/38"
+    },
+    {
+      "number": 39,
+      "base": "feat/stage-3a-work-item-lifecycle",
+      "head": "feat/stage-3a-transition-command-contract",
+      "head_sha": "a5aff4ba54dd0a348ca32ae8b9d93244f787b640",
+      "state": "open",
+      "draft": true,
+      "depends_on_pr": 38,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/39"
+    },
+    {
+      "number": 40,
+      "base": "feat/stage-3a-transition-command-contract",
+      "head": "feat/stage-3a-approval-separation-of-duties",
+      "head_sha": "f4f093d248dc97d041b9d06a40857a0b638ea834",
+      "state": "open",
+      "draft": true,
+      "depends_on_pr": 39,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/40"
+    },
+    {
+      "number": 41,
+      "base": "feat/stage-3a-approval-separation-of-duties",
+      "head": "feat/stage-3a-audit-event-hash-chain",
+      "head_sha": "07419f6f6ceb1c82645ced8d70b8d17489267473",
+      "state": "open",
+      "draft": true,
+      "depends_on_pr": 40,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/41"
+    },
+    {
+      "number": 42,
+      "base": "feat/stage-3a-audit-event-hash-chain",
+      "head": "feat/stage-3b-portfolio-initiative-contracts",
+      "head_sha": "e3d925cb0b8c9e73c363193e5e4c253fae95cb63",
+      "state": "open",
+      "draft": true,
+      "depends_on_pr": 41,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/42"
+    },
+    {
+      "number": 43,
+      "base": "feat/stage-3b-portfolio-initiative-contracts",
+      "head": "feat/stage-3b-strategic-objective-kpi-contracts",
+      "head_sha": "fa907b89a41e65eebc834d0bcfd95dae6961d10a",
+      "state": "open",
+      "draft": true,
+      "depends_on_pr": 42,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/43"
+    },
+    {
+      "number": 44,
+      "base": "feat/stage-3b-strategic-objective-kpi-contracts",
+      "head": "feat/stage-3b-kpi-measurement-records",
+      "head_sha": "f8b4358abfa94287ca69ab8a764d4419870b8f09",
+      "state": "open",
+      "draft": true,
+      "depends_on_pr": 43,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/44"
+    },
+    {
+      "number": 45,
+      "base": "feat/stage-3b-kpi-measurement-records",
+      "head": "feat/stage-3b-resource-allocation-contracts",
+      "head_sha": "b57212da3846b5225967a6ad35efe067704e864d",
+      "state": "open",
+      "draft": true,
+      "depends_on_pr": 44,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/45"
+    },
+    {
+      "number": 46,
+      "base": "feat/stage-3b-resource-allocation-contracts",
+      "head": "feat/stage-3b-enterprise-risk-register",
+      "head_sha": "d302556703180375404fef36232cbd4f16bb11e5",
+      "state": "open",
+      "draft": true,
+      "depends_on_pr": 45,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/46"
+    },
+    {
+      "number": 47,
+      "base": "feat/stage-3b-enterprise-risk-register",
+      "head": "feat/stage-3b-dependency-register",
+      "head_sha": "b012794e8fcdeabac5db319b1c75b649431291be",
+      "state": "open",
+      "draft": true,
+      "depends_on_pr": 46,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/47"
+    },
+    {
+      "number": 48,
+      "base": "main",
+      "head": "feat/coden-visual-documentation-skills",
+      "head_sha": "90f58500de1c274cd5c8fdb196c590e573c4d5c9",
+      "state": "closed",
+      "draft": false,
+      "depends_on_pr": null,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/48"
+    },
+    {
+      "number": 49,
+      "base": "main",
+      "head": "feat/coden-visual-documentation-skills",
+      "head_sha": "a1fa312f51d096184cd700c817b47f6387c8371b",
+      "state": "open",
+      "draft": false,
+      "depends_on_pr": null,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/49"
+    },
+    {
+      "number": 50,
+      "base": "main",
+      "head": "feat/playbook-v4-skills-foundation",
+      "head_sha": "d24f95a7ffe801332017f5580c801ee567712e80",
+      "state": "open",
+      "draft": true,
+      "depends_on_pr": null,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/50"
+    },
+    {
+      "number": 51,
+      "base": "main",
+      "head": "feat/playbook-v4-traceability-foundation",
+      "head_sha": "cd409c64ffc3c6e4fa3b16ed04398b7bb2d3aebe",
+      "state": "open",
+      "draft": true,
+      "depends_on_pr": null,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/51"
+    },
+    {
+      "number": 52,
+      "base": "main",
+      "head": "feat/playbook-v4-dpi-gates-foundation",
+      "head_sha": "cd0117f87e6b85a94fed917bf728cb41e8ee43a5",
+      "state": "open",
+      "draft": true,
+      "depends_on_pr": null,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/52"
+    },
+    {
+      "number": 53,
+      "base": "main",
+      "head": "feat/playbook-v4-operations-foundation",
+      "head_sha": "6defd60c72b25b3e5b4d30ea328ff5c0ae879182",
+      "state": "open",
+      "draft": true,
+      "depends_on_pr": null,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/53"
+    },
+    {
+      "number": 54,
+      "base": "main",
+      "head": "feat/playbook-v4-product-engineering-foundation",
+      "head_sha": "9f563e368a199e67e6f3fa161b19f70d5d14880e",
+      "state": "open",
+      "draft": true,
+      "depends_on_pr": null,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/54"
+    },
+    {
+      "number": 56,
+      "base": "main",
+      "head": "feat/v4-progress-measurement-method",
+      "head_sha": "5254da0caf98dd0fba537877d3ebdd0c8cc1cac1",
+      "state": "open",
+      "draft": true,
+      "depends_on_pr": null,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/56"
+    }
+  ]
+}
