@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "source_document": "CODEN Enterprise Operating & Engineering Playbook V4.0",
+  "source_verified": false,
+  "measurement_status": "unmeasurable",
+  "acceptance_rule": "Only reviewed evidence, executed tests and recorded human acceptance count as complete.",
+  "phases": [
+    {
+      "id": "V4-P1",
+      "title": null,
+      "weight": null,
+      "requirements": [],
+      "verified": false
+    },
+    {
+      "id": "V4-P2",
+      "title": null,
+      "weight": null,
+      "requirements": [],
+      "verified": false
+    },
+    {
+      "id": "V4-P3",
+      "title": null,
+      "weight": null,
+      "requirements": [],
+      "verified": false
+    },
+    {
+      "id": "V4-P4",
+      "title": null,
+      "weight": null,
+      "requirements": [],
+      "verified": false
+    },
+    {
+      "id": "V4-P5",
+      "title": null,
+      "weight": null,
+      "requirements": [],
+      "verified": false
+    },
+    {
+      "id": "V4-P6",
+      "title": null,
+      "weight": null,
+      "requirements": [],
+      "verified": false
+    },
+    {
+      "id": "V4-P7",
+      "title": null,
+      "weight": null,
+      "requirements": [],
+      "verified": false
+    },
+    {
+      "id": "V4-P8",
+      "title": null,
+      "weight": null,
+      "requirements": [],
+      "verified": false
+    }
+  ],
+  "domains": [
+    "governance_documentation",
+    "ai_engineering_factory",
+    "tamam_dpi",
+    "security_testing_operations"
+  ],
+  "notes": "This is an intentionally incomplete inventory scaffold, not a substitute for the approved full V4.0 text. Never infer percentages from PR counts."
+}
