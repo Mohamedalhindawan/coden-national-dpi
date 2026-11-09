@@ -60,3 +60,24 @@ class ProgressTests(unittest.TestCase):
     def test_url_without_hostname_rejected(self):
         b = baseline(); b["requirements"][0]["evidence_url"] = "https:///missing-host"
         with self.assertRaises(ValueError): calculate_progress(b)
+
+class MalformedBaselineTests(unittest.TestCase):
+    def test_nonlist_phases_rejected(self):
+        b = baseline(); b["phases"] = {"P1": 1}
+        with self.assertRaises(ValueError): calculate_progress(b)
+
+    def test_nonobject_requirement_rejected(self):
+        b = baseline(); b["requirements"][0] = None
+        with self.assertRaises(ValueError): calculate_progress(b)
+
+    def test_nonobject_phase_rejected(self):
+        b = baseline(); b["phases"][0] = None
+        with self.assertRaises(ValueError): calculate_progress(b)
+
+    def test_unhashable_phase_id_rejected(self):
+        b = baseline(); b["phases"][0]["id"] = ["P1"]
+        with self.assertRaises(ValueError): calculate_progress(b)
+
+    def test_unhashable_requirement_phase_rejected(self):
+        b = baseline(); b["requirements"][0]["phase"] = ["P1"]
+        with self.assertRaises(ValueError): calculate_progress(b)
