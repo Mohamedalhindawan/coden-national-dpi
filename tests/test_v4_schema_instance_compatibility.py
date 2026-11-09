@@ -11,14 +11,33 @@ MAPPING = ROOT / "enterprise/governance/v4-schema-instance-compatibility.json"
 
 
 def migration_allowed(entry):
-    """No migration unless every required field is mapped and reviewed."""
+    """Fail closed unless a complete mapping has attributable human approval.
+
+    This predicate is a necessary gate, not proof of YAML/JSON Schema conformance.
+    """
+    if not isinstance(entry, dict):
+        return False
+    mapping = entry.get("field_map")
+    missing = entry.get("required_missing")
+    unmapped = entry.get("unmapped_values")
     return (
         entry.get("migration") == "approved"
-        and not entry.get("required_missing")
-        and not entry.get("unmapped_values", {})
-        and all(value is not None for value in entry.get("field_map", {}).values())
+        and isinstance(entry.get("approved_by"), str)
+        and bool(entry["approved_by"].strip())
+        and isinstance(entry.get("approval_evidence_url"), str)
+        and entry["approval_evidence_url"].startswith("https://github.com/")
+        and isinstance(entry.get("schema"), str)
+        and bool(entry["schema"].strip())
+        and isinstance(entry.get("registry"), str)
+        and bool(entry["registry"].strip())
+        and isinstance(missing, list)
+        and not missing
+        and isinstance(unmapped, dict)
+        and not unmapped
+        and isinstance(mapping, dict)
+        and bool(mapping)
+        and all(isinstance(v, str) and bool(v.strip()) for v in mapping.values())
     )
-
 
 class SchemaInstanceCompatibilityTests(unittest.TestCase):
     @classmethod
@@ -62,10 +81,28 @@ class SchemaInstanceCompatibilityTests(unittest.TestCase):
 
     def test_complete_reviewed_mapping_can_pass_predicate(self):
         record = {"migration": "approved", "required_missing": [],
-                  "unmapped_values": {}, "field_map": {"id": "risk_id"}}
+                  "unmapped_values": {}, "field_map": {"id": "risk_id"},
+                  "schema": "schemas/risk.json", "registry": "enterprise/risk.yaml",
+                  "approved_by": "human-reviewer",
+                  "approval_evidence_url": "https://github.com/example/repo/pull/1"}
         self.assertTrue(migration_allowed(record))
         record["field_map"]["status"] = None
         self.assertFalse(migration_allowed(record))
+
+
+    def test_missing_approval_or_malformed_mapping_is_rejected(self):
+        valid = {"migration": "approved", "required_missing": [],
+                 "unmapped_values": {}, "field_map": {"id": "risk_id"},
+                 "schema": "schemas/risk.json", "registry": "enterprise/risk.yaml",
+                 "approved_by": "human-reviewer",
+                 "approval_evidence_url": "https://github.com/example/repo/pull/1"}
+        for field, value in (("approved_by", ""), ("approval_evidence_url", "http://example.org"),
+                             ("field_map", {}), ("required_missing", None),
+                             ("unmapped_values", None), ("schema", ""), ("registry", "")):
+            with self.subTest(field=field):
+                self.assertFalse(migration_allowed(dict(valid, **{field: value})))
+        self.assertFalse(migration_allowed(None))
+        self.assertFalse(migration_allowed([]))
 
 
 if __name__ == "__main__":
