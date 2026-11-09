@@ -46,5 +46,27 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(audit([pr(3, 'c', 'b'), pr(2, 'b', 'a'), pr(1, 'a', 'main')])['stacked'], [{'pr': 2, 'depends_on_pr': 1}, {'pr': 3, 'depends_on_pr': 2}])
 
 
+
+class UnknownBaseTests(unittest.TestCase):
+    def test_missing_parent_not_independent(self):
+        result = audit([pr(7, 'child', 'closed-or-unlisted-parent')])
+        self.assertEqual(result['independent'], [])
+        self.assertEqual(result['unresolved_bases'], [{'pr': 7, 'base_ref': 'closed-or-unlisted-parent'}])
+
+    def test_custom_default_branch(self):
+        result = audit([pr(1, 'work', 'develop')], default_branch='develop')
+        self.assertEqual(result['independent'], [1])
+        self.assertEqual(result['unresolved_bases'], [])
+
+    def test_empty_default_branch_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'default branch'):
+            audit([], default_branch=' ')
+
+    def test_mixed_known_and_unknown(self):
+        result = audit([pr(3, 'child', 'root'), pr(2, 'unknown', 'outside'), pr(1, 'root', 'main')])
+        self.assertEqual(result['stacked'], [{'pr': 3, 'depends_on_pr': 1}])
+        self.assertEqual(result['independent'], [1])
+        self.assertEqual(result['unresolved_bases'], [{'pr': 2, 'base_ref': 'outside'}])
+
 if __name__ == '__main__':
     unittest.main()
