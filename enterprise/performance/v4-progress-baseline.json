@@ -1,0 +1,19 @@
+{
+  "playbook_version": "4.0",
+  "status": "awaiting_full_master_and_human_approval",
+  "full_master_text_committed": false,
+  "requirements_decomposed_and_audited": false,
+  "weights_approved": false,
+  "baseline_approved_by": null,
+  "phases": [
+    {"id": "P1", "approved_weight": null},
+    {"id": "P2", "approved_weight": null},
+    {"id": "P3", "approved_weight": null},
+    {"id": "P4", "approved_weight": null},
+    {"id": "P5", "approved_weight": null},
+    {"id": "P6", "approved_weight": null},
+    {"id": "P7", "approved_weight": null},
+    {"id": "P8", "approved_weight": null}
+  ],
+  "requirements": []
+}
