@@ -14,6 +14,8 @@ SHA = re.compile(r"[0-9a-f]{40}\Z")
 
 
 def validate_inventory(data):
+    if not isinstance(data, dict):
+        raise ValueError("inventory root must be an object")
     if data.get("repository") != REPO or data.get("schema_version") != 1:
         raise ValueError("unexpected inventory provenance")
     rows = data.get("pull_requests")
@@ -71,6 +73,11 @@ class SnapshotIntegrityTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.snapshot = json.loads(SNAPSHOT.read_text(encoding="utf-8"))
+
+    def test_rejects_malformed_root(self):
+        for payload in (None, [], "invalid", 0, True):
+            with self.subTest(payload=payload), self.assertRaises(ValueError):
+                validate_inventory(payload)
 
     def test_current_snapshot_integrity(self):
         validate_inventory(self.snapshot)
