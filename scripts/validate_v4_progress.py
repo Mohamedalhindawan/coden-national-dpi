@@ -23,7 +23,7 @@ def calculate_progress(b):
         seen.add(ident)
         if phase not in groups or type(weight) not in (int, float) or weight <= 0 or type(score) not in (int, float) or score not in (0, .25, .5, .75, 1) or not math.isfinite(weight):
             raise ValueError("Invalid phase, weight or score")
-        if score > .25 and (not isinstance(r.get("evidence_url"), str) or urlparse(r["evidence_url"].strip()).scheme != "https" or not urlparse(r["evidence_url"].strip()).netloc):
+        if score > .25 and (not isinstance(r.get("evidence_url"), str) or not r["evidence_url"].startswith("https://") or any(c.isspace() for c in r["evidence_url"]) or urlparse(r["evidence_url"]).scheme != "https" or not urlparse(r["evidence_url"]).hostname or urlparse(r["evidence_url"]).username is not None or urlparse(r["evidence_url"]).password is not None):
             raise ValueError("Evidence required for score above 0.25")
         if score > .25 and r.get("critical_blocker"):
             raise ValueError("Critical blocker caps score at 0.25")
