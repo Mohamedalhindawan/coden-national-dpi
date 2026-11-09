@@ -7,7 +7,9 @@ from urllib.parse import urlparse
 PHASES = {f"P{i}" for i in range(1, 9)}
 
 def calculate_progress(b):
-    if not all((b.get("full_master_text_committed"), b.get("requirements_decomposed_and_audited"), b.get("weights_approved"), b.get("baseline_approved_by"))):
+    if not isinstance(b, dict):
+        raise ValueError("Baseline must be a JSON object")
+    if not all(b.get(flag) is True for flag in ("full_master_text_committed", "requirements_decomposed_and_audited", "weights_approved")) or not isinstance(b.get("baseline_approved_by"), str) or not b["baseline_approved_by"].strip():
         return {"status": "not_measurable", "completion_percent": None, "remaining_percent": None}
     phases, requirements = b.get("phases", []), b.get("requirements", [])
     if not isinstance(phases, list) or not isinstance(requirements, list) or any(not isinstance(p, dict) for p in phases) or any(not isinstance(r, dict) for r in requirements):
