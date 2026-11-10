@@ -3,6 +3,7 @@
 Not a JSON Schema validator, migration, approval, or measurement engine.
 """
 import math
+import re
 
 REQUIRED_CANONICAL = (
     "kpi_id", "objective_id", "name", "unit", "baseline", "target",
@@ -11,6 +12,7 @@ REQUIRED_CANONICAL = (
 DIRECTIONS = frozenset(("increase", "decrease", "maintain"))
 FREQUENCIES = frozenset(("daily", "weekly", "monthly", "quarterly", "annually", "ad_hoc"))
 STATUSES = frozenset(("draft", "active", "paused", "retired"))
+IDENTIFIER_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._:-]*$")
 
 
 def preflight_kpi_record(record):
@@ -23,6 +25,12 @@ def preflight_kpi_record(record):
     for field in REQUIRED_CANONICAL:
         if field not in record or record[field] is None or (isinstance(record[field], str) and not record[field].strip()):
             problems.append("missing_canonical_" + field)
+    for field in ("kpi_id", "objective_id"):
+        if field in record and (not isinstance(record[field], str) or not 3 <= len(record[field]) <= 100 or IDENTIFIER_PATTERN.fullmatch(record[field]) is None):
+            problems.append("invalid_canonical_" + field)
+    for field, maximum, minimum in (("name", 160, 3), ("unit", 40, 1)):
+        if field in record and (not isinstance(record[field], str) or not minimum <= len(record[field]) <= maximum):
+            problems.append("invalid_canonical_" + field)
     for field, allowed in (("direction", DIRECTIONS), ("measurement_frequency", FREQUENCIES), ("status", STATUSES)):
         if field in record and (not isinstance(record[field], str) or record[field] not in allowed):
             problems.append("invalid_canonical_" + field)
