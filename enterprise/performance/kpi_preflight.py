@@ -38,8 +38,14 @@ def preflight_kpi_record(record):
         if field in record and (not isinstance(record[field], str) or record[field] not in allowed):
             problems.append("invalid_canonical_" + field)
     for field in ("baseline", "target"):
-        if field in record and (isinstance(record[field], bool) or not isinstance(record[field], (int, float)) or not math.isfinite(record[field])):
-            problems.append("invalid_numeric_" + field)
+        if field in record:
+            value = record[field]
+            try:
+                valid_number = not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
+            except (OverflowError, ValueError):
+                valid_number = False
+            if not valid_number:
+                problems.append("invalid_numeric_" + field)
     if "created_at" in record:
         stamp = record["created_at"]
         valid = isinstance(stamp, str) and RFC3339.fullmatch(stamp) is not None
