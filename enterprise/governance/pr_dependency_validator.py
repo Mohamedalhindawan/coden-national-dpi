@@ -38,13 +38,42 @@ def validate_inventory(data):
         if not isinstance(deps, list):
             continue
         edges[number] = []
+        seen_deps = set()
         for dep in deps:
             if type(dep) is not int or dep not in nodes:
                 errors.append(f"PR {number} has unknown dependency")
+            elif dep in seen_deps:
+                errors.append(f"PR {number} has duplicate dependency {dep}")
             elif dep == number:
                 errors.append(f"PR {number} depends on itself")
             else:
+                seen_deps.add(dep)
                 edges[number].append(dep)
+    overlaps = data.get("overlap_reviews", [])
+    if not isinstance(overlaps, list):
+        errors.append("overlap_reviews must be a list")
+    else:
+        for index, overlap in enumerate(overlaps):
+            if not isinstance(overlap, Mapping):
+                errors.append(f"overlap {index} must be an object")
+                continue
+            prs = overlap.get("prs")
+            if not isinstance(prs, list) or len(prs) < 2:
+                errors.append(f"overlap {index} must contain at least two PRs")
+            else:
+                seen = set()
+                for pr in prs:
+                    if type(pr) is not int or pr <= 0:
+                        errors.append(f"overlap {index} has invalid PR identifier")
+                    elif pr in seen:
+                        errors.append(f"overlap {index} has duplicate PR {pr}")
+                    elif pr not in nodes:
+                        errors.append(f"overlap {index} references unknown PR {pr}")
+                    else:
+                        seen.add(pr)
+            topic = overlap.get("topic")
+            if not isinstance(topic, str) or not topic.strip():
+                errors.append(f"overlap {index} missing topic")
     visited, active = set(), set()
     def walk(node):
         if node in active:
