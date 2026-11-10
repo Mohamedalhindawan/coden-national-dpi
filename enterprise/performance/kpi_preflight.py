@@ -4,6 +4,7 @@ Not a JSON Schema validator, migration, approval, or measurement engine.
 """
 import math
 import re
+from datetime import datetime
 
 REQUIRED_CANONICAL = (
     "kpi_id", "objective_id", "name", "unit", "baseline", "target",
@@ -13,6 +14,8 @@ DIRECTIONS = frozenset(("increase", "decrease", "maintain"))
 FREQUENCIES = frozenset(("daily", "weekly", "monthly", "quarterly", "annually", "ad_hoc"))
 STATUSES = frozenset(("draft", "active", "paused", "retired"))
 IDENTIFIER_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._:-]*$")
+ALLOWED_FIELDS = frozenset(REQUIRED_CANONICAL + ("definition", "owner_id"))
+RFC3339 = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$")
 
 
 def preflight_kpi_record(record):
@@ -25,10 +28,10 @@ def preflight_kpi_record(record):
     for field in REQUIRED_CANONICAL:
         if field not in record or record[field] is None or (isinstance(record[field], str) and not record[field].strip()):
             problems.append("missing_canonical_" + field)
-    for field in ("kpi_id", "objective_id"):
+    for field in ("kpi_id", "objective_id", "owner_id"):
         if field in record and (not isinstance(record[field], str) or not 3 <= len(record[field]) <= 100 or IDENTIFIER_PATTERN.fullmatch(record[field]) is None):
             problems.append("invalid_canonical_" + field)
-    for field, maximum, minimum in (("name", 160, 3), ("unit", 40, 1)):
+    for field, maximum, minimum in (("name", 160, 3), ("unit", 40, 1), ("definition", 2000, 0)):
         if field in record and (not isinstance(record[field], str) or not minimum <= len(record[field]) <= maximum):
             problems.append("invalid_canonical_" + field)
     for field, allowed in (("direction", DIRECTIONS), ("measurement_frequency", FREQUENCIES), ("status", STATUSES)):
@@ -37,6 +40,18 @@ def preflight_kpi_record(record):
     for field in ("baseline", "target"):
         if field in record and (isinstance(record[field], bool) or not isinstance(record[field], (int, float)) or not math.isfinite(record[field])):
             problems.append("invalid_numeric_" + field)
+    if "created_at" in record:
+        stamp = record["created_at"]
+        valid = isinstance(stamp, str) and RFC3339.fullmatch(stamp) is not None
+        if valid:
+            try:
+                datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+            except ValueError:
+                valid = False
+        if not valid:
+            problems.append("invalid_canonical_created_at")
+    for field in sorted(record.keys() - ALLOWED_FIELDS):
+        problems.append("unknown_canonical_field:" + field)
     if "observed_value" in record or "evidence_url" in record or "reviewed_at" in record:
         problems.append("measurement_provenance_requires_separate_review")
     return problems
