@@ -2,6 +2,7 @@
 
 Not a JSON Schema validator, migration, approval, or measurement engine.
 """
+import math
 
 REQUIRED_CANONICAL = (
     "kpi_id", "objective_id", "name", "unit", "baseline", "target",
@@ -26,7 +27,7 @@ def preflight_kpi_record(record):
         if field in record and (not isinstance(record[field], str) or record[field] not in allowed):
             problems.append("invalid_canonical_" + field)
     for field in ("baseline", "target"):
-        if field in record and (isinstance(record[field], bool) or not isinstance(record[field], (int, float))):
+        if field in record and (isinstance(record[field], bool) or not isinstance(record[field], (int, float)) or not math.isfinite(record[field])):
             problems.append("invalid_numeric_" + field)
     if "observed_value" in record or "evidence_url" in record or "reviewed_at" in record:
         problems.append("measurement_provenance_requires_separate_review")
@@ -34,7 +35,7 @@ def preflight_kpi_record(record):
 
 
 def preflight_kpi_registry(registry):
-    """Check structure and each record; never claim empty template is approved."""
+    """Check structure, numeric integrity and unique IDs; never approve empty templates."""
     if not isinstance(registry, dict):
         return ["registry_not_object"]
     if not isinstance(registry.get("kpis"), list):
@@ -42,6 +43,15 @@ def preflight_kpi_registry(registry):
     if not registry["kpis"]:
         return ["empty_template_not_approved"]
     errors = []
+    seen = set()
     for index, record in enumerate(registry["kpis"]):
         errors.extend("kpis[%d]:%s" % (index, error) for error in preflight_kpi_record(record))
+        if isinstance(record, dict):
+            identifier = record.get("kpi_id")
+            if not isinstance(identifier, str) or not identifier.strip():
+                errors.append("kpis[%d]:invalid_kpi_id" % index)
+            elif identifier in seen:
+                errors.append("kpis[%d]:duplicate_kpi_id" % index)
+            else:
+                seen.add(identifier)
     return errors
