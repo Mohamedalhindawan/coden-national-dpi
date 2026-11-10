@@ -1,0 +1,75 @@
+name: Engineering task
+description: Track a bounded implementation, validation, or documentation task
+title: "task: "
+body:
+  - type: input
+    id: parent
+    attributes:
+      label: Parent epic / issue
+      placeholder: "#123"
+    validations:
+      required: false
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Expected repository paths
+      description: List known files or directories that may change.
+    validations:
+      required: false
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      placeholder: "- [ ] ..."
+    validations:
+      required: true
+  - type: textarea
+    id: tests
+    attributes:
+      label: Test and validation plan
+      description: Exact commands or CI checks; do not mark unrun checks as passed.
+    validations:
+      required: true
+  - type: dropdown
+    id: status
+    attributes:
+      label: Initial status
+      options:
+        - Planned
+        - Specified
+        - Ready
+        - Blocked
+    validations:
+      required: true
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Risk
+      options:
+        - Low
+        - Medium
+        - High
+        - Critical
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence / dependencies / decisions
+    validations:
+      required: false
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety
+      options:
+        - label: Synthetic or public data only unless separately approved.
+          required: true
+        - label: I have identified any required human approval gates.
+          required: true

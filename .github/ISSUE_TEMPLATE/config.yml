@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: CODEN repository and implementation roadmap
+    url: https://github.com/Mohamedalhindawan/coden-national-dpi
+    about: Review the repository guidance and current implementation evidence before opening a request.
