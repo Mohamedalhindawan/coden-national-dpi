@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'enterprise/performance/kpi_preflight.py'
+      - 'enterprise/performance/kpi-registry.yaml'
       - 'tests/test_kpi*.py'
       - '.github/workflows/kpi-preflight-regression.yml'
   workflow_dispatch:
