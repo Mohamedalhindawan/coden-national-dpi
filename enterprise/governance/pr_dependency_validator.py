@@ -74,18 +74,25 @@ def validate_inventory(data):
             topic = overlap.get("topic")
             if not isinstance(topic, str) or not topic.strip():
                 errors.append(f"overlap {index} missing topic")
+    # Iterative DFS avoids RecursionError on large, untrusted inventories.
     visited, active = set(), set()
-    def walk(node):
-        if node in active:
-            errors.append(f"dependency cycle at PR {node}")
-            return
-        if node in visited:
-            return
-        active.add(node)
-        for dep in edges.get(node, []):
-            walk(dep)
-        active.remove(node)
-        visited.add(node)
-    for number in edges:
-        walk(number)
+    for root in edges:
+        if root in visited:
+            continue
+        stack = [(root, False)]
+        while stack:
+            node, exiting = stack.pop()
+            if exiting:
+                active.discard(node)
+                visited.add(node)
+                continue
+            if node in active:
+                errors.append(f"dependency cycle at PR {node}")
+                continue
+            if node in visited:
+                continue
+            active.add(node)
+            stack.append((node, True))
+            for dep in reversed(edges.get(node, [])):
+                stack.append((dep, False))
     return errors
