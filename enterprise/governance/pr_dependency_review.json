@@ -1,0 +1,313 @@
+{
+  "schema_version": 1,
+  "purpose": "Non-authoritative review inventory; not merge approval or V4 acceptance",
+  "source_issue": "https://github.com/Mohamedalhindawan/coden-national-dpi/issues/55",
+  "main_sha_at_inspection": "921b2b848366a2a7a368660d5460ca5e6d712ba3",
+  "generated_on": "2026-11-10",
+  "merge_policy": "human_review_only",
+  "items": [
+    {
+      "pr": 26,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/26",
+      "scope": "Skills library; overlap #50",
+      "depends_on": [],
+      "review": "required",
+      "ci": "not_verified_in_this_snapshot",
+      "decision": "pending"
+    },
+    {
+      "pr": 29,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/29",
+      "scope": "Governance templates; avoid duplicate",
+      "depends_on": [],
+      "review": "required",
+      "ci": "not_verified_in_this_snapshot",
+      "decision": "pending"
+    },
+    {
+      "pr": 37,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/37",
+      "scope": "Canonical enterprise schemas",
+      "depends_on": [],
+      "review": "required",
+      "ci": "not_verified_in_this_snapshot",
+      "decision": "pending"
+    },
+    {
+      "pr": 38,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/38",
+      "scope": "Lifecycle transitions",
+      "depends_on": [
+        37
+      ],
+      "review": "required",
+      "ci": "not_verified_in_this_snapshot",
+      "decision": "pending"
+    },
+    {
+      "pr": 39,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/39",
+      "scope": "Idempotent transitions",
+      "depends_on": [
+        38
+      ],
+      "review": "required",
+      "ci": "not_verified_in_this_snapshot",
+      "decision": "pending"
+    },
+    {
+      "pr": 40,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/40",
+      "scope": "Separation of duties",
+      "depends_on": [
+        39
+      ],
+      "review": "required",
+      "ci": "not_verified_in_this_snapshot",
+      "decision": "pending"
+    },
+    {
+      "pr": 41,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/41",
+      "scope": "Audit hash chain",
+      "depends_on": [
+        40
+      ],
+      "review": "required",
+      "ci": "not_verified_in_this_snapshot",
+      "decision": "pending"
+    },
+    {
+      "pr": 42,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/42",
+      "scope": "Portfolio schemas",
+      "depends_on": [
+        41
+      ],
+      "review": "required",
+      "ci": "not_verified_in_this_snapshot",
+      "decision": "pending"
+    },
+    {
+      "pr": 43,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/43",
+      "scope": "Strategic KPI contracts",
+      "depends_on": [
+        42
+      ],
+      "review": "required",
+      "ci": "not_verified_in_this_snapshot",
+      "decision": "pending"
+    },
+    {
+      "pr": 44,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/44",
+      "scope": "KPI provenance",
+      "depends_on": [
+        43
+      ],
+      "review": "required",
+      "ci": "not_verified_in_this_snapshot",
+      "decision": "pending"
+    },
+    {
+      "pr": 45,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/45",
+      "scope": "Resource allocation",
+      "depends_on": [
+        44
+      ],
+      "review": "required",
+      "ci": "not_verified_in_this_snapshot",
+      "decision": "pending"
+    },
+    {
+      "pr": 46,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/46",
+      "scope": "Risk schema",
+      "depends_on": [
+        45
+      ],
+      "review": "required",
+      "ci": "not_verified_in_this_snapshot",
+      "decision": "pending"
+    },
+    {
+      "pr": 47,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/47",
+      "scope": "Dependency register",
+      "depends_on": [
+        46
+      ],
+      "review": "required",
+      "ci": "not_verified_in_this_snapshot",
+      "decision": "pending"
+    },
+    {
+      "pr": 49,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/49",
+      "scope": "Visual QA workflow",
+      "depends_on": [],
+      "review": "required",
+      "ci": "not_verified_in_this_snapshot",
+      "decision": "pending"
+    },
+    {
+      "pr": 50,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/50",
+      "scope": "Skills foundation; overlap #26",
+      "depends_on": [],
+      "review": "required",
+      "ci": "not_verified_in_this_snapshot",
+      "decision": "pending"
+    },
+    {
+      "pr": 51,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/51",
+      "scope": "V4 traceability and risk register; overlap #46",
+      "depends_on": [],
+      "review": "required",
+      "ci": "not_verified_in_this_snapshot",
+      "decision": "pending"
+    },
+    {
+      "pr": 52,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/52",
+      "scope": "DPI registry and stage gates",
+      "depends_on": [],
+      "review": "required",
+      "ci": "not_verified_in_this_snapshot",
+      "decision": "pending"
+    },
+    {
+      "pr": 53,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/53",
+      "scope": "KPI registry; overlap #43/#44",
+      "depends_on": [],
+      "review": "required",
+      "ci": "not_verified_in_this_snapshot",
+      "decision": "pending"
+    },
+    {
+      "pr": 54,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/54",
+      "scope": "TAMAM/factory/agent security",
+      "depends_on": [],
+      "review": "required",
+      "ci": "not_verified_in_this_snapshot",
+      "decision": "pending"
+    },
+    {
+      "pr": 80,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/80",
+      "scope": "Measurement baseline",
+      "depends_on": [],
+      "review": "required",
+      "ci": "not_verified_in_this_snapshot",
+      "decision": "pending"
+    },
+    {
+      "pr": 81,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/81",
+      "scope": "Baseline validation",
+      "depends_on": [
+        80
+      ],
+      "review": "required",
+      "ci": "not_verified_in_this_snapshot",
+      "decision": "pending"
+    },
+    {
+      "pr": 82,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/82",
+      "scope": "Requirement identity",
+      "depends_on": [
+        81
+      ],
+      "review": "required",
+      "ci": "not_verified_in_this_snapshot",
+      "decision": "pending"
+    },
+    {
+      "pr": 83,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/83",
+      "scope": "Canonical requirement IDs",
+      "depends_on": [
+        82
+      ],
+      "review": "required",
+      "ci": "not_verified_in_this_snapshot",
+      "decision": "pending"
+    },
+    {
+      "pr": 84,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/84",
+      "scope": "Weighted domain progress",
+      "depends_on": [
+        83
+      ],
+      "review": "required",
+      "ci": "not_verified_in_this_snapshot",
+      "decision": "pending"
+    },
+    {
+      "pr": 85,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/85",
+      "scope": "Read-only report",
+      "depends_on": [
+        84
+      ],
+      "review": "required",
+      "ci": "not_verified_in_this_snapshot",
+      "decision": "pending"
+    },
+    {
+      "pr": 86,
+      "url": "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/86",
+      "scope": "CLI integration test",
+      "depends_on": [
+        85
+      ],
+      "review": "required",
+      "ci": "not_verified_in_this_snapshot",
+      "decision": "pending"
+    }
+  ],
+  "overlap_reviews": [
+    {
+      "prs": [
+        26,
+        50
+      ],
+      "topic": "canonical skills directory and runtime preservation"
+    },
+    {
+      "prs": [
+        43,
+        44,
+        53
+      ],
+      "topic": "KPI schema versus instance ownership"
+    },
+    {
+      "prs": [
+        46,
+        51
+      ],
+      "topic": "risk schema versus YAML register"
+    },
+    {
+      "prs": [
+        29,
+        51
+      ],
+      "topic": "governance template duplication"
+    }
+  ],
+  "unverified": [
+    "individual PR states and head SHAs",
+    "exact CI for each PR",
+    "complete approved V4 source and eight phase weights",
+    "human approvals"
+  ]
+}
