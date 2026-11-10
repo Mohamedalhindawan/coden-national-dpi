@@ -1,0 +1,62 @@
+"""Fail-closed graph and integrity validation for issue #55 PR inventory."""
+from collections.abc import Mapping
+
+
+def validate_inventory(data):
+    """Return errors; never infer CI success or human approval."""
+    errors = []
+    if not isinstance(data, Mapping):
+        return ["inventory must be an object"]
+    if data.get("merge_policy") != "human_review_only":
+        errors.append("merge policy must require human review")
+    items = data.get("items")
+    if not isinstance(items, list) or not items:
+        return errors + ["items must be a nonempty list"]
+    nodes = {}
+    for index, item in enumerate(items):
+        if not isinstance(item, Mapping):
+            errors.append(f"item {index} must be an object")
+            continue
+        number = item.get("pr")
+        if type(number) is not int or number <= 0:
+            errors.append(f"item {index} has invalid PR number")
+            continue
+        if number in nodes:
+            errors.append(f"duplicate PR {number}")
+        nodes[number] = item
+        if item.get("review") != "required" or item.get("decision") != "pending":
+            errors.append(f"PR {number} has implicit approval")
+        if item.get("ci") not in ("not_verified_in_this_snapshot", "pending", "failed"):
+            errors.append(f"PR {number} has unverified CI assertion")
+        if item.get("url") != f"https://github.com/Mohamedalhindawan/coden-national-dpi/pull/{number}":
+            errors.append(f"PR {number} has invalid URL")
+        if not isinstance(item.get("depends_on"), list):
+            errors.append(f"PR {number} has invalid dependencies")
+    edges = {}
+    for number, item in nodes.items():
+        deps = item.get("depends_on")
+        if not isinstance(deps, list):
+            continue
+        edges[number] = []
+        for dep in deps:
+            if type(dep) is not int or dep not in nodes:
+                errors.append(f"PR {number} has unknown dependency")
+            elif dep == number:
+                errors.append(f"PR {number} depends on itself")
+            else:
+                edges[number].append(dep)
+    visited, active = set(), set()
+    def walk(node):
+        if node in active:
+            errors.append(f"dependency cycle at PR {node}")
+            return
+        if node in visited:
+            return
+        active.add(node)
+        for dep in edges.get(node, []):
+            walk(dep)
+        active.remove(node)
+        visited.add(node)
+    for number in edges:
+        walk(number)
+    return errors
