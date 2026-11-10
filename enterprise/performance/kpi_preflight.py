@@ -50,7 +50,12 @@ def preflight_kpi_record(record):
                 valid = False
         if not valid:
             problems.append("invalid_canonical_created_at")
-    for field in sorted(record.keys() - ALLOWED_FIELDS):
+    # JSON object keys must be strings. Reject malformed Python/YAML mappings
+    # without sorting mixed key types or raising TypeError.
+    for field in record:
+        if not isinstance(field, str):
+            problems.append("non_string_canonical_field_key")
+    for field in sorted(key for key in record if isinstance(key, str) and key not in ALLOWED_FIELDS):
         problems.append("unknown_canonical_field:" + field)
     if "observed_value" in record or "evidence_url" in record or "reviewed_at" in record:
         problems.append("measurement_provenance_requires_separate_review")
