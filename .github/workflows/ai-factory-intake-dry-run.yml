@@ -1,0 +1,43 @@
+name: AI Factory intake dry run
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-factory-intake-dry-run-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  synthetic-intake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify synthetic-only intake tests
+        run: python -m unittest tests.test_ai_factory_intake -v
+      - name: Demonstrate approval-gated plan (no execution)
+        shell: bash
+        run: |
+          python - <<'PY'
+          from ai_factory.intake import make_execution_plan
+          task = {
+              "id": "CODEN-CLOUD-DRYRUN-001",
+              "title": "Review synthetic catalog demo",
+              "description": "No real data or repository modification",
+              "data_classification": "synthetic",
+              "requested_actions": ["read_repository", "run_tests"],
+          }
+          plan = make_execution_plan(task)
+          assert plan["status"] == "awaiting_human_approval"
+          assert plan["execution_authorized"] is False
+          assert plan["data_classification"] == "synthetic"
+          print("PASS: synthetic task validated; human approval required; no execution authorized.")
+          PY
