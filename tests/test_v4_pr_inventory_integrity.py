@@ -26,9 +26,10 @@ def validate_inventory(data):
             raise ValueError("inconsistent PR state")
         if not p.get("head_ref") or not p.get("base_ref"):
             raise ValueError("missing branch")
-        if p["head_ref"] in heads and heads[p["head_ref"]] != p["number"]:
+        if p["state"] == "open" and p["head_ref"] in heads and heads[p["head_ref"]] != p["number"]:
             raise ValueError("duplicate head branch")
-        heads[p["head_ref"]] = p["number"]
+        if p["state"] == "open":
+            heads[p["head_ref"]] = p["number"]
     for n in range(38, 48):
         if by_number[n]["base_ref"] != by_number[n-1]["head_ref"]:
             raise ValueError("broken stacked dependency")
@@ -55,6 +56,10 @@ class PRInventoryIntegrityTests(unittest.TestCase):
         bad["pull_requests"][1]["head_ref"] = bad["pull_requests"][0]["head_ref"]
         with self.assertRaisesRegex(ValueError, "duplicate head branch"):
             validate_inventory(bad)
+
+    def test_allow_historical_merged_and_open_pr_sharing_head(self):
+        # PR #48 is merged and PR #49 remains open on the same historical head.
+        validate_inventory(self.snapshot)
 
     def test_reject_broken_stacked_parent(self):
         bad = copy.deepcopy(self.snapshot)
