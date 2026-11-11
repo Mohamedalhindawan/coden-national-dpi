@@ -76,6 +76,12 @@
         <p class="muted">البيانات مؤقتة وتختفي عند تحديث الصفحة أو إغلاقها.</p>
         <p id="feedback" class="muted" aria-live="polite" role="status"></p>
         <button id="clearRequests" class="review-button" type="button" disabled>مسح الطلبات التجريبية</button>
+        <label for="statusFilter">تصفية الطلبات حسب حالة المراجعة</label>
+        <select id="statusFilter" aria-label="تصفية الطلبات حسب حالة المراجعة">
+          <option value="all">كل الطلبات</option>
+          <option value="pending">بانتظار المراجعة</option>
+          <option value="reviewed">تمت مراجعتها تجريبياً</option>
+        </select>
         <div id="requests" aria-live="polite">
           <p class="empty">لم تتم إضافة طلبات تجريبية بعد.</p>
         </div>
@@ -89,6 +95,8 @@
     const requests = [];
     const feedback = document.getElementById("feedback");
     const clearRequestsButton = document.getElementById("clearRequests");
+    const statusFilter = document.getElementById("statusFilter");
+    statusFilter.addEventListener("change", renderRequests);
     const labels = { food: "مساعدة غذائية", cash: "مساعدة نقدية", health: "مساعدة صحية", other: "احتياج آخر" };
 
     form.addEventListener("submit", (event) => {
@@ -138,7 +146,14 @@
         list.append(empty);
         return;
       }
-      requests.forEach((request) => {
+      const visibleRequests = requests.filter((request) => statusFilter.value === "all" || (statusFilter.value === "reviewed" ? Boolean(request.reviewed) : !request.reviewed));
+      if (visibleRequests.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "empty";
+        empty.textContent = "لا توجد طلبات تجريبية تطابق هذه الحالة.";
+        list.append(empty);
+      }
+      visibleRequests.forEach((request) => {
         const article = document.createElement("article");
         article.className = "request";
         const heading = document.createElement("strong");
