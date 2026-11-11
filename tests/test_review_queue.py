@@ -44,3 +44,27 @@ class ReviewQueueTests(unittest.TestCase):
             path = Path(directory) / 'tasks.json'
             path.write_text('{broken')
             self.assertEqual(main([str(path)]), 1)
+
+    def test_budget_ceiling_allows_only_estimated_batches_within_limit(self):
+        tasks = [
+            {'id': 'B1', 'title': 'Demo', 'description': 'Synthetic', 'data_classification': 'synthetic', 'requested_actions': ['run_tests'], 'estimated_cost_usd': '0.10'},
+            {'id': 'B2', 'title': 'Demo2', 'description': 'Synthetic', 'data_classification': 'synthetic', 'requested_actions': ['run_tests'], 'estimated_cost_usd': '0.20'},
+        ]
+        result = prepare_review_queue(tasks, budget_usd='0.30')
+        self.assertTrue(result['valid'])
+        self.assertTrue(all(not p['execution_authorized'] for p in result['plans']))
+        self.assertFalse(prepare_review_queue(tasks, budget_usd='0.29')['valid'])
+
+    def test_budget_fail_closed_for_missing_negative_nan_and_bad_limit(self):
+        task = {'id': 'B1', 'title': 'Demo', 'description': 'Synthetic', 'data_classification': 'synthetic', 'requested_actions': ['run_tests']}
+        self.assertFalse(prepare_review_queue([task], budget_usd='1')['valid'])
+        for value in ['-1', 'NaN', 'Infinity', True]:
+            self.assertFalse(prepare_review_queue([{**task, 'estimated_cost_usd': value}], budget_usd='1')['valid'])
+        for limit in ['-1', 'NaN', 'not-a-number']:
+            self.assertFalse(prepare_review_queue([{**task, 'estimated_cost_usd': '0'}], budget_usd=limit)['valid'])
+
+    def test_budget_cli_rejects_overspend(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'tasks.json'
+            path.write_text(json.dumps([{'id': 'B1', 'title': 'Demo', 'description': 'Synthetic', 'data_classification': 'synthetic', 'requested_actions': ['run_tests'], 'estimated_cost_usd': '1.01'}]))
+            self.assertEqual(main([str(path), '--budget-usd', '1.00']), 1)
