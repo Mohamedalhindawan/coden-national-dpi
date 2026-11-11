@@ -9,9 +9,15 @@ on:
 permissions:
   contents: read
 
+# Avoid concurrent duplicate runs for the same branch/PR.
+concurrency:
+  group: prototype-checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   contract-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
