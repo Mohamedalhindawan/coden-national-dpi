@@ -1,0 +1,180 @@
+{
+  "snapshot_date": "2026-11-11",
+  "status": "metadata-only-not-merge-approval",
+  "source": "https://api.github.com/repos/Mohamedalhindawan/coden-national-dpi/pulls?state=all&per_page=100",
+  "main_sha": "921b2b848366a2a7a368660d5460ca5e6d712ba3",
+  "issue_55_state": "open",
+  "pull_requests": [
+    {
+      "number": 26,
+      "state": "open",
+      "merged": false,
+      "base_ref": "main",
+      "head_ref": "feat/coden-enterprise-skills-library-v1",
+      "head_sha": "2c775421baa89a5dc89d34a2777d90dad4690a8f",
+      "title": "Add CODEN Enterprise Skills Library v1.0"
+    },
+    {
+      "number": 37,
+      "state": "open",
+      "merged": false,
+      "base_ref": "main",
+      "head_ref": "feat/stage-3a-canonical-json-schemas",
+      "head_sha": "06053c06cf4f3567b6b00d1aed47c6703719f162",
+      "title": "feat(stage-3a): add canonical enterprise management schemas"
+    },
+    {
+      "number": 38,
+      "state": "open",
+      "merged": false,
+      "base_ref": "feat/stage-3a-canonical-json-schemas",
+      "head_ref": "feat/stage-3a-work-item-lifecycle",
+      "head_sha": "98d5941cdc5d560d04ac96f39483d0f7938aaf5c",
+      "title": "feat(stage-3a): enforce work-item lifecycle transitions"
+    },
+    {
+      "number": 39,
+      "state": "open",
+      "merged": false,
+      "base_ref": "feat/stage-3a-work-item-lifecycle",
+      "head_ref": "feat/stage-3a-transition-command-contract",
+      "head_sha": "a5aff4ba54dd0a348ca32ae8b9d93244f787b640",
+      "title": "feat(stage-3a): define idempotent transition command contract"
+    },
+    {
+      "number": 40,
+      "state": "open",
+      "merged": false,
+      "base_ref": "feat/stage-3a-transition-command-contract",
+      "head_ref": "feat/stage-3a-approval-separation-of-duties",
+      "head_sha": "f4f093d248dc97d041b9d06a40857a0b638ea834",
+      "title": "feat(stage-3a): enforce approval separation of duties"
+    },
+    {
+      "number": 41,
+      "state": "open",
+      "merged": false,
+      "base_ref": "feat/stage-3a-approval-separation-of-duties",
+      "head_ref": "feat/stage-3a-audit-event-hash-chain",
+      "head_sha": "07419f6f6ceb1c82645ced8d70b8d17489267473",
+      "title": "feat(stage-3a): add verifiable audit event hash chain"
+    },
+    {
+      "number": 42,
+      "state": "open",
+      "merged": false,
+      "base_ref": "feat/stage-3a-audit-event-hash-chain",
+      "head_ref": "feat/stage-3b-portfolio-initiative-contracts",
+      "head_sha": "e3d925cb0b8c9e73c363193e5e4c253fae95cb63",
+      "title": "feat(stage-3b): add portfolio and initiative canonical contracts"
+    },
+    {
+      "number": 43,
+      "state": "open",
+      "merged": false,
+      "base_ref": "feat/stage-3b-portfolio-initiative-contracts",
+      "head_ref": "feat/stage-3b-strategic-objective-kpi-contracts",
+      "head_sha": "fa907b89a41e65eebc834d0bcfd95dae6961d10a",
+      "title": "feat(stage-3b): add strategic objective and KPI contracts"
+    },
+    {
+      "number": 44,
+      "state": "open",
+      "merged": false,
+      "base_ref": "feat/stage-3b-strategic-objective-kpi-contracts",
+      "head_ref": "feat/stage-3b-kpi-measurement-records",
+      "head_sha": "f8b4358abfa94287ca69ab8a764d4419870b8f09",
+      "title": "feat(stage-3b): add KPI measurement and provenance contract"
+    },
+    {
+      "number": 45,
+      "state": "open",
+      "merged": false,
+      "base_ref": "feat/stage-3b-kpi-measurement-records",
+      "head_ref": "feat/stage-3b-resource-allocation-contracts",
+      "head_sha": "b57212da3846b5225967a6ad35efe067704e864d",
+      "title": "feat(stage-3b): add resource allocation contract"
+    },
+    {
+      "number": 46,
+      "state": "open",
+      "merged": false,
+      "base_ref": "feat/stage-3b-resource-allocation-contracts",
+      "head_ref": "feat/stage-3b-enterprise-risk-register",
+      "head_sha": "d302556703180375404fef36232cbd4f16bb11e5",
+      "title": "feat(stage-3b): add enterprise risk register contract"
+    },
+    {
+      "number": 47,
+      "state": "open",
+      "merged": false,
+      "base_ref": "feat/stage-3b-enterprise-risk-register",
+      "head_ref": "feat/stage-3b-dependency-register",
+      "head_sha": "b012794e8fcdeabac5db319b1c75b649431291be",
+      "title": "feat(stage-3b): add enterprise dependency register"
+    },
+    {
+      "number": 48,
+      "state": "closed",
+      "merged": true,
+      "base_ref": "main",
+      "head_ref": "feat/coden-visual-documentation-skills",
+      "head_sha": "90f58500de1c274cd5c8fdb196c590e573c4d5c9",
+      "title": "Add CODEN Visual Documentation & Design Skills"
+    },
+    {
+      "number": 49,
+      "state": "open",
+      "merged": false,
+      "base_ref": "main",
+      "head_ref": "feat/coden-visual-documentation-skills",
+      "head_sha": "a1fa312f51d096184cd700c817b47f6387c8371b",
+      "title": "Add architecture board visual QA quality gate"
+    },
+    {
+      "number": 50,
+      "state": "open",
+      "merged": false,
+      "base_ref": "main",
+      "head_ref": "feat/playbook-v4-skills-foundation",
+      "head_sha": "d24f95a7ffe801332017f5580c801ee567712e80",
+      "title": "docs: establish CODEN Playbook V4.0 skills foundation"
+    },
+    {
+      "number": 51,
+      "state": "open",
+      "merged": false,
+      "base_ref": "main",
+      "head_ref": "feat/playbook-v4-traceability-foundation",
+      "head_sha": "cd409c64ffc3c6e4fa3b16ed04398b7bb2d3aebe",
+      "title": "docs: add V4.0 90-section traceability and enterprise foundation registers"
+    },
+    {
+      "number": 52,
+      "state": "open",
+      "merged": false,
+      "base_ref": "main",
+      "head_ref": "feat/playbook-v4-dpi-gates-foundation",
+      "head_sha": "cd0117f87e6b85a94fed917bf728cb41e8ee43a5",
+      "title": "docs: scaffold DPI registry and V4 enterprise stage gates"
+    },
+    {
+      "number": 53,
+      "state": "open",
+      "merged": false,
+      "base_ref": "main",
+      "head_ref": "feat/playbook-v4-operations-foundation",
+      "head_sha": "6defd60c72b25b3e5b4d30ea328ff5c0ae879182",
+      "title": "docs: establish V4 finance, commercial, KPI, security and SRE templates"
+    },
+    {
+      "number": 54,
+      "state": "open",
+      "merged": false,
+      "base_ref": "main",
+      "head_ref": "feat/playbook-v4-product-engineering-foundation",
+      "head_sha": "9f563e368a199e67e6f3fa161b19f70d5d14880e",
+      "title": "docs: add TAMAM, engineering factory and agent security foundation"
+    }
+  ]
+}
