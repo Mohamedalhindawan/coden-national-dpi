@@ -17,7 +17,7 @@ EXPECTED_BLOB = "827d5a4d0299ca727be594c56130f1605353bd6a"
 class KpiFixtureIntegrityTests(unittest.TestCase):
     def test_fixture_matches_verified_pr43_git_blob(self):
         data = FIXTURE.read_bytes()
-        git_blob = b"blob " + str(len(data)).encode("ascii") + b"\\0" + data
+        git_blob = b"blob " + str(len(data)).encode("ascii") + bytes([0]) + data
         self.assertEqual(hashlib.sha1(git_blob).hexdigest(), EXPECTED_BLOB)
 
     def test_fixture_declares_expected_draft_and_schema_identity(self):
