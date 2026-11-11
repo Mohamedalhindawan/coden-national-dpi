@@ -75,10 +75,14 @@ def preflight_kpi_registry(registry):
     # Only the documented root key is accepted; do not silently ignore metadata.
     if any(not isinstance(key, str) for key in registry):
         return ["non_string_registry_root_key"]
-    if set(registry) != {"kpis"}:
-        return ["unknown_registry_root_field"]
-    if not isinstance(registry.get("kpis"), list):
+    if "kpis" not in registry or not isinstance(registry["kpis"], list):
         return ["kpis_not_list"]
+    # Historical draft templates may carry status=draft; this is not approval.
+    # Any other root metadata, including an approval-looking status, fails closed.
+    if set(registry) - {"kpis", "status"}:
+        return ["unknown_registry_root_field"]
+    if "status" in registry and registry["status"] != "draft":
+        return ["unknown_registry_root_field"]
     if not registry["kpis"]:
         return ["empty_template_not_approved"]
     errors = []
