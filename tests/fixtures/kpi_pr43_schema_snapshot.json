@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coden.it.com/schemas/enterprise/kpi.schema.json",
+  "title": "CODEN Key Performance Indicator",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kpi_id",
+    "objective_id",
+    "name",
+    "unit",
+    "baseline",
+    "target",
+    "direction",
+    "measurement_frequency",
+    "status",
+    "created_at"
+  ],
+  "properties": {
+    "kpi_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 100,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]*$"
+    },
+    "objective_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 100,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]*$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 160
+    },
+    "definition": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "unit": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40
+    },
+    "baseline": {
+      "type": "number"
+    },
+    "target": {
+      "type": "number"
+    },
+    "direction": {
+      "enum": [
+        "increase",
+        "decrease",
+        "maintain"
+      ]
+    },
+    "measurement_frequency": {
+      "enum": [
+        "daily",
+        "weekly",
+        "monthly",
+        "quarterly",
+        "annually",
+        "ad_hoc"
+      ]
+    },
+    "status": {
+      "enum": [
+        "draft",
+        "active",
+        "paused",
+        "retired"
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "owner_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 100,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]*$"
+    }
+  }
+}
