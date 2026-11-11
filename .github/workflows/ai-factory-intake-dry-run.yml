@@ -70,6 +70,31 @@ jobs:
           (artifact_dir / "review-report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
           print(json.dumps(report, indent=2))
           PY
+      - name: Generate human-review patch manifest
+        shell: bash
+        run: |
+          python - <<'PY'
+          import difflib
+          import json
+          import os
+          from pathlib import Path
+          directory = Path(os.environ["RUNNER_TEMP"]) / "coden-ai-factory-preview"
+          file = directory / "demo-task.txt"
+          content = file.read_text(encoding="utf-8").splitlines(keepends=True)
+          patch = "".join(difflib.unified_diff([], content, fromfile="/dev/null", tofile="b/demo-task.txt"))
+          (directory / "proposed-change.diff").write_text(patch, encoding="utf-8")
+          manifest = {
+              "proposal_only": True,
+              "source": "synthetic_demo",
+              "files": ["demo-task.txt"],
+              "github_write_permitted": False,
+              "pull_request_created": False,
+              "requires_human_review": True,
+          }
+          (directory / "review-manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+          assert patch.startswith("--- /dev/null")
+          print("Review-only diff and manifest prepared.")
+          PY
       - name: Upload preview for human review
         uses: actions/upload-artifact@v4
         with:
