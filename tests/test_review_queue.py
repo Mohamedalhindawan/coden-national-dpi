@@ -68,3 +68,18 @@ class ReviewQueueTests(unittest.TestCase):
             path = Path(directory) / 'tasks.json'
             path.write_text(json.dumps([{'id': 'B1', 'title': 'Demo', 'description': 'Synthetic', 'data_classification': 'synthetic', 'requested_actions': ['run_tests'], 'estimated_cost_usd': '1.01'}]))
             self.assertEqual(main([str(path), '--budget-usd', '1.00']), 1)
+
+    def test_rejects_whitespace_alias_ids_atomically(self):
+        base = {'title': 'Demo', 'description': 'Synthetic', 'data_classification': 'synthetic', 'requested_actions': ['run_tests']}
+        tasks = [{**base, 'id': 'TASK-1'}, {**base, 'id': ' TASK-1 '}]
+        result = prepare_review_queue(tasks)
+        self.assertFalse(result['valid'])
+        self.assertEqual(result['plans'], [])
+        self.assertIn({'index': 1, 'reason': 'duplicate task id'}, result['errors'])
+
+    def test_rejects_ambiguous_whitespace_id_without_alias(self):
+        task = {'id': ' TASK-1 ', 'title': 'Demo', 'description': 'Synthetic', 'data_classification': 'synthetic', 'requested_actions': ['run_tests']}
+        result = prepare_review_queue([task])
+        self.assertFalse(result['valid'])
+        self.assertEqual(result['plans'], [])
+        self.assertIn({'index': 0, 'reason': 'task id must be canonical (no surrounding whitespace)'}, result['errors'])
