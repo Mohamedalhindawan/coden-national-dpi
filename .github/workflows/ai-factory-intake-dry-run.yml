@@ -41,3 +41,39 @@ jobs:
           assert plan["data_classification"] == "synthetic"
           print("PASS: synthetic task validated; human approval required; no execution authorized.")
           PY
+      - name: Generate synthetic preview and review report
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import tempfile
+          from pathlib import Path
+          from ai_factory.patch_preview import preview_synthetic_patch
+
+          artifact_dir = Path(os.environ["RUNNER_TEMP"]) / "coden-ai-factory-preview"
+          artifact_dir.mkdir(mode=0o700, exist_ok=True)
+          with tempfile.TemporaryDirectory() as isolated:
+              result = preview_synthetic_patch(isolated, "CODEN-CLOUD-DRYRUN-001")
+              assert result["status"] == "preview_created", result
+              preview = Path(isolated) / result["path"]
+              assert preview.read_text(encoding="utf-8") == "CODEN demo task: CODEN-CLOUD-DRYRUN-001\n"
+              (artifact_dir / "demo-task.txt").write_bytes(preview.read_bytes())
+          report = {
+              "task_id": "CODEN-CLOUD-DRYRUN-001",
+              "result": "synthetic_preview_only",
+              "repository_modified": False,
+              "ai_model_invoked": False,
+              "approval_to_execute": False,
+              "preview_file": "demo-task.txt",
+          }
+          (artifact_dir / "review-report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+          print(json.dumps(report, indent=2))
+          PY
+      - name: Upload preview for human review
+        uses: actions/upload-artifact@v4
+        with:
+          name: coden-synthetic-preview
+          path: ${{ runner.temp }}/coden-ai-factory-preview/
+          retention-days: 1
+          if-no-files-found: error
