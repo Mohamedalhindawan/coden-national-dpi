@@ -29,3 +29,28 @@ Open PR #26 proposes an enterprise skills library under `skills/`; PR #50 propos
 ## Safety
 
 Use synthetic demo data. No secrets in repository or prompts. No autonomous merge, deployment, paid API, or permission escalation. Report real test evidence and human approval requirements.
+
+
+## Specialist agents (proposed)
+
+Four specialist definitions live under `.codex/agents/`: `architect.toml`, `developer.toml`, `qa.toml`, and `security.toml`. They are instruction profiles, **not running processes**. Their recognition and multi-agent availability must be checked against the actual installed Codex CLI version and configuration.
+
+For a safe first mobile experiment, use a **single agent** with the six skills. Only enable multi-agent workflows after confirming the installed CLI supports this agent-definition format and observing a read-only test. Do not run parallel agents by default on a phone.
+
+### Local validation after cloning
+
+```sh
+python - <<'PY'
+import pathlib, tomllib
+paths = sorted(pathlib.Path('.codex/agents').glob('*.toml'))
+assert len(paths) == 4, paths
+for path in paths:
+    with path.open('rb') as handle:
+        agent = tomllib.load(handle)
+    assert agent['name'] == path.stem
+    assert agent['description'] and agent['developer_instructions']
+print('Validated 4 agent TOML files')
+PY
+```
+
+This verifies TOML structure only, **not** Codex CLI compatibility, actual agent invocation, or model access. Requires Python 3.11+.
