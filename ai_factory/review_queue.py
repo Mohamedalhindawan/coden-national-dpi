@@ -39,9 +39,12 @@ def prepare_review_queue(tasks, budget_usd=None):
         for reason in result['errors']:
             errors.append({'index': index, 'reason': reason})
         if isinstance(task, dict) and isinstance(task.get('id'), str) and task['id'].strip():
-            if task['id'] in seen:
+            canonical_id = task['id'].strip()
+            if task['id'] != canonical_id:
+                errors.append({'index': index, 'reason': 'task id must be canonical (no surrounding whitespace)'})
+            if canonical_id in seen:
                 errors.append({'index': index, 'reason': 'duplicate task id'})
-            seen.add(task['id'])
+            seen.add(canonical_id)
     if budget_usd is not None and total > limit:
         errors.append({'index': None, 'reason': 'estimated batch cost exceeds budget'})
     if errors:
