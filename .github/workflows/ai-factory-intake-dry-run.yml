@@ -22,7 +22,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Verify synthetic-only intake tests
-        run: python -m unittest tests.test_ai_factory_intake -v
+        run: python -m unittest discover -s tests -p 'test_ai_factory_intake.py' -v
       - name: Demonstrate approval-gated plan (no execution)
         shell: bash
         run: |
