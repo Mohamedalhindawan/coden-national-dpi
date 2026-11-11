@@ -72,6 +72,11 @@ def preflight_kpi_registry(registry):
     """Check structure, numeric integrity and unique IDs; never approve empty templates."""
     if not isinstance(registry, dict):
         return ["registry_not_object"]
+    # Only the documented root key is accepted; do not silently ignore metadata.
+    if any(not isinstance(key, str) for key in registry):
+        return ["non_string_registry_root_key"]
+    if set(registry) != {"kpis"}:
+        return ["unknown_registry_root_field"]
     if not isinstance(registry.get("kpis"), list):
         return ["kpis_not_list"]
     if not registry["kpis"]:
