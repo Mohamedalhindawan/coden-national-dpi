@@ -104,7 +104,12 @@
         status: "بانتظار المراجعة",
         humanReview: true
       };
-      if (!request.fullName || !Number.isInteger(request.householdSize) || request.householdSize < 1 || request.householdSize > 30) return;
+      if (!request.fullName) {
+        feedback.textContent = "أدخل اسماً تجريبياً صحيحاً قبل إضافة الطلب.";
+        document.getElementById("fullName").focus();
+        return;
+      }
+      if (!Number.isInteger(request.householdSize) || request.householdSize < 1 || request.householdSize > 30) return;
       requests.push(request);
       feedback.textContent = "تمت إضافة الطلب التجريبي " + request.reference + "؛ وهو بانتظار مراجعة بشرية.";
       renderRequests();

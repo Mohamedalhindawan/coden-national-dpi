@@ -59,6 +59,10 @@ class TamamPrototypeContractTests(unittest.TestCase):
         self.assertIn("required", self.html)
         self.assertIn("min=", self.html)
 
+    def test_whitespace_only_name_shows_accessible_validation_feedback(self):
+        self.assertIn("أدخل اسماً تجريبياً صحيحاً", self.html)
+        self.assertIn("feedback.textContent = \"أدخل اسماً تجريبياً صحيحاً قبل إضافة الطلب.\"", self.html)
+
     def test_openapi_contract_is_synthetic_only_and_not_claimed_as_deployed(self):
         spec = OPENAPI.read_text(encoding="utf-8")
         self.assertIn("openapi: 3.1.0", spec)
