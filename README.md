@@ -35,3 +35,8 @@ A small Arabic RTL browser demo for a synthetic social-assistance application. I
 - [OpenAPI specification for the assistance workflow](api/openapi.yaml)
 
 This is a contract draft only. No backend is implemented by adding this file. The contract intentionally restricts the current prototype to synthetic records and requires server-side authentication, authorization, validation, and audit events before any real deployment.
+
+## AI Factory prototype
+
+Run the offline synthetic engineering demo with `python -m ai_factory.phase_zero`.
+See [Phase 0 setup, evidence and Codex artifact support](docs/AI_FACTORY_PHASE_ZERO.md).
