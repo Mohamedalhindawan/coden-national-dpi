@@ -1,12 +1,13 @@
 # CODEN Codex project skills (mobile-first)
 
-Codex CLI project skills live under `.agents/skills/<skill-name>/SKILL.md`. The six focused entry points in this directory are:
+Codex CLI project skills live under `.agents/skills/<skill-name>/SKILL.md`. The project entry points in this directory are:
 - test-driven-development
 - systematic-debugging
 - software-architecture
 - code-review
 - github-workflow
 - security-review
+- gh-fix-ci (read-only GitHub Actions diagnosis; provenance in [the registry](../docs/codex-integration-registry.md))
 
 These **do not install Codex CLI**, start an agent, supply model credentials, or grant GitHub access. They guide Codex once it is launched in this repository. Read root `AGENTS.md` first.
 
@@ -24,7 +25,7 @@ Codex CLI support on Android/Termux is version-dependent. Do not treat these fil
 
 ## Avoid duplication
 
-Open PR #26 proposes an enterprise skills library under `skills/`; PR #50 proposes `ai-enterprise/skills/`. These six files are short **Codex discovery entry points**, not replacements for those broader libraries. Reconcile and link to accepted skills after those PRs are reviewed; do not merge overlapping catalogs blindly.
+Open PR #26 proposes an enterprise skills library under `skills/`; PR #50 proposes `ai-enterprise/skills/`. The original six files are short **Codex discovery entry points**, not replacements for those broader libraries. Reconcile and link to accepted skills after those PRs are reviewed; do not merge overlapping catalogs blindly.
 
 ## Safety
 
@@ -35,7 +36,7 @@ Use synthetic demo data. No secrets in repository or prompts. No autonomous merg
 
 Four specialist definitions live under `.codex/agents/`: `architect.toml`, `developer.toml`, `qa.toml`, and `security.toml`. They are instruction profiles, **not running processes**. Their recognition and multi-agent availability must be checked against the actual installed Codex CLI version and configuration.
 
-For a safe first mobile experiment, use a **single agent** with the six skills. Only enable multi-agent workflows after confirming the installed CLI supports this agent-definition format and observing a read-only test. Do not run parallel agents by default on a phone.
+For a safe first mobile experiment, use a **single agent** with the project skills. Only enable multi-agent workflows after confirming the installed CLI supports this agent-definition format and observing a read-only test. Do not run parallel agents by default on a phone.
 
 ### Local validation after cloning
 
