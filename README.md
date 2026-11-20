@@ -40,3 +40,7 @@ This is a contract draft only. No backend is implemented by adding this file. Th
 
 Run the offline synthetic engineering demo with `python -m ai_factory.phase_zero`.
 See [Phase 0 setup, evidence and Codex artifact support](docs/AI_FACTORY_PHASE_ZERO.md).
+
+### Local Python project factory
+
+Build a synthetic JSON-transform application through eight roles, including offline CPU model generation and review of the packaged executable. See the [runbook](docs/FACTORY_PROJECT_RUNBOOK.md) and [GitHub open-source adoption registry](docs/FACTORY_ADOPTION_REGISTRY.md).
