@@ -1,0 +1,202 @@
+{
+  "task": "DEMO-DURATIONS",
+  "model_sha256": "1d9614638d18024d0fbb36575a15f1302a3adf044df10345688ec4f6e1c4ff32",
+  "cpu_archive_sha256": "da524c71f9dd09913df29264bb7229b99a2de82d8a26e6902e6921d413560d6d",
+  "checkpoint": {
+    "api_cost_usd": 0,
+    "paused": false,
+    "reserved_calls": 3,
+    "stages": {
+      "architecture": {
+        "attempts": 1,
+        "elapsed_ms": 1295,
+        "error": null
+      },
+      "coding": {
+        "attempts": 1,
+        "elapsed_ms": 1717,
+        "error": null
+      },
+      "orchestrator": {
+        "attempts": 1,
+        "elapsed_ms": 1790,
+        "error": null
+      }
+    },
+    "states": {
+      "architecture": "succeeded",
+      "coding": "succeeded",
+      "devops": "pending",
+      "documentation": "pending",
+      "orchestrator": "succeeded",
+      "review": "pending",
+      "security": "pending",
+      "testing": "pending"
+    },
+    "tasks": {
+      "blocked": 0,
+      "cancelled": 0,
+      "failed": 0,
+      "pending": 5,
+      "running": 0,
+      "succeeded": 3
+    }
+  },
+  "final": {
+    "paused": false,
+    "tasks": {
+      "pending": 0,
+      "running": 0,
+      "succeeded": 8,
+      "failed": 0,
+      "cancelled": 0,
+      "blocked": 0
+    },
+    "states": {
+      "orchestrator": "succeeded",
+      "architecture": "succeeded",
+      "coding": "succeeded",
+      "security": "succeeded",
+      "testing": "succeeded",
+      "documentation": "succeeded",
+      "devops": "succeeded",
+      "review": "succeeded"
+    },
+    "api_cost_usd": 0,
+    "reserved_calls": 8,
+    "stages": {
+      "orchestrator": {
+        "attempts": 1,
+        "error": null,
+        "elapsed_ms": 1790
+      },
+      "architecture": {
+        "attempts": 1,
+        "error": null,
+        "elapsed_ms": 1295
+      },
+      "coding": {
+        "attempts": 1,
+        "error": null,
+        "elapsed_ms": 1717
+      },
+      "security": {
+        "attempts": 1,
+        "error": null,
+        "elapsed_ms": 1327
+      },
+      "testing": {
+        "attempts": 1,
+        "error": null,
+        "elapsed_ms": 3415
+      },
+      "documentation": {
+        "attempts": 1,
+        "error": null,
+        "elapsed_ms": 1682
+      },
+      "devops": {
+        "attempts": 1,
+        "error": null,
+        "elapsed_ms": 1628
+      },
+      "review": {
+        "attempts": 1,
+        "error": null,
+        "elapsed_ms": 1324
+      }
+    }
+  },
+  "stages": {
+    "orchestrator": {
+      "elapsed_ms": 1790,
+      "model_sha256": "1d9614638d18024d0fbb36575a15f1302a3adf044df10345688ec4f6e1c4ff32",
+      "plan": "edge-first",
+      "provider": "offline-llama.cpp"
+    },
+    "architecture": {
+      "elapsed_ms": 1295,
+      "model_sha256": "1d9614638d18024d0fbb36575a15f1302a3adf044df10345688ec4f6e1c4ff32",
+      "module": "summary",
+      "provider": "offline-llama.cpp"
+    },
+    "coding": {
+      "elapsed_ms": 1717,
+      "model_sha256": "1d9614638d18024d0fbb36575a15f1302a3adf044df10345688ec4f6e1c4ff32",
+      "provider": "offline-llama.cpp",
+      "source": "def transform(value):\n    return sum(value) if value else 0\n"
+    },
+    "security": {
+      "checks": [
+        "AST policy",
+        "Ruff E9,F,S"
+      ],
+      "decision": "PASS",
+      "elapsed_ms": 1327,
+      "model_sha256": "1d9614638d18024d0fbb36575a15f1302a3adf044df10345688ec4f6e1c4ff32",
+      "provider": "offline-llama.cpp"
+    },
+    "testing": {
+      "case": {
+        "expected": 7,
+        "input": [
+          4,
+          3
+        ]
+      },
+      "elapsed_ms": 3415,
+      "model_sha256": "1d9614638d18024d0fbb36575a15f1302a3adf044df10345688ec4f6e1c4ff32",
+      "passed": 3,
+      "provider": "offline-llama.cpp"
+    },
+    "documentation": {
+      "elapsed_ms": 1682,
+      "model_sha256": "1d9614638d18024d0fbb36575a15f1302a3adf044df10345688ec4f6e1c4ff32",
+      "provider": "offline-llama.cpp",
+      "readme": "# DEMO-DURATIONS\n\nThe program calculates the sum of a list of integer durations, or returns zero for an empty list.\n\nRun `python3 candidate.pyz < input.json`. Input and output use JSON.\n\nInput: `[]`\n\nExpected: `0`\n"
+    },
+    "devops": {
+      "artifact": "candidate.pyz",
+      "elapsed_ms": 1628,
+      "files": [
+        "README.md",
+        "__main__.py",
+        "cli.py",
+        "summary.py",
+        "test_contract.py"
+      ],
+      "format": "compact",
+      "model_sha256": "1d9614638d18024d0fbb36575a15f1302a3adf044df10345688ec4f6e1c4ff32",
+      "passed": 3,
+      "provider": "offline-llama.cpp",
+      "sha256": "0d9dd4acdb9aa08a433b7324fe9c48d514933d85858426ed752be334cb93d485"
+    },
+    "review": {
+      "artifact": "candidate.pyz",
+      "decision": "PASS",
+      "elapsed_ms": 1324,
+      "model_sha256": "1d9614638d18024d0fbb36575a15f1302a3adf044df10345688ec4f6e1c4ff32",
+      "provider": "offline-llama.cpp",
+      "release_authorized": false,
+      "sha256": "0d9dd4acdb9aa08a433b7324fe9c48d514933d85858426ed752be334cb93d485",
+      "status": "awaiting_human_review",
+      "withheld_passed": 1
+    }
+  },
+  "files": {
+    "README.md": "# DEMO-DURATIONS\n\nThe program calculates the sum of a list of integer durations, or returns zero for an empty list.\n\nRun `python3 candidate.pyz < input.json`. Input and output use JSON.\n\nInput: `[]`\n\nExpected: `0`\n",
+    "__main__.py": "from cli import main\nmain()\n",
+    "cli.py": "import json\nimport sys\nfrom summary import transform\n\ndef main():\n    print(json.dumps(transform(json.load(sys.stdin)), allow_nan=False, separators=(\",\", \":\")))\n",
+    "summary.py": "def transform(value):\n    return sum(value) if value else 0\n",
+    "test_contract.py": "import unittest\nfrom summary import transform\n\nclass Contract(unittest.TestCase):\n    def test_0(self):\n        self.assertEqual(transform([]), 0)\n    def test_1(self):\n        self.assertEqual(transform([3, 4]), 7)\n    def test_2(self):\n        self.assertEqual(transform([4, 3]), 7)\n"
+  },
+  "additional_check": {
+    "input": [
+      3,
+      7,
+      11
+    ],
+    "output": 21
+  },
+  "archive_sha256": "0d9dd4acdb9aa08a433b7324fe9c48d514933d85858426ed752be334cb93d485"
+}
