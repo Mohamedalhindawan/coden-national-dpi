@@ -28,10 +28,10 @@ Guards:
 
 1. Migration `coden_factory_control_plane`: Supabase returned `success:true`; server migration history lists version `20261121032502`.
 2. Read-only catalog checks: `jobs` and `job_events` both have RLS enabled and forced; `anon` and `authenticated` lack schema `USAGE` and table `SELECT`; `service_role` has backend `SELECT`.
-3. Created one harmless metadata-only smoke record `FREE-CLOUD-SMOKE-20261121`, with one `created` event and cost 0. Status remains `pending_review`; execution authorization and provider approval both remain false. No model, executor or GitHub workflow was triggered by this record.
+3. Created one harmless metadata-only smoke record `FREE-CLOUD-SMOKE-20261121` with a `created` event, cost 0 and status `pending_review`; execution authorization and provider approval both remain false. Subsequently recorded a second, **operator-verified** `checked` event linking [GitHub CI #44861160242](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/44861160242), which passed 188 tests (one skipped) and OpenAPI. This log synchronization was **manual**, not an automated Supabase–GitHub bridge. No model, executor or workflow was triggered by the database entry.
 4. Remote SQL `DO` guard assertions independently attempted four invalid records: positive cost, true provider approval, true execution authorization and private classification. Every attempt was rejected by a database CHECK constraint; no invalid rows were created.
 5. [RED CI #44860909264](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/44860909264): intentionally failed because the required migration file did not exist.
-6. [GREEN CI #44860962482](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/44860962482): **188 tests executed, 1 skipped, PASS; OpenAPI PASS**. The four new static tests validate private schema/guards. **Static CI alone is not the live database proof**; the verification above came from direct Supabase SQL checks.
+6. [GREEN CI #44860962482](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/44860962482): **188 tests executed, 1 skipped, PASS; OpenAPI PASS**. The four new static tests validate private schema/guards. **Static CI alone is not the live database proof**; the verification above came from direct Supabase SQL checks. Latest documentation checkpoint: [CI #44861160242](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/44861160242) also PASS (188 tests, one skipped, OpenAPI PASS).
 
 ## Security advisor results
 
