@@ -1,0 +1,41 @@
+{
+  "id": "OPENHANDS_SYNTHETIC_1",
+  "title": "Synthetic multi-file status-counts project",
+  "description": "Build a Python 3 program that reads a JSON list of status strings and produces a frequency map. Use app/logic.py, README.md and tests/test_logic.py only.",
+  "data_classification": "synthetic",
+  "requested_actions": [
+    "run_tests"
+  ],
+  "estimated_cost_usd": 0,
+  "recipe": "python-transform",
+  "cases": [
+    {
+      "input": [],
+      "expected": {}
+    },
+    {
+      "input": [
+        "ready",
+        "done",
+        "ready"
+      ],
+      "expected": {
+        "ready": 2,
+        "done": 1
+      }
+    }
+  ],
+  "review_cases": [
+    {
+      "input": [
+        "تجريبي",
+        "تجريبي",
+        "done"
+      ],
+      "expected": {
+        "تجريبي": 2,
+        "done": 1
+      }
+    }
+  ]
+}
