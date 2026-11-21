@@ -31,7 +31,7 @@ def _authority(metadata):
     if metadata["schema"] != "coden.knowledge.authority.v1":
         raise ValueError("unsupported authority schema")
     _text(metadata["doc_id"], LABEL)
-    if metadata["source_system"] not in SYSTEMS:
+    if not isinstance(metadata["source_system"], str) or metadata["source_system"] not in SYSTEMS:
         raise ValueError("unsupported source system")
     _text(metadata["source_revision"], REVISION)
     _text(metadata["source_sha256"], DIGEST)
@@ -52,7 +52,7 @@ def _record(record):
     if not isinstance(record, dict) or set(record) != RECORD_KEYS:
         raise ValueError("unknown source record fields")
     _text(record["doc_id"], LABEL)
-    if record["source_system"] not in SYSTEMS:
+    if not isinstance(record["source_system"], str) or record["source_system"] not in SYSTEMS:
         raise ValueError("unknown source")
     _text(record["source_revision"], REVISION)
     _text(record["source_sha256"], DIGEST)
