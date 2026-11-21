@@ -31,6 +31,14 @@
 | Observability | Existing logs + Langfuse trial | Phoenix, OpenTelemetry | Private-by-default tracing and request redaction |
 | Untrusted execution | Existing pinned bubblewrap for scoped workloads | Daytona, E2B, gVisor later | Isolation and threat-model evidence |
 
+### New: Offline provider recovery planning (implemented; not a live router)
+
+- `ai_factory/recovery_policy.py` validates authorized route metadata, synthetic-only data rules, capabilities, limits and model costs; proposes fallback only on selected failure kinds.
+- `ai_factory/recovery_checkpoint.py` records typed errors to the existing checkpoint journal; no execution or human-approval changes.
+- `ai_factory/recovery_cli.py` supports a bounded offline JSON dry-run and optional journal update.
+- `configs/model_recovery.example.json` is intentionally disabled/unapproved; see `docs/FACTORY_OFFLINE_RECOVERY_POLICY.md`.
+- 27 deterministic tests cover this new stage. **No real model gateway, automatic Codex continuation, Hermes integration or paid provider usage is implied.**
+
 ## Exact remaining implementation order
 
 ### Stage A — align the branches and verify the baseline
