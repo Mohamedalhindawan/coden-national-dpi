@@ -1,0 +1,25 @@
+# Local credentials and configuration: gitignore is defense-in-depth, NOT secret scanning.
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Python environments, bytecode, test and build artifacts.
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# Editor and operating-system artifacts.
+.DS_Store
+.idea/
+.vscode/
