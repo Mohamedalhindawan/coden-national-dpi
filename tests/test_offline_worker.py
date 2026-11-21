@@ -130,6 +130,56 @@ class OfflineWorkerTests(unittest.TestCase):
             self.assertIsNone(self.work())
         runner.assert_not_called()
 
+    def test_crash_after_project_started_requires_manual_review_not_terminal_block(self):
+        self.submit()
+        with patch.object(project, "run", side_effect=RuntimeError("simulated crash after artifact write")) as runner:
+            result = self.work()
+        runner.assert_called_once()
+        self.assertEqual(result["status"], "needs_review")
+        self.assertEqual(self.queue.read(self.id)["status"], "leased")
+        self.assertEqual(checkpoint.read(self.logs, self.id)["status"], "checkpointed")
+        self.assertEqual(self.queue.recover_expired(now=10**12), 1)
+        self.assertEqual(self.queue.read(self.id)["status"], "needs_review")
+        with patch.object(project, "run") as no_replay:
+            self.assertIsNone(self.work())
+        no_replay.assert_not_called()
+
+    def test_failed_review_journal_write_after_execution_preserves_uncertain_state(self):
+        self.submit()
+        original_record = checkpoint.record
+
+        def journal_fault(*args, **kwargs):
+            if kwargs.get("event") == "review_requested":
+                raise OSError("simulated full disk after project produced artifacts")
+            return original_record(*args, **kwargs)
+
+        with patch.object(project, "run", return_value=(self.out / "candidate", "awaiting_human_review")) as runner:
+            with patch.object(checkpoint, "record", side_effect=journal_fault):
+                result = self.work()
+        runner.assert_called_once()
+        self.assertEqual(result["status"], "needs_review")
+        self.assertEqual(self.queue.read(self.id)["status"], "leased")
+        self.assertEqual(checkpoint.read(self.logs, self.id)["status"], "checkpointed")
+        self.assertEqual(self.queue.recover_expired(now=10**12), 1)
+        with patch.object(project, "run") as no_replay:
+            self.assertIsNone(self.work())
+        no_replay.assert_not_called()
+
+    def test_failed_queue_finish_after_review_record_requires_reconciliation(self):
+        self.submit()
+        with patch.object(project, "run", return_value=(self.out / "candidate", "awaiting_human_review")) as runner:
+            with patch.object(self.queue, "finish", side_effect=OSError("simulated sqlite commit fault")) as finish:
+                result = self.work()
+        runner.assert_called_once()
+        finish.assert_called_once()
+        self.assertEqual(result["status"], "needs_review")
+        self.assertEqual(checkpoint.read(self.logs, self.id)["status"], "awaiting_human_review")
+        self.assertEqual(self.queue.read(self.id)["status"], "leased")
+        self.assertEqual(self.queue.recover_expired(now=10**12), 1)
+        with patch.object(project, "run") as no_replay:
+            self.assertIsNone(self.work())
+        no_replay.assert_not_called()
+
     def test_clean_run_with_real_sandbox(self):
         if not project.supported_host() and os.getenv("CODEN_REQUIRE_SANDBOX") != "1":
             self.skipTest("requires pinned Linux sandbox")
