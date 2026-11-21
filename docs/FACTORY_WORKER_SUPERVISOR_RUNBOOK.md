@@ -85,6 +85,26 @@ completed correctly, that output bytes match a signed manifest, or that the
 checkpoint and SQLite database are atomic. These require an independent
 operator-owned evidence gate and security review before production use.
 
+## Real Linux process-group cancellation and IPC fault handling (2026-11-21)
+
+The supervisor now **terminates the child process group on either an overall
+timeout or an `OSError` from `communicate()`**, waits at most five seconds
+for the process leader to exit, and reports failure without exposing raw
+exception details or automatically retrying any task. An unverified
+termination remains a hard failure and requires independent operator action.
+
+**Test evidence:**
+- [RED #44856474516](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/44856474516): on a simulated communication error, the previous code raised an exception but **did not call `killpg`**. This is the reproduced defect.
+- [GREEN #44856620791](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/44856620791): **213 tests run, one conditional skip; OpenAPI PASS**. The Linux-only regression starts a real Python worker fixture that itself spawns a descendant. After a two-second timeout, the supervisor terminates their session/process group; tests confirm both the direct worker and descendant stop. The communication-error cleanup test also passes.
+- The first version of the **test fixture** had malformed Python newline escaping and failed [CI #44856554444](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/44856554444). The fixture was repaired and compile-checked before the successful real-process run. That test-fixture failure is **not** evidence of a production cancellation defect.
+
+**Limits:** SIGKILL to a process group does not necessarily stop a
+subprocess that explicitly creates a new session, escapes into a different
+process group, or runs on a remote host. It does not undo committed filesystem
+side effects or provide authenticated process identity. A persistent
+production worker needs container/cgroup tracking, stronger isolation,
+independent cancellation verification, recoverable state and security review.
+
 ## Independent test gates
 
 ```bash
@@ -92,7 +112,7 @@ python -m unittest discover -s tests -p 'test_worker_supervisor.py' -v
 python -m unittest discover -s tests -v
 ```
 
-Ten new tests cover a real empty queue, deadline and path rejection, timeout kill semantics, no auto retry, failure isolation, environment secret filtering and the fixed CLI command.
+The focused suite covers empty queues, deadline and path validation, worker IPC schema integrity, timeout cancellation, an actual Linux descendant-kill smoke test, safe cleanup on communication errors, no automatic retries, secret-filtered child environments and the fixed CLI command.
 
 ## What Codex still needs to do
 
