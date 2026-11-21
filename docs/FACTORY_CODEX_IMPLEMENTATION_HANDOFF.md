@@ -39,6 +39,13 @@
 - `configs/model_recovery.example.json` is intentionally disabled/unapproved; see `docs/FACTORY_OFFLINE_RECOVERY_POLICY.md`.
 - 27 deterministic tests cover this new stage. **No real model gateway, automatic Codex continuation, Hermes integration or paid provider usage is implied.**
 
+### New: Durable SQLite queue foundation (implemented; no live worker)
+
+- `ai_factory/durable_queue.py`: persists synthetic task identifiers, branch/commit and task spec hash in SQLite, with exclusive claims, time-bounded leases, heartbeats, final review gate, and crash quarantine instead of auto-replay.
+- `tests/test_durable_queue.py`: 10 new deterministic tests, including two concurrent workers and expiry.
+- `docs/FACTORY_DURABLE_QUEUE.md`: operator example and limitations; queue does NOT execute tasks or grant authorization.
+- Codex still needs trusted worker integration, checkpoint reconciliation, backup, real error adapters and independently approved retry behavior.
+
 ## Exact remaining implementation order
 
 ### Stage A — align the branches and verify the baseline
