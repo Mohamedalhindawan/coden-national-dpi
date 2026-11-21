@@ -75,6 +75,15 @@
 - `tests/test_runtime_contract.py`: 13 tests for unknown fields, task/provider allowlist, budgets, invalid usage, bad report types and no self-approval. `docs/FACTORY_RUNTIME_CONTRACT.md` contains contract schemas and safe examples.
 - **Next:** trusted runtime adapter and actual file-content integrity verification, official authenticated providers where explicitly approved, and independent task benchmarks. A hash reported by an adapter is not a verified artifact.
 
+### New: Independent real-file artifact evidence gate (implemented; **not** quality approval)
+
+- `ai_factory/artifact_evidence.py`: verifies complete, bounded **synthetic-only** artifact directory against a canonical sorted file manifest and a matching `runtime_contract` report SHA-256. Rejects missing/modified/extra files, symlinked components, traversal, unexpected fields and oversized bundles; no model calls or code execution.
+- `ai_factory/artifact_cli.py`: operator read-only CLI accepts request/report/manifest JSON and a trusted artifact directory; returns sanitized verification summary, not file contents.
+- `tests/test_factory_artifact_evidence.py` (**14 new tests**) plus `tests/test_factory_artifact_cli.py` (**6 new tests**); `docs/FACTORY_ARTIFACT_EVIDENCE_RUNBOOK.md` documents proof semantics, limits and use.
+- Verified GitHub [run #44850449475](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/44850449475): **181 tests executed (one conditional skip), OpenAPI PASS**.
+- **Important:** file hashes and matching manifest are not authenticated provenance, model correctness, acceptance-test success, license clearance, code security review or release permission; real multi-file coding benchmark and protected immutable evidence store remain outstanding.
+- Next Codex task: produce a manifest from existing synthetic project artifacts and run this verifier from a trusted process, plus hidden acceptance tests. Do not let the agent approve itself.
+
 ## Exact remaining implementation order
 
 ### Stage A — align the branches and verify the baseline
