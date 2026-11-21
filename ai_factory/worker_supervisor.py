@@ -41,6 +41,15 @@ def _db(path):
     return str(db.resolve())
 
 
+def _unique_json_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate worker result field")
+        result[key] = value
+    return result
+
+
 def _result(status):
     return {"status": status, "execution_authorized": False,
             "automatic_retry_allowed": False}
@@ -106,16 +115,34 @@ def run_once(*, queue_db, journal, task_dir, output_root, worker_id,
             if len(raw) > MAX_RESULT_BYTES:
                 return _result("untrusted_worker_result")
             try:
-                parsed = json.loads(raw)
+                parsed = json.loads(raw, object_pairs_hook=_unique_json_keys)
             except (UnicodeError, ValueError, TypeError):
                 return _result("untrusted_worker_result")
             if parsed is None:
                 return _result("idle")
-            if not isinstance(parsed, dict) or parsed.get("status") not in VALID_RESULTS:
+            required = {"task_id", "status", "execution_authorized"}
+            if not isinstance(parsed, dict) or set(parsed) not in (
+                required, required | {"directory"}
+            ):
                 return _result("untrusted_worker_result")
-            if parsed.get("execution_authorized") is not False:
+            try:
+                checkpoint._id(parsed["task_id"])
+            except (ValueError, TypeError):
                 return _result("untrusted_worker_result")
-            return _result(parsed["status"])
+            status = parsed["status"]
+            if not isinstance(status, str) or status not in VALID_RESULTS:
+                return _result("untrusted_worker_result")
+            if parsed["execution_authorized"] is not False:
+                return _result("untrusted_worker_result")
+            if "directory" in parsed:
+                dirname = parsed["directory"]
+                if not isinstance(dirname, str) or not dirname or len(dirname) > 4096:
+                    return _result("untrusted_worker_result")
+                # The child cannot claim an output outside the operator's root.
+                candidate = Path(dirname)
+                if not candidate.is_absolute() or not candidate.resolve().is_relative_to(outputs):
+                    return _result("untrusted_worker_result")
+            return _result(status)
     except OSError as exc:
         raise SupervisorError("operator supervisor unable to launch or supervise child") from exc
 
