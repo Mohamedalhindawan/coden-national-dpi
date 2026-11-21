@@ -5,6 +5,8 @@ models, credentials, external endpoints or hosted inference are used.
 """
 import json
 import os
+import subprocess
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -22,8 +24,8 @@ class OllamaSDKFactoryTests(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.output = Path(tmp.name) / "review"
         self.output.mkdir()
-        self.task = json.loads(project.EXAMPLE.read_text(encoding="utf-8"))
-        self.task["recipe"] = "python-transform"
+        self.fixture = Path(__file__).resolve().parents[1] / "ai_factory" / "examples" / "ollama-python-transform.json"
+        self.task = json.loads(self.fixture.read_text(encoding="utf-8"))
         self.sdk_client = MagicMock()
         self.sdk_client.generate.return_value = {"response": project.DEMO}
         self.sdk_factory = MagicMock(return_value=self.sdk_client)
@@ -44,6 +46,26 @@ class OllamaSDKFactoryTests(unittest.TestCase):
         }
         params.update(kwargs)
         return ollama_sdk_pilot.run_once(**params)
+
+    def test_tracked_task_fixture_is_synthetic_and_acceptance_separated(self):
+        self.assertTrue(project.valid(self.task))
+        self.assertEqual(self.task["recipe"], "python-transform")
+        self.assertEqual(self.task["data_classification"], "synthetic")
+        self.assertNotEqual(self.task["cases"], self.task["review_cases"])
+
+    def test_cli_default_is_offline_disabled_without_sdk_install(self):
+        result = subprocess.run([
+            sys.executable, "-m", "ai_factory.ollama_sdk_pilot",
+            "--task", str(self.fixture),
+            "--output-root", str(self.output),
+            "--model", MODEL,
+        ], capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        outcome = json.loads(result.stdout)
+        self.assertEqual(outcome["status"], "disabled")
+        self.assertFalse(outcome["model_run_attempted"])
+        self.assertFalse(outcome["execution_authorized"])
+        self.assertEqual(list(self.output.iterdir()), [])
 
     def test_disabled_by_default_never_contacts_sdk_or_model_discovery(self):
         outcome = self.run_pilot(allow_local_inference=False)
