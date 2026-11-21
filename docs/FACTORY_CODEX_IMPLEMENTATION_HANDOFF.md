@@ -61,6 +61,14 @@
 - `tests/test_factory_component_catalog.py`: four checks keep proposed upstreams uniquely identified and unapproved. `docs/FACTORY_COMPONENT_ADMISSION_MATRIX.md` documents role separation and evidence gates.
 - **Next Codex task:** start with divergence reporting and approval-safe recovery; do not blindly replay leased tasks; evaluate candidate tools only after comparing existing code and independent quality benchmarks.
 
+### New: Bounded worker supervisor (implemented; **not** a daemon)
+
+- `ai_factory/worker_supervisor.py`: operator-invoked one-shot supervisor that launches only the fixed synthetic `offline_worker` command under a wall-clock timeout. Uses a separate child process group and kills it if stuck; **never retries/requeues or approves tasks**.
+- `tests/test_worker_supervisor.py`: 10 focused tests for no-task idle path, process group timeout, parameter validation, no credential env leakage, invalid paths, fixed CLI and failure isolation.
+- `docs/FACTORY_WORKER_SUPERVISOR_RUNBOOK.md`: bounded CLI instructions, manual reconciliation on interrupted jobs, limitations and Codex next tasks.
+- Verified code commit CI: [#44849731623](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/44849731623) — **148 tests run, one conditional skip, OpenAPI PASS**.
+- Next: persistent **trusted** worker service with cancellation/heartbeat, sandbox-level resource isolation and crash-window reconciliation; still no live model/OmniRoute/Hermes integration.
+
 ## Exact remaining implementation order
 
 ### Stage A — align the branches and verify the baseline
