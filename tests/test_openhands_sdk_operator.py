@@ -245,6 +245,8 @@ class OpenHandsManagedLaunchTests(OpenHandsSDKOperatorTests):
 
     def inspector(self, kind, name):
         self.inspector_calls.append((kind, name))
+        if kind == "context":
+            return {"Name": "default", "Endpoints": {"docker": {"Host": "unix:///var/run/docker.sock", "SkipTLSVerify": False}}}
         if kind == "network":
             return {"Internal": True, "Driver": "bridge", "Name": name}
         if kind == "image":
@@ -291,6 +293,36 @@ class OpenHandsManagedLaunchTests(OpenHandsSDKOperatorTests):
         self.assertEqual(ManagedWorkspace.started, 0)
         self.assertEqual(self.inspector_calls, [])
 
+    def test_remote_docker_context_blocked_before_workspace(self):
+        invalid_hosts = (
+            "tcp://127.0.0.1:2375",
+            "ssh://someone@remote.example",
+            "unix:///tmp/untrusted/docker.sock",
+            "unix:///home/ci/.docker/desktop/docker.sock",
+            None,
+        )
+        for host in invalid_hosts:
+            def fake_inspect(kind, name):
+                if kind == "context":
+                    return {"Name": "remote", "Endpoints": {"docker": {"Host": host}}}
+                return self.inspector(kind, name)
+            with self.subTest(host=host):
+                result = self.launch(inspect_docker=fake_inspect)
+                self.assertEqual(result["status"], "unsafe_runtime")
+        self.assertEqual(ManagedWorkspace.started, 0)
+
+    def test_preflight_only_checks_runtime_without_loading_or_starting_sdk(self):
+        with patch.object(project, "supported_host", return_value=True):
+            result = self.launch(allow_agent=False, preflight_only=True)
+        self.assertEqual(result["status"], "preflight_passed")
+        self.assertFalse(result["agent_session_attempted"])
+        self.assertFalse(result["execution_authorized"])
+        self.assertEqual(self.inspector_calls, [
+            ("context", "current"), ("network", self.network), ("image", self.image),
+        ])
+        self.assertEqual(ManagedWorkspace.started, 0)
+        self.assertFalse(FakeLLM.seen)
+
     def test_image_or_network_inspection_failed_does_not_start_docker(self):
         for inspector in [
             lambda kind, name: {"Internal": False, "Driver": "bridge"} if kind == "network" else self.inspector(kind,name),
@@ -324,7 +356,7 @@ class OpenHandsManagedLaunchTests(OpenHandsSDKOperatorTests):
         self.assertEqual(ManagedWorkspace.started, 1)
         self.assertEqual(ManagedWorkspace.closed, 1)
         self.assertEqual(self.inspector_calls, [
-            ("network", self.network), ("image", self.image)
+            ("context", "current"), ("network", self.network), ("image", self.image)
         ])
         verify.assert_called_once_with(self.task, self.export, self.output)
 
