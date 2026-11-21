@@ -1,7 +1,10 @@
 """A standalone, opt-in CODEN golden Python template, not deployed."""
 from pathlib import Path
 import re
+import os
+import shutil
 import subprocess
+import tempfile
 import sys
 import unittest
 
@@ -12,7 +15,7 @@ TEMPLATE = ROOT / "templates" / "golden-python-service"
 class GoldenTemplateTests(unittest.TestCase):
     def test_minimum_self_contained_files_present(self):
         for path in (
-            "README.md", "AGENTS.md", "pyproject.toml",
+            "README.md", "AGENTS.md", "pyproject.toml", ".gitignore",
             "coden_service/__init__.py", "coden_service/summary.py",
             "tests/test_summary.py", "docs/PROJECT_SPEC.md",
             "docs/SECURITY_REQUIREMENTS.md", ".github/workflows/ci.yml",
@@ -39,6 +42,25 @@ class GoldenTemplateTests(unittest.TestCase):
         )
         self.assertEqual(process.returncode, 0, process.stdout + process.stderr)
         self.assertIn("Ran 6 tests", process.stderr)
+
+    def test_clean_generated_copy_is_self_contained(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            generated = Path(workspace) / "new-project"
+            shutil.copytree(
+                TEMPLATE, generated,
+                ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+            )
+            self.assertFalse((generated / ".git").exists())
+            isolated_env = os.environ.copy()
+            isolated_env.pop("PYTHONPATH", None)
+            isolated_env.pop("PYTHONHOME", None)
+            process = subprocess.run(
+                [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-v"],
+                cwd=generated, env=isolated_env, text=True, capture_output=True,
+                timeout=30, check=False,
+            )
+            self.assertEqual(process.returncode, 0, process.stdout + process.stderr)
+            self.assertIn("Ran 6 tests", process.stderr)
 
     def test_example_import_and_synthetic_task_counts(self):
         command = (
