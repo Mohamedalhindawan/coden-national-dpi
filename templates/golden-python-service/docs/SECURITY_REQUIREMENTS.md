@@ -2,6 +2,7 @@
 
 - No production or personal data; use synthetic fixtures only.
 - No secrets in repo, CI, issues, PR comments or model prompts.
+- `.gitignore` excludes common local credential and cache paths as defense in depth; it does not stop forced additions, previously tracked files or leaked secrets. Require independent secret scanning before publishing generated repositories.
 - No outbound network, cloud inference, database writes or privileged operations in this starter.
 - Changes require independent review and failing-first regression tests.
 - CI uses commit-pinned GitHub actions and read-only token permissions.
