@@ -271,3 +271,52 @@ def launch_isolated(*, task, candidate_root, output_root, model, base_url,
         # SDK construction can have started a container before raising.
         # Report uncertainty and require operator cleanup, never retry.
         return _result("workspace_start_failed_review_required", attempted=True)
+
+
+
+def main(argv=None):
+    """CLI operator entrypoint: no agent, network or file reads by default."""
+    import argparse
+    import sys
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--task", required=True)
+    parser.add_argument("--candidate-dir", required=True)
+    parser.add_argument("--output-root", required=True)
+    parser.add_argument("--model", required=True)
+    parser.add_argument("--base-url", default="http://ollama:11434")
+    parser.add_argument("--server-image", required=True)
+    parser.add_argument("--network", required=True)
+    parser.add_argument("--allow-agent", action="store_true",
+                        help="Explicit operator permission for one SDK conversation")
+    args = parser.parse_args(argv)
+
+    # Do not inspect directories, Docker, SDK installation, model or task when
+    # no real operation is requested.
+    if not args.allow_agent:
+        print(json.dumps(_result("disabled"), sort_keys=True))
+        return 0
+
+    try:
+        task = json.loads(project.read_text(args.task, 32768))
+        outcome = launch_isolated(
+            task=task,
+            candidate_root=args.candidate_dir,
+            output_root=args.output_root,
+            model=args.model,
+            base_url=args.base_url,
+            server_image=args.server_image,
+            network=args.network,
+            allow_agent=True,
+        )
+    except (OSError, ValueError, TypeError, RuntimeError, json.JSONDecodeError):
+        outcome = _result("invalid_config")
+
+    if "directory" in outcome:
+        outcome["directory"] = str(outcome["directory"])
+    print(json.dumps(outcome, sort_keys=True))
+    return 0 if outcome["status"] == "awaiting_human_review" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
