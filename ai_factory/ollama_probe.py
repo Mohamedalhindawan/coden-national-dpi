@@ -16,7 +16,7 @@ from urllib.parse import urlsplit
 
 MAX_RESPONSE_BYTES = 65536
 MAX_MODELS = 256
-MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}\\Z")
+MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}\Z")
 
 
 def _port(endpoint):
