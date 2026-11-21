@@ -31,6 +31,10 @@ pinned CODEN bubblewrap availability and locally cached Docker metadata
 **before** calling `DockerWorkspace(...)`.
 
 The read-only Docker preflight does:
+- `docker context inspect` and checks that the active Docker endpoint is a
+  known Unix socket (`/var/run/docker.sock`, `/run/docker.sock`, or the current
+  user's rootless `/run/user/UID/docker.sock`). Explicit SSH/TCP contexts and
+  unrecognized socket paths are rejected **before** workspace construction.
 - `docker network inspect NETWORK` and requires the exact selected network's
   `Internal=true` and `Driver=bridge`.
 - `docker image inspect IMAGE_DIGEST` and requires the exact source
@@ -43,9 +47,10 @@ The read-only Docker preflight does:
   multi-file acceptance gate.
 
 **Security limit:** this is metadata preflight, not a security attestation.
-Docker's active context may point to a remote daemon even with absent
-`DOCKER_HOST`; the operator must inspect the *active context* and confirm
-the target local daemon. An internal Docker network alone is not sufficient
+The active Docker context is now checked for an approved **local Unix socket**,
+but a local socket may still point to a proxied or compromised daemon. The
+operator must inspect socket ownership and the actual engine, not merely the
+CLI output. An internal Docker network alone is not sufficient
 against a compromised/multi-homed container, host proxy or local Ollama
 server that may itself call cloud services. Enforce host egress rules,
 trusted image/model provenance, read-only SDK dependency supply chain,
@@ -65,15 +70,25 @@ python -m ai_factory.openhands_sdk_operator \
   --server-image 'ghcr.io/openhands/agent-server@sha256:REPLACE_WITH_ACTUAL_64_HEX_DIGEST' \
   --network coden_internal
 
-# Only an authorized operator with an independently verified isolated
-# Docker+Ollama host, immutable cached image, pinned SDK and external
-# process watchdog may append the final switch:
+# On an authorized operator-controlled machine, replace the placeholder
+# with the actual audited local image's immutable 64-hex digest, then append:
+#   --preflight-only
+# This inspects the active Docker context, selected network, cached image and
+# pinned CODEN sandbox. It MUST NOT start a container or contact a model.
+
+# Only after verifying Docker socket/daemon ownership, real network egress,
+# pinned SDK/model, available hardware and an external process watchdog:
 #   --allow-agent
+# This is a separate opt-in mode; never combine it with --preflight-only.
 ```
 
 The default CLI returns `status=disabled`, without reading the task or
 workspace, importing OpenHands, invoking Docker or contacting any model.
-With `--allow-agent`, it performs one **real** SDK Conversation and
+`--preflight-only` returns `preflight_passed` only when its **read-only
+local Docker metadata / CODEN sandbox checks** succeed; that status does
+NOT prove model availability, SDK installation, firewall isolation, image
+supply-chain review, process watchdogs or an actual agent invocation.
+With `--allow-agent`, it attempts one **real** SDK Conversation and
 independent review if all preconditions are satisfied. It does not install
 Docker/OpenHands/Ollama, create the Docker network, download a model, set
 a watchdog, configure firewalls or silently retry. If construction fails
@@ -89,6 +104,15 @@ CLI has separate RED tests in
 [run #44859110983](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/44859110983).
 Refer to the **latest PR head** CI for the completed CLI result.
 
+**Docker context / preflight TDD:** [RED #44859513882](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/44859513882)
+caught unsafe Docker contexts and missing `--preflight-only`;
+[GREEN #44859588580](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/44859588580)
+passed **224 tests, 1 conditional skip, OpenAPI PASS**. The new
+tests simulate remote SSH/TCP Docker contexts and disallowed Unix sockets,
+confirm the context command is read-only, and verify that an authorized
+metadata check never instantiates the SDK or the Docker workspace.
+**These are mocked Docker metadata tests, not actual Docker container tests.**
+
 
 ## Operator prerequisites for an eventual real trial
 
@@ -97,7 +121,7 @@ Refer to the **latest PR head** CI for the completed CLI result.
 - Provide a verified local Ollama service on the isolated network at `http://ollama:11434` with a locally loaded, reviewed coding model. No cloud model aliases.
 - Independently cap compute, model budget and wall-clock lifetime with a supervising container/cgroup watchdog: **this SDK adapter does not implement a real process kill deadline**, and `Conversation.run()` can block. Operator must verify termination and review potential partial output before retry.
 - Ensure `candidate_root` is the exact host scratch mount attached as `/workspace/export:rw`, and `output_root` exists on a protected operator filesystem. Import the checked-in synthetic task from `ai_factory/examples/openhands-multifile-task.json`.
-- For a single authorized call, pre-create and own a real `DockerWorkspace` using the upstream SDK; pass it as `workspace` and set `allow_agent=True`. The bridge never starts a Docker container itself, installs a model or handles API credentials. Code-managed workspace construction is intentionally deferred until isolation is independently proven.
+- For a single authorized call, use the managed `--allow-agent` CLI only after the `--preflight-only` and independent security gates. The managed entrypoint creates one upstream `DockerWorkspace` **after** validating metadata; the upstream SDK owns its actual Docker lifecycle. The bridge does not install the SDK, Docker, Ollama or model weights and it cannot prove host-level network policy. `run_once` also supports a separately pre-created workspace for authorized specialist use.
 
 ## Automated test evidence
 
