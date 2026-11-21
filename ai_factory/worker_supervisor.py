@@ -55,6 +55,24 @@ def _result(status):
             "automatic_retry_allowed": False}
 
 
+def _terminate_process_group(proc):
+    """Best-effort cancellation with verified leader exit; no automatic replay.
+
+    Only use for a child launched with start_new_session=True. The caller
+    must keep all task state for operator review after an uncertain outcome.
+    """
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass  # Group already exited; still reap/verify the process leader.
+    except OSError as exc:
+        raise SupervisorError("unable to verify child termination") from exc
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired as exc:
+        raise SupervisorError("child termination unverified") from exc
+
+
 def _minimal_environment():
     # Deliberately discard tokens, cloud SDK vars, proxy endpoints and
     # PYTHONPATH from the invoking shell. The operator controls PATH and
@@ -97,17 +115,13 @@ def run_once(*, queue_db, journal, task_dir, output_root, worker_id,
             try:
                 proc.communicate(timeout=timeout_seconds)
             except subprocess.TimeoutExpired:
-                try:
-                    os.killpg(proc.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                except OSError as exc:
-                    raise SupervisorError("unable to verify child termination") from exc
-                try:
-                    proc.wait(timeout=5)
-                except subprocess.TimeoutExpired as exc:
-                    raise SupervisorError("child termination unverified") from exc
+                _terminate_process_group(proc)
                 return _result("timed_out_review_required")
+            except OSError as exc:
+                # A failed IPC operation does not prove that the worker exited.
+                # It may still hold a queue lease or have created artifacts.
+                _terminate_process_group(proc)
+                raise SupervisorError("worker communication failed; manual review required") from exc
             if proc.returncode != 0:
                 return _result("worker_failed_review_required")
             stdout.seek(0)
