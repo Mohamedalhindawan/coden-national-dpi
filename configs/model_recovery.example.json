@@ -1,0 +1,35 @@
+{
+  "observation": {
+    "kind": "quota_exceeded"
+  },
+  "failed_provider": "codex_subscription",
+  "task": {
+    "classification": "synthetic",
+    "required_capabilities": [
+      "coding",
+      "tool_calls"
+    ],
+    "budget_remaining_usd": "0",
+    "allowed_providers": [
+      "local_qwen"
+    ],
+    "allow_external_api": false
+  },
+  "routes": [
+    {
+      "provider_id": "local_qwen",
+      "model_id": "qwen_local_demo",
+      "transport": "local",
+      "enabled": false,
+      "approved": false,
+      "capabilities": [
+        "coding",
+        "tool_calls"
+      ],
+      "data_classes": [
+        "synthetic"
+      ],
+      "estimated_cost_usd": "0"
+    }
+  ]
+}
