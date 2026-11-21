@@ -89,6 +89,7 @@ def work_once(queue, checkpoint_root, tasks_dir, output_root, *, worker_id, leas
         return None
     task_id = lease["task_id"]
     token = lease["lease_token"]
+    execution_started = False
     try:
         task, digest = _load_task(tasks_dir, task_id)
         original = checkpoint.read(checkpoint_root, task_id)
@@ -101,6 +102,7 @@ def work_once(queue, checkpoint_root, tasks_dir, output_root, *, worker_id, leas
         queue.heartbeat(task_id, token, extend_seconds=lease_seconds)
         checkpoint.record(checkpoint_root, task_id, event="checkpoint",
                           next_action="offline_project_run", event_key="worker_start")
+        execution_started = True
         directory, outcome = project.run(task, output_root)
         if outcome == "awaiting_human_review":
             checkpoint.record(checkpoint_root, task_id, event="review_requested",
@@ -114,6 +116,12 @@ def work_once(queue, checkpoint_root, tasks_dir, output_root, *, worker_id, leas
         queue.finish(task_id, token, "blocked")
         return _public(lease, "blocked", directory=directory)
     except Exception:
+        # Once the project runner has been invoked, it may have created files
+        # even if an exception is raised or a subsequent journal/DB write fails.
+        # Leave the lease intact for expiry quarantine + operator reconciliation:
+        # do not overwrite review evidence with a false terminal "blocked".
+        if execution_started:
+            return _public(lease, "needs_review")
         # An explicit SIGKILL or KeyboardInterrupt escapes: after lease expiry,
         # recover_expired quarantines instead of automatically re-running.
         # Do not log raw exception details (they may contain task/secret data).
