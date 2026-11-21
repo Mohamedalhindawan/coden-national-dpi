@@ -8,7 +8,7 @@ import re
 import unittest
 
 
-SQL = Path(__file__).resolve().parents[1] / "supabase" / "migrations" / "20261121060000_coden_factory_control_plane.sql"
+SQL = Path(__file__).resolve().parents[1] / "supabase" / "migrations" / "20261121032502_coden_factory_control_plane.sql"
 
 
 class FactorySupabaseSchemaContractTests(unittest.TestCase):
