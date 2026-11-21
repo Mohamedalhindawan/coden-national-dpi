@@ -80,6 +80,18 @@ class WorkerSupervisorTests(unittest.TestCase):
         self.assertFalse(outcome["execution_authorized"])
         self.assertEqual(popen.call_args.kwargs["start_new_session"], True)
 
+    def test_communication_failure_terminates_child_process_group(self):
+        process = MagicMock()
+        process.pid = 424243
+        process.communicate.side_effect = OSError("simulated broken pipe with worker still running")
+        process.wait.return_value = -9
+        with patch.object(worker_supervisor.subprocess, "Popen", return_value=process):
+            with patch.object(worker_supervisor.os, "killpg") as killpg:
+                with self.assertRaises(worker_supervisor.SupervisorError):
+                    self.invoke()
+        killpg.assert_called_once_with(424243, worker_supervisor.signal.SIGKILL)
+        process.wait.assert_called_once_with(timeout=5)
+
     def test_exit_nonzero_requires_review_without_raw_stderr(self):
         process = MagicMock()
         process.pid = 12121
