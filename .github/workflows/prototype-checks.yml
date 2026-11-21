@@ -11,14 +11,33 @@ permissions:
 
 jobs:
   contract-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+    timeout-minutes: 12
+    env:
+      CODEN_REQUIRE_SANDBOX: "1"
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
+      - name: Prepare isolated factory checks
+        run: |
+          python -m pip install --require-hashes --no-deps --only-binary=:all: -r ai_factory/locks/review-linux-x86_64.txt -r ai_factory/locks/ci-build.txt
+          cd "$RUNNER_TEMP"
+          curl --fail --silent --show-error --location --retry 2 -o bubblewrap.tar.xz https://github.com/containers/bubblewrap/releases/download/v0.12.0/bubblewrap-0.12.0.tar.xz
+          echo "9760d007363e3abba7c747489910f9f82d9fca53ba3bd3282e396fa3c97a3314  bubblewrap.tar.xz" | sha256sum --check
+          curl --fail --silent --show-error --location --retry 2 -o libcap.deb https://security.ubuntu.com/ubuntu/pool/main/libc/libcap2/libcap-dev_2.44-1ubuntu0.22.04.3_amd64.deb
+          echo "5c733a6f0d9e438763ab123e15b26113efc391ced3a785e20e8723c5b354aefc  libcap.deb" | sha256sum --check
+          dpkg-deb -x libcap.deb headers
+          export PKG_CONFIG_PATH="$PWD/headers/usr/lib/x86_64-linux-gnu/pkgconfig"
+          export CFLAGS="-I$PWD/headers/usr/include"
+          export LDFLAGS="-L$PWD/headers/usr/lib/x86_64-linux-gnu"
+          tar -xf bubblewrap.tar.xz
+          meson setup bwrap-build bubblewrap-0.12.0 -Dman=disabled -Dselinux=disabled -Dtests=false -Dbash_completion=disabled -Dzsh_completion=disabled --wrap-mode=nodownload
+          meson compile -C bwrap-build bwrap
+          echo "$RUNNER_TEMP/bwrap-build" >> "$GITHUB_PATH"
       - name: Run prototype contract tests
         run: python -m unittest discover -s tests -v
       - name: Validate OpenAPI contract
