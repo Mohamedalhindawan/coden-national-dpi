@@ -15,9 +15,22 @@ class ComponentCatalogTests(unittest.TestCase):
 
     def test_all_candidates_have_unique_identifiers(self):
         candidates = self.data["candidates"]
-        self.assertEqual(len(candidates), 16)
+        self.assertEqual(len(candidates), 17)
         ids = [c["id"] for c in candidates]
         self.assertEqual(len(ids), len(set(ids)))
+
+    def test_gateway_choices_include_free_llm_api_without_activation(self):
+        by_id = {c["id"]: c for c in self.data["candidates"]}
+        for name in ("omniroute", "freellmapi", "litellm", "bifrost"):
+            with self.subTest(candidate=name):
+                self.assertEqual(by_id[name]["capability"], "model_gateway")
+                self.assertFalse(by_id[name]["enabled"])
+                self.assertFalse(by_id[name]["approved"])
+                self.assertEqual(by_id[name]["status"], "not_installed")
+        self.assertEqual(
+            by_id["freellmapi"]["upstream"],
+            "https://github.com/tashfeenahmed/freellmapi",
+        )
 
     def test_no_candidate_is_installed_or_approved(self):
         self.assertEqual(self.data["status"], "research_only")

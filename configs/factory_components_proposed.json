@@ -73,6 +73,19 @@
       "enabled": false
     },
     {
+      "id": "freellmapi",
+      "upstream": "https://github.com/tashfeenahmed/freellmapi",
+      "capability": "model_gateway",
+      "priority": "P0",
+      "acceptance_criterion": "Compare authorized free-tier API routes and local Ollama pass-through against OmniRoute on identical synthetic fixture; no accounts, token use or quota bypass without separate approval",
+      "status": "not_installed",
+      "license_review": "required",
+      "security_review": "required",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false
+    },
+    {
       "id": "litellm",
       "upstream": "https://github.com/BerriAI/litellm",
       "capability": "model_gateway",
