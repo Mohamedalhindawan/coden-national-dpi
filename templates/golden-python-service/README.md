@@ -11,7 +11,7 @@ python -m unittest discover -s tests -v
 python -c "from coden_service.summary import summarize; print(summarize([]))"
 ```
 
-Five starter tests cover valid summaries and rejection of unexpected or non-synthetic records. An optional workflow at `.github/workflows/ci.yml` becomes active only **after this directory is copied to a repository root**; GitHub does not run a workflow nested inside `templates/` in the parent CODEN repo.
+Six starter tests cover valid summaries and rejection of unexpected or non-synthetic records. An optional workflow at `.github/workflows/ci.yml` becomes active only **after this directory is copied to a repository root**; GitHub does not run a workflow nested inside `templates/` in the parent CODEN repo.
 
 ## Candidate generation procedure (not performed)
 
