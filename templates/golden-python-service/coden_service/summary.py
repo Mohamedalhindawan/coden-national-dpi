@@ -11,6 +11,7 @@ def summarize(items):
     if not isinstance(items, list) or len(items) > 100:
         raise ValueError("items must be a list of at most 100")
     counts = {status: 0 for status in STATUSES}
+    seen_task_ids = set()
     for item in items:
         if not isinstance(item, dict) or set(item) != {"task_id", "status", "classification"}:
             raise ValueError("unexpected task fields")
@@ -18,6 +19,9 @@ def summarize(items):
         status = item["status"]
         if not isinstance(task_id, str) or not TASK_ID.fullmatch(task_id):
             raise ValueError("invalid task id")
+        if task_id in seen_task_ids:
+            raise ValueError("duplicate task id")
+        seen_task_ids.add(task_id)
         if not isinstance(status, str) or status not in STATUSES:
             raise ValueError("invalid status")
         if item["classification"] != "synthetic":
