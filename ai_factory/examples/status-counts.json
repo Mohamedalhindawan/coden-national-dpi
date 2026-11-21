@@ -1,0 +1,14 @@
+{
+  "id": "DEMO-STATUS-COUNTS",
+  "title": "Summarize synthetic build statuses",
+  "description": "Read a JSON list of status strings and return a frequency map.",
+  "data_classification": "synthetic",
+  "requested_actions": ["run_tests"],
+  "estimated_cost_usd": 0,
+  "recipe": "status-counts",
+  "cases": [
+    {"input": [], "expected": {}},
+    {"input": ["ready", "done", "ready"], "expected": {"ready": 2, "done": 1}}
+  ],
+  "review_cases": [{"input": ["تجريبي", "تجريبي"], "expected": {"تجريبي": 2}}]
+}
