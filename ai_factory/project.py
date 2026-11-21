@@ -20,6 +20,8 @@ from .review_queue import prepare_review_queue
 
 EXAMPLE = Path(__file__).with_name("examples") / "status-counts.json"
 LIMIT = 16384
+MAX_AST_NODES = 512
+MAX_AST_DEPTH = 40
 ROLES = (
     "architecture",
     "coding",
@@ -139,12 +141,21 @@ def inspect_source(source):
         ast.USub,
         ast.Not,
     )
-    for node in ast.walk(tree):
+    pending = [(tree, 0)]
+    visited = 0
+    while pending:
+        node, depth = pending.pop()
+        visited += 1
+        if visited > MAX_AST_NODES or depth > MAX_AST_DEPTH:
+            raise ValueError("source AST exceeds policy limits")
+        pending.extend((child, depth + 1) for child in ast.iter_child_nodes(node))
         if not isinstance(node, allowed):
             raise ValueError("unsupported syntax")
         if isinstance(node, ast.Name) and node.id.startswith("_"):
             raise ValueError("private name")
-        if isinstance(node, ast.Attribute) and node.attr != "get":
+        if isinstance(node, ast.Attribute) and (
+            node.attr != "get" or not isinstance(node.ctx, ast.Load)
+        ):
             raise ValueError("unsupported attribute")
         if isinstance(node, ast.Call) and not (
             isinstance(node.func, ast.Attribute)
