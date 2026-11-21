@@ -9,8 +9,10 @@ The OpenHands SDK runs the agent; CODEN only supplies policy, a restricted
 prompt and independent multi-file artifact review. No automatic retry,
 approval, merge, production release or paid provider fallback.
 """
+import json
 import os
 import re
+import subprocess
 
 from . import openhands_multifile_review, project
 
@@ -155,3 +157,117 @@ def run_once(*, task, candidate_root, output_root, workspace, model,
     return {**accepted, "agent_session_attempted": True,
             "execution_authorized": False, "release_authorized": False,
             "automatic_retry_allowed": False}
+
+
+def _inspect_local_docker(kind, name):
+    """Read metadata only, no container creation, shell, pull or image build.
+
+    The operator must separately verify that Docker's active context refers
+    to the intended local engine and that no external bridge routing exists.
+    """
+    if kind not in ("network", "image"):
+        raise ValueError("unsupported Docker inspect target")
+    command = ["docker", kind, "inspect", name]
+    result = subprocess.run(
+        command, capture_output=True, text=True, timeout=5, check=False
+    )
+    if result.returncode or len(result.stdout) > 65536:
+        raise ValueError("Docker inspect unavailable")
+    parsed = json.loads(result.stdout)
+    if not isinstance(parsed, list) or len(parsed) != 1 or not isinstance(parsed[0], dict):
+        raise ValueError("untrusted Docker inspect reply")
+    return parsed[0]
+
+
+def launch_isolated(*, task, candidate_root, output_root, model, base_url,
+                    server_image, network, allow_agent=False,
+                    sdk=None, inspect_docker=None):
+    """Safe entry path: preflight before DockerWorkspace constructor side effects.
+
+    A regular DockerWorkspace constructs/starts its container during init.
+    This is the only managed path CODEN should use for a future real SDK
+    pilot; it validates immutable image, isolated network and installed
+    local sandbox BEFORE constructing the SDK workspace.
+
+    Docker network 'Internal' is only one layer of defense. Require an
+    independently audited local Docker daemon, firewall, pinned model and
+    external watchdog before using this on an operator-controlled machine.
+    """
+    if type(allow_agent) is not bool:
+        raise ValueError("explicit boolean operator permission required")
+    if not allow_agent:
+        return _result("disabled")
+    if not project.valid(task) or task.get("recipe") != "python-transform":
+        raise ValueError("synthetic-only reviewed transform required")
+    if (not isinstance(model, str) or not LOCAL_MODEL.fullmatch(model)
+            or "cloud" in model.lower()):
+        raise ValueError("local Ollama model required")
+    if base_url != "http://ollama:11434":
+        raise ValueError("unexpected local model endpoint")
+    if not isinstance(server_image, str) or not PINNED_IMAGE.fullmatch(server_image):
+        raise ValueError("pinned OpenHands image digest required")
+    if (not isinstance(network, str) or not NETWORK.fullmatch(network)
+            or network.lower() in FORBIDDEN_NETWORKS):
+        raise ValueError("dedicated named Docker network required")
+
+    export = openhands_multifile_review._trusted_dir(candidate_root)
+    openhands_multifile_review._trusted_dir(output_root)
+    if any(export.iterdir()):
+        raise ValueError("export must start empty")
+
+    # Docker CLI honors these variables and may contact a different daemon.
+    # The operator must also check the local active Docker context explicitly.
+    if any(key in os.environ for key in UNSAFE_ENV_KEYS | {
+        "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_TLS_VERIFY",
+        "DOCKER_CERT_PATH",
+    }):
+        return _result("unsafe_environment")
+    if not project.supported_host():
+        return _result("sandbox_unavailable")
+
+    inspect = _inspect_local_docker if inspect_docker is None else inspect_docker
+    try:
+        net = inspect("network", network)
+        if not isinstance(net, dict) or net.get("Internal") is not True or net.get("Driver") != "bridge":
+            return _result("unsafe_runtime")
+        image = inspect("image", server_image)
+        if (not isinstance(image, dict)
+                or not isinstance(image.get("RepoDigests"), list)
+                or server_image not in image["RepoDigests"]
+                or not isinstance(image.get("Id"), str)
+                or not re.fullmatch(r"sha256:[0-9a-f]{64}", image["Id"])):
+            return _result("unsafe_runtime")
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError):
+        return _result("unsafe_runtime")
+
+    installed = _official_sdk() if sdk is None else sdk
+    if installed is None:
+        return _result("sdk_unavailable")
+
+    try:
+        # Do NOT use :latest images, default forwarding, privileged mode,
+        # implicit host repository mounts, cloud credentials or public nets.
+        # SDK owns the real Docker lifecycle; CODEN does not reimplement it.
+        with installed.DockerWorkspace(
+            server_image=server_image,
+            volumes=[f"{export}:/workspace/export:rw"],
+            forward_env=[],
+            network=network,
+            extra_ports=False,
+            enable_gpu=False,
+            detach_logs=False,
+        ) as workspace:
+            return run_once(
+                task=task,
+                candidate_root=export,
+                output_root=output_root,
+                workspace=workspace,
+                model=model,
+                base_url=base_url,
+                allow_agent=True,
+                sdk=installed,
+            )
+    except Exception:
+        # SDK construction can have started a container before raising.
+        # Report uncertainty and require operator cleanup, never retry.
+        return _result("workspace_start_failed_review_required", attempted=True)
