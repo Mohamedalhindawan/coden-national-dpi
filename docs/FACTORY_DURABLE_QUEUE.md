@@ -1,6 +1,6 @@
 # CODEN Factory — Durable Offline Task Queue (Draft)
 
-**Status:** real SQLite task-tracking and lease primitives, **not** a running worker or an approval gateway. This library does **not** execute model calls, project tasks, GitHub actions, paid operations, or automatically retry unsafe work.
+**Status:** real SQLite task-tracking and lease primitives, **not** a continuously running worker or an approval gateway. This library itself does **not** execute model calls, project tasks, GitHub actions, paid operations, or automatically retry unsafe work. A separate opt-in operator CLI (`ai_factory/offline_worker.py`) now invokes the existing synthetic pilot for one task at a time; see `FACTORY_OFFLINE_WORKER_RUNBOOK.md`.
 
 ## Purpose
 
@@ -68,12 +68,12 @@ python -m unittest discover -s tests -v
 - Lease expiry does **not** prove that execution stopped. It only marks the task for inspection. Never use this queue to directly trigger irreversible actions.
 - The task SHA-256 is a reference, not a content verification of a task payload (the queue never stores that payload). A future worker must verify the supplied artifact hash, scope, classification and approval **before** sandbox execution.
 - Do not persist lease tokens in GitHub issues, CI logs or chat. Leases are for task ownership, not model permissions.
-- This module is currently a **building block**. A trusted worker, manual approval source, audit trail, queue/checkpoint reconciliation and backup/recovery tests are not yet implemented.
+- This module remains a **building block**. The new operator-invoked pilot worker is NOT a background service; trusted external approval, fully atomic queue/checkpoint reconciliation, independently retained audit evidence, complete backup/restore and real provider adapters remain unimplemented.
 
 ## Next Codex work
 
 1. Add task lookup from a protected operator-controlled repository or artifact store and verify `task_sha256`.
-2. Connect lease management to the approved offline synthetic `checkpoint_project` runner only, including well-scoped cancellation/heartbeat and independent replay protection.
+2. An initial operator-invoked lease-to-`project.run` integration is now present for the synthetic status-counts recipe; add a process supervisor, cancellation/heartbeat and crash-window tests before expanding beyond this limited scope.
 3. Reconcile queue state with checkpoint journal state; protect against crash windows between code changes, artifact writes and the DB transaction.
 4. Add bounded retries **only for idempotent** tools. Never auto-replay PR creation, payment, deployment, credentials or data writes.
 5. Integrate an authorized model transport and gateway with typed failures (see `FACTORY_OFFLINE_RECOVERY_POLICY.md`).
