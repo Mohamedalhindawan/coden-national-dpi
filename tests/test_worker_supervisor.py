@@ -3,6 +3,9 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import signal
+import sys
+import time
 import tempfile
 import unittest
 from unittest.mock import patch, MagicMock
@@ -91,6 +94,64 @@ class WorkerSupervisorTests(unittest.TestCase):
                     self.invoke()
         killpg.assert_called_once_with(424243, worker_supervisor.signal.SIGKILL)
         process.wait.assert_called_once_with(timeout=5)
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Linux process-group smoke test")
+    def test_real_timeout_kills_worker_process_and_descendant(self):
+        # No mock of killpg/wait: this checks actual POSIX process-group
+        # cancellation, including a synthetic grandchild, not real workloads.
+        marker = self.root / "descendant.pid"
+        fixture = (
+            "import os, pathlib, subprocess, sys, time\\n"
+            "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'], "
+            "stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)\\n"
+            "with open(sys.argv[1], 'w', encoding='ascii') as f:\\n"
+            "    f.write(str(child.pid))\\n"
+            "    f.flush()\\n"
+            "    os.fsync(f.fileno())\\n"
+            "time.sleep(30)\\n"
+        ).replace("\\\\n", "\\n")
+        real_popen = subprocess.Popen
+        spawned = []
+
+        def launch_fixture(_cmd, **kwargs):
+            proc = real_popen([sys.executable, "-c", fixture, str(marker)], **kwargs)
+            spawned.append(proc)
+            return proc
+
+        def still_running(pid):
+            stat_path = Path("/proc") / str(pid) / "stat"
+            if not stat_path.exists():
+                return False
+            # Linux zombies have terminated, even before init reaps them.
+            return stat_path.read_text().split(") ", 1)[1][:1] not in ("Z", "X")
+
+        child_pid = None
+        try:
+            with patch.object(worker_supervisor.subprocess, "Popen", side_effect=launch_fixture):
+                result = self.invoke(timeout_seconds=2, lease_seconds=20)
+            self.assertEqual(result["status"], "timed_out_review_required")
+            self.assertFalse(result["automatic_retry_allowed"])
+            self.assertEqual(len(spawned), 1)
+            self.assertIsNotNone(spawned[0].poll())
+            self.assertTrue(marker.is_file(), "synthetic descendant never started")
+            child_pid = int(marker.read_text())
+            for _ in range(20):
+                if not still_running(child_pid):
+                    break
+                time.sleep(0.05)
+            self.assertFalse(still_running(child_pid), "orphan descendant survived timeout")
+        finally:
+            for proc in spawned:
+                if proc.poll() is None:
+                    try:
+                        os.killpg(proc.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    proc.wait(timeout=5)
+            if child_pid is None and marker.is_file():
+                child_pid = int(marker.read_text())
+            if child_pid is not None and still_running(child_pid):
+                os.kill(child_pid, signal.SIGKILL)
 
     def test_exit_nonzero_requires_review_without_raw_stderr(self):
         process = MagicMock()
