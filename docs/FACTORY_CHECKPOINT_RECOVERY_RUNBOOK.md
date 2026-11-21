@@ -15,7 +15,7 @@
 - Sequence validation, per-event SHA-256 chain, exclusive local file locks, fsync, basic size limits, refusal of symlinked journal files, idempotency keys and fail-closed corrupted record detection.
 - A `pending_human_resume` state that is *not* permission to run.
 
-This can **record** that Codex hit a quota; it cannot interrogate a provider, detect quota exhaustion automatically, launch OpenHands or Hermes, or pay for a new model.
+The opt-in `ai_factory/checkpoint_project.py` adapter now calls the existing synthetic-only offline project runner, records start/blocked/review/worker-failure states, and rejects duplicate task IDs. This does **not** detect a provider quota or resume a model session. It cannot launch OpenHands or Hermes or pay for a model.
 
 ## Operator commands (offline only)
 
@@ -45,10 +45,25 @@ python -m ai_factory.checkpoint --store "$STORE" record "$TASK" \
 
 Use a real repository commit SHA for actual work. The all-`a` string above is an **illustrative syntactically valid** SHA for a local demo only.
 
+Run the existing offline factory through the optional adapter (only in an environment meeting the existing sandbox requirements):
+
+```bash
+mkdir -p /tmp/coden-demo-output
+python -m ai_factory.checkpoint_project \
+  --task ai_factory/examples/status-counts.json \
+  --output-root /tmp/coden-demo-output \
+  --store /tmp/coden-demo-checkpoints \
+  --branch feat/factory-adopt-first \
+  --commit "$COMMIT"
+```
+
+Use a new, reviewed task ID for a new authorized run; the adapter never silently re-executes the same task.
+
 Run focused tests:
 
 ```bash
 python -m unittest discover -s tests -p 'test_factory_checkpoint.py' -v
+python -m unittest discover -s tests -p 'test_checkpoint_project.py' -v
 ```
 
 Run the repository test suite:
@@ -78,7 +93,7 @@ Some earlier project tests require pinned Ruff, Linux bubblewrap and `prlimit`; 
 
 ## Codex integration work still remaining
 
-1. Add a **read-only adapter** from existing `ai_factory/project.py` and `phase_zero.py` events to this journal, after tests prove no evidence or data leakage.
+1. The opt-in `checkpoint_project.py` wrapper for the existing `project.py` pilot is implemented and tested; connect `phase_zero.py` only if justified, and preserve original evidence.
 2. Design an authorized **durable queue and worker**; do not equate `resume_requested` with authorization.
 3. Implement a provider-agnostic error classifier and test simulated `quota_exceeded`, `context_exceeded` and upstream failure without real paid accounts.
 4. Compare OmniRoute/LiteLLM/Bifrost for approved API connectors; select **one primary gateway**. Local models remain bounded by compute.
