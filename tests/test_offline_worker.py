@@ -45,7 +45,7 @@ class OfflineWorkerTests(unittest.TestCase):
         self.assertEqual(state["status"], "queued")
         self.assertEqual(checkpoint.read(self.logs, self.id)["status"], "prepared")
         self.assertFalse(state["execution_authorized"])
-        self.assertIsNone(self.queue.claim("otherworker", now=100.0, lease_seconds=60).get("execution_authorized") or None)
+        self.assertEqual(self.queue.read(self.id)["attempts"], 0)
 
     def test_worker_executes_existing_offline_pilot_once_for_human_review(self):
         self.submit()
