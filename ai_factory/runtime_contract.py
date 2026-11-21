@@ -109,7 +109,7 @@ def assess(request, report):
     if transport != "local" and not request["allow_external_api"]:
         raise ValueError("external transport is not enabled")
     status = report["status"]
-    if status not in STATUSES:
+    if not isinstance(status, str) or status not in STATUSES:
         raise ValueError("unsupported status")
     error = report["error_code"]
     if status == "completed":
@@ -117,7 +117,7 @@ def assess(request, report):
             raise ValueError("completed report cannot include an error")
         _digest(report["artifact_sha256"], required=True)
     else:
-        if error not in recovery_policy.FAILURES:
+        if not isinstance(error, str) or error not in recovery_policy.FAILURES:
             raise ValueError("error result must contain a sanitized error code")
         if report["artifact_sha256"] is not None:
             raise ValueError("failed report cannot claim successful artifact")
