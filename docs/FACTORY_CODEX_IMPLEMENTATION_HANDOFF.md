@@ -1,0 +1,63 @@
+# CODEN AI Factory — constrained Adopt-First implementation handoff
+
+**Research inputs:** [105-candidate catalog PR #130](https://github.com/Mohamedalhindawan/coden-national-dpi/pull/130) and [implementation Issue #131](https://github.com/Mohamedalhindawan/coden-national-dpi/issues/131). The catalog resides on a separate **draft** branch, not in this PR. Nothing below is marked installed or approved.
+
+## Verified implementation baseline (before this PR)
+
+| Existing artifact | State / limitation |
+|---|---|
+| `ai_factory/intake.py` | Restrictive synthetic intake; no executor |
+| `ai_factory/review_queue.py` | Offline, zero-budget fail-closed review queue |
+| `ai_factory/phase_zero.py` | Small SQL coding/QA prototype |
+| `ai_factory/project.py` | Bounded single-function JSON-transform apps; deterministic engineering stages; not full-stack |
+| `ai_factory/local_coder.py` | Pinned, offline llama.cpp + Qwen sample generation; host-specific |
+| `ai_factory/router_preflight.py` and `router_smoke.py` | Experiments, not production multi-provider routing |
+| `docs/FACTORY_ADOPTION_REGISTRY.md` | Existing narrower pilot adoption evidence |
+| `ai_factory/checkpoint.py` | **New:** offline journal foundation; no worker or gateway |
+
+**Do not** recreate these modules or claim eight actual independent model-operated teams from deterministic workflow stages.
+
+## Candidate triage for the next session
+
+| Function | Trial first | Alternative / reserve | Decision gate |
+|---|---|---|---|
+| Coding runtime | OpenHands SDK + Agent Canvas | OpenCode, Hermes Agent | Authorized API, sandbox integration, checkpoint recovery, no duplication |
+| CAIE and skills | Hermes Agent (isolated), then Self-Evolution as an experiment | DSPy/GEPA components | Held-out evaluation, permission isolation, manual approval |
+| Model gateway | Compare OmniRoute, LiteLLM, Bifrost *on identical tasks* | Portkey, New API | Auth terms, license, latency, costs, failover, safety; select one primary |
+| Long-running jobs | Existing journal + minimal worker | Hatchet, Temporal | Crash replay, at-least-once effects, idempotency, maintenance cost |
+| Code navigation | Serena + ast-grep | CodeGraphContext | Quality on repo navigation with token/time benchmarks |
+| Independent evaluator | unittest + existing CI + Harbor sandbox pilot | SWE-bench Pro later | Held-out tests and comparable resource budgets |
+| Observability | Existing logs + Langfuse trial | Phoenix, OpenTelemetry | Private-by-default tracing and request redaction |
+| Untrusted execution | Existing pinned bubblewrap for scoped workloads | Daytona, E2B, gVisor later | Isolation and threat-model evidence |
+
+## Exact remaining implementation order
+
+### Stage A — align the branches and verify the baseline
+- Inventory open PR chain: #116 → #118 → #124 → #126, plus #125 on its own stack, and catalog #130.
+- Run the CI and tests for current factory branch. Report failures accurately.
+- Confirm checkpoint tests on this PR pass in Linux.
+- Do not merge one stacked PR to `main` without reviewing base dependencies and combined impact.
+
+### Stage B — minimal reliable recovery
+- Create adapter from `project.py` events to checkpoint journal, with tests first.
+- Simulate quota/context failure, worker restart, and retry idempotency.
+- Keep any external model fallback **off** by default.
+- Implement minimal operator-owned state and backup/restore procedures.
+
+### Stage C — multi-runtime trial
+- Pilot OpenHands SDK or a simpler code agent against one synthetic multi-file task.
+- Do not install all 105 candidates. Assess license, pinned upstream commit, transitive deps, secrets/network exposure.
+- Compare OmniRoute/LiteLLM/Bifrost with **official authorized** API/test providers. No consumer-session-token workarounds.
+- Store evaluation evidence and a single adoption decision per capability.
+
+### Stage D — end-to-end operational gate
+- Execute a synthetic, multi-file project from task intake through isolated coding, independent tests, review and draft PR.
+- Kill/restart a worker mid-run and verify no duplicate irreversible actions.
+- Show measured quality, time and compute/token cost before/after.
+- Demonstrate budget stop, emergency cancel, permissions and code review.
+- Report `PASS/FAIL/BLOCKED`. Never claim 24/7 operation from a local CLI run.
+
+## Non-goals and governance
+- No government/citizen data, automatic deployments, auto-merge, credential transfer or paid calls.
+- Do not mutate Playbook section numbers (230), CODEN/TAMAM identities or security baseline.
+- Keep the resulting additions as **draft**, with each capability marked `proposed / implemented / tested / reviewed / operational` separately.
