@@ -1,0 +1,54 @@
+{
+  "id": "PILOT_OLLAMA_SYNTHETIC",
+  "title": "Local Ollama-to-CODEN status count coding pilot",
+  "description": "Write transform(value) which counts repeated strings in a JSON list and returns a dictionary of string frequencies.",
+  "data_classification": "synthetic",
+  "requested_actions": [
+    "run_tests"
+  ],
+  "estimated_cost_usd": 0,
+  "recipe": "python-transform",
+  "cases": [
+    {
+      "input": [],
+      "expected": {}
+    },
+    {
+      "input": [
+        "ready",
+        "done",
+        "ready"
+      ],
+      "expected": {
+        "ready": 2,
+        "done": 1
+      }
+    },
+    {
+      "input": [
+        "failed",
+        "ready",
+        "failed",
+        "done"
+      ],
+      "expected": {
+        "failed": 2,
+        "ready": 1,
+        "done": 1
+      }
+    }
+  ],
+  "review_cases": [
+    {
+      "input": [
+        "تجريبي",
+        "تجريبي",
+        "ready"
+      ],
+      "expected": {
+        "تجريبي": 2,
+        "ready": 1
+      }
+    }
+  ]
+}
