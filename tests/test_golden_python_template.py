@@ -26,7 +26,7 @@ class GoldenTemplateTests(unittest.TestCase):
             cwd=TEMPLATE, text=True, capture_output=True, timeout=30, check=False,
         )
         self.assertEqual(process.returncode, 0, process.stdout + process.stderr)
-        self.assertIn("Ran 5 tests", process.stderr)
+        self.assertIn("Ran 6 tests", process.stderr)
 
     def test_example_import_and_synthetic_task_counts(self):
         command = (
