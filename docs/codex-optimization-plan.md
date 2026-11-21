@@ -1,0 +1,12 @@
+# Codex engineering improvements
+
+| Acceptance criterion | Implementation and check |
+|---|---|
+| Find code and the test that refers to it without sending repository content out | `python -m tools.codex_context QUERY --limit 10 --json` from the repository. `ContextTests` covers exact definition ranking, nested Python scope, Unicode, limits, missing results, invalid Python, binary data, symlinks, untracked files and secret-like paths. |
+| Diagnose public GitHub Actions checks on the installed gh version | `python .agents/skills/gh-fix-ci/scripts/inspect_pr_checks.py --repo . --pr 124 --json`. Read previous failures with a small `--max-lines`. `SkillTests` covers failed and successful checks, unavailable logs, legacy gh fallback, nonzero JSON and external checks. |
+| Tie defects to repeatable tests and a review decision | TDD and review entry points require a reproduced failure. A temporary one-line mutation of the synthetic OpenAPI operation ID failed the expected contract test (1 of 11 failed); the untouched base passed all 11. Independent model reviewer performance: NOT MEASURED. |
+| Decide whether to activate the context helper | Require correct answers to all three reference tasks, and fewer bytes or calls on at least two. [Results and tradeoffs](codex-benchmark.md). |
+
+**Using the context helper.** Git supplies the tracked paths; contents reflect working files. The helper examines UTF-8 source and documentation in supported formats up to 512 KiB per file. A Python AST supplies the enclosing symbol when parsing succeeds. Results contain path, 1-based line, matched query and optional symbol. Exact Python definitions rank first, followed by path and line. The default limit is 10; valid limits are 1–100. An empty list is a successful no-match result. Private-name exclusions and bounded output reduce exposure. They cannot identify every secret in source, so keep queries local and treat results as project data. For whole-repository exhaustive search or a known exact line, use Git or rg directly.
+
+**Adoption order.** Enable targeted context lookup when the task needs both source and test location. Keep single-term grep for latency-sensitive searches. Use the CI skill on demand; existing CI already runs all discovery tests. Record a small spec, acceptance criterion and test with the change. Evaluate OpenSpec on the first cross-component specification that needs a tracked revision. Revisit indexing, parallel workers and provider routing at the [factory milestones](ai-factory-roadmap.md).
