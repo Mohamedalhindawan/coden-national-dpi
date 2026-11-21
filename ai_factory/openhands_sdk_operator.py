@@ -1,9 +1,11 @@
 """Opt-in official OpenHands SDK Conversation bridge for a synthetic local-model pilot.
 
-This module does NOT create Docker containers or install an agent SDK. A trusted
-operator must provide an already-running DockerWorkspace with one empty,
-isolated export mount and an internally isolated Ollama network. Import of the
-official upstream SDK is lazy; CI injects a stand-in to verify the contract.
+This module does NOT install Docker, an agent SDK or a model. Its managed
+entrypoint may start ONE upstream DockerWorkspace container only after explicit
+operator opt-in and fail-closed local daemon/network/image preflight. An expert
+may instead supply a pre-created DockerWorkspace to run_once. Both require
+an isolated export mount and an audited local Ollama network. SDK imports
+are lazy and CI injects stand-ins to verify the contract.
 
 The OpenHands SDK runs the agent; CODEN only supplies policy, a restricted
 prompt and independent multi-file artifact review. No automatic retry,
