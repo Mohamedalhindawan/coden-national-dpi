@@ -112,6 +112,46 @@ class WorkerSupervisorTests(unittest.TestCase):
         with patch.object(worker_supervisor.subprocess, "Popen", side_effect=OSError("secret")), self.assertRaises(worker_supervisor.SupervisorError):
             self.invoke()
 
+    def _fake_worker_response(self, raw_response):
+        process = MagicMock()
+        process.pid = 12346
+        process.returncode = 0
+        process.communicate.return_value = (None, None)
+
+        def spawn(_cmd, **kwargs):
+            kwargs["stdout"].write(raw_response)
+            return process
+
+        with patch.object(worker_supervisor.subprocess, "Popen", side_effect=spawn):
+            return self.invoke()
+
+    def test_child_result_malformed_metadata_fails_closed(self):
+        # The child output is a low-trust IPC boundary. A status is not
+        # sufficient evidence of a completed or authorized task.
+        malformed = (
+            b'{"status":"awaiting_human_review","execution_authorized":false}',
+            b'{"task_id":"SIM_1","status":"awaiting_human_review",'
+            b'"execution_authorized":false,"approved":true}',
+            b'{"task_id":"SIM_1","status":[],"execution_authorized":false}',
+            b'{"task_id":"SIM_1","status":"blocked",'
+            b'"status":"awaiting_human_review","execution_authorized":false}',
+            b'{"task_id":"../escape","status":"awaiting_human_review",'
+            b'"execution_authorized":false}',
+        )
+        for payload in malformed:
+            with self.subTest(payload=payload):
+                result = self._fake_worker_response(payload)
+                self.assertEqual(result["status"], "untrusted_worker_result")
+                self.assertFalse(result["execution_authorized"])
+
+    def test_child_result_accepts_exact_synthetic_metadata_only(self):
+        result = self._fake_worker_response(
+            b'{"task_id":"SIM_1","status":"awaiting_human_review",'
+            b'"execution_authorized":false}'
+        )
+        self.assertEqual(result["status"], "awaiting_human_review")
+        self.assertFalse(result["automatic_retry_allowed"])
+
     def test_cli_only_supports_operator_one_shot_and_no_daemon(self):
         parser = worker_supervisor.make_parser()
         args = parser.parse_args(["--queue-db", str(self.db),
