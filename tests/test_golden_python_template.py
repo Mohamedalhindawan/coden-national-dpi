@@ -20,6 +20,18 @@ class GoldenTemplateTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertTrue((TEMPLATE / path).is_file(), path)
 
+    def test_generated_template_ignores_secret_files_and_python_artifacts(self):
+        ignore_path = TEMPLATE / ".gitignore"
+        self.assertTrue(ignore_path.is_file(), "generated template needs a .gitignore")
+        patterns = {
+            line.strip() for line in ignore_path.read_text().splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        }
+        for pattern in (".env", ".env.*", ".venv/", "__pycache__/",
+                        "*.py[cod]", ".pytest_cache/", ".coverage", "dist/", "build/"):
+            with self.subTest(pattern=pattern):
+                self.assertIn(pattern, patterns)
+
     def test_standalone_template_tests_run_with_stdlib_only(self):
         process = subprocess.run(
             [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-v"],
