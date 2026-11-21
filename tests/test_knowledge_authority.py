@@ -90,6 +90,15 @@ class AuthorityGateTests(unittest.TestCase):
         self.assertEqual(out["decision"], "blocked")
         self.assertNotIn("source_system", out)
 
+    def test_unhashable_source_system_denied_with_validation_error(self):
+        for malformed in ([], {}):
+            with self.subTest(kind=type(malformed).__name__), self.assertRaises(ValueError):
+                knowledge_authority.resolve_candidate(
+                    registry(source_system=malformed), [record()], "reviewer_01")
+            with self.subTest(record_type=type(malformed).__name__), self.assertRaises(ValueError):
+                knowledge_authority.resolve_candidate(
+                    registry(), [record(source_system=malformed)], "reviewer_01")
+
 
 if __name__ == "__main__":
     unittest.main()
