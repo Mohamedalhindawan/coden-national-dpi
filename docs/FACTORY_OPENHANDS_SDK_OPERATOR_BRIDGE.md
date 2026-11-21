@@ -22,40 +22,40 @@ Passing this bridge's CI means the **SDK API binding contract and the independen
 
 ## Managed Docker preflight before container creation
 
-OpenHands upstream \`DockerWorkspace\` **starts the Docker container during
+OpenHands upstream `DockerWorkspace` **starts the Docker container during
 object construction**, before the caller gets a chance to validate its
 properties. Validating an already-created workspace alone is not a secure
-launch strategy. The new **\`launch_isolated\`** entrypoint now checks trusted
+launch strategy. The new **`launch_isolated`** entrypoint now checks trusted
 operator task paths, image digest, network policy, credential environment,
 pinned CODEN bubblewrap availability and locally cached Docker metadata
-**before** calling \`DockerWorkspace(...)\`.
+**before** calling `DockerWorkspace(...)`.
 
 The read-only Docker preflight does:
-- \`docker network inspect NETWORK\` and requires the exact selected network's
-  \`Internal=true\` and \`Driver=bridge\`.
-- \`docker image inspect IMAGE_DIGEST\` and requires the exact source
-  repository digest in \`RepoDigests\` plus a valid local image ID.
+- `docker network inspect NETWORK` and requires the exact selected network's
+  `Internal=true` and `Driver=bridge`.
+- `docker image inspect IMAGE_DIGEST` and requires the exact source
+  repository digest in `RepoDigests` plus a valid local image ID.
 - Rejects missing metadata, erroring Docker inspect, default/host networks,
-  \`:latest\` images, untrusted paths and cloud-provider credential variables.
-- Only after all gates pass, instantiates upstream \`DockerWorkspace\` with
-  one empty export mount, \`forward_env=[]\`, no GPU/extra port/log streaming
-  and a named isolated network; then reuses \`run_once\` and the independent
+  `:latest` images, untrusted paths and cloud-provider credential variables.
+- Only after all gates pass, instantiates upstream `DockerWorkspace` with
+  one empty export mount, `forward_env=[]`, no GPU/extra port/log streaming
+  and a named isolated network; then reuses `run_once` and the independent
   multi-file acceptance gate.
 
 **Security limit:** this is metadata preflight, not a security attestation.
 Docker's active context may point to a remote daemon even with absent
-\`DOCKER_HOST\`; the operator must inspect the *active context* and confirm
+`DOCKER_HOST`; the operator must inspect the *active context* and confirm
 the target local daemon. An internal Docker network alone is not sufficient
 against a compromised/multi-homed container, host proxy or local Ollama
 server that may itself call cloud services. Enforce host egress rules,
 trusted image/model provenance, read-only SDK dependency supply chain,
 container cgroup budget and external watchdog before a real trial.
-An image can disappear between inspection and \`docker run\`; disable
+An image can disappear between inspection and `docker run`; disable
 unapproved pulls at the host policy level.
 
 ### Operator-only command
 
-\`\`\`bash
+```bash
 # This no-op is safe by default even if the paths don't yet exist.
 python -m ai_factory.openhands_sdk_operator \
   --task ai_factory/examples/openhands-multifile-task.json \
@@ -69,16 +69,16 @@ python -m ai_factory.openhands_sdk_operator \
 # Docker+Ollama host, immutable cached image, pinned SDK and external
 # process watchdog may append the final switch:
 #   --allow-agent
-\`\`\`
+```
 
-The default CLI returns \`status=disabled\`, without reading the task or
+The default CLI returns `status=disabled`, without reading the task or
 workspace, importing OpenHands, invoking Docker or contacting any model.
-With \`--allow-agent\`, it performs one **real** SDK Conversation and
+With `--allow-agent`, it performs one **real** SDK Conversation and
 independent review if all preconditions are satisfied. It does not install
 Docker/OpenHands/Ollama, create the Docker network, download a model, set
 a watchdog, configure firewalls or silently retry. If construction fails
 after the SDK has possibly started a container, the result is
-\`workspace_start_failed_review_required\`; the operator must inspect and
+`workspace_start_failed_review_required`; the operator must inspect and
 clean up potential resources manually.
 
 **TDD proof:** [RED #44858859764](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/44858859764)
