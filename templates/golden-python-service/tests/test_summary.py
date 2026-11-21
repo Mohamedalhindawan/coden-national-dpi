@@ -36,5 +36,13 @@ class SummaryTests(unittest.TestCase):
                 summarize(invalid)
 
 
+    def test_rejects_duplicate_task_ids_even_with_different_statuses(self):
+        with self.assertRaises(ValueError):
+            summarize([
+                {"task_id": "sim_1", "status": "queued", "classification": "synthetic"},
+                {"task_id": "sim_1", "status": "done", "classification": "synthetic"},
+            ])
+
+
 if __name__ == "__main__":
     unittest.main()
