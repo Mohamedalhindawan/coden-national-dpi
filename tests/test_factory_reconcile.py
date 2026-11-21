@@ -19,7 +19,7 @@ class ReconcileTests(unittest.TestCase):
         self.db = self.root / "owner" / "queue.sqlite3"
         self.journals = self.root / "owner" / "journals"
         self.tasks = self.root / "owner" / "tasks"
-        self.tasks.mkdir()
+        self.tasks.mkdir(parents=True)
         self.queue = durable_queue.DurableQueue(self.db)
 
     def add(self, name="t_001"):
