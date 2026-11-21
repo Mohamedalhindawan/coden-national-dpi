@@ -1,0 +1,14 @@
+{
+  "id": "DEMO-DURATIONS",
+  "title": "Sum synthetic job durations",
+  "description": "Return the sum of a list of integer durations, or zero for an empty list.",
+  "data_classification": "synthetic",
+  "requested_actions": ["run_tests"],
+  "estimated_cost_usd": 0,
+  "recipe": "python-transform",
+  "cases": [
+    {"input": [3, 4], "expected": 7},
+    {"input": [], "expected": 0}
+  ],
+  "review_cases": [{"input": [0, 8, 11], "expected": 19}]
+}
