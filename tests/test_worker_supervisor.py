@@ -101,15 +101,16 @@ class WorkerSupervisorTests(unittest.TestCase):
         # cancellation, including a synthetic grandchild, not real workloads.
         marker = self.root / "descendant.pid"
         fixture = (
-            "import os, pathlib, subprocess, sys, time\\n"
+            "import os, subprocess, sys, time\n"
             "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'], "
-            "stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)\\n"
-            "with open(sys.argv[1], 'w', encoding='ascii') as f:\\n"
-            "    f.write(str(child.pid))\\n"
-            "    f.flush()\\n"
-            "    os.fsync(f.fileno())\\n"
-            "time.sleep(30)\\n"
-        ).replace("\\\\n", "\\n")
+            "stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)\n"
+            "with open(sys.argv[1], 'w', encoding='ascii') as f:\n"
+            "    f.write(str(child.pid))\n"
+            "    f.flush()\n"
+            "    os.fsync(f.fileno())\n"
+            "time.sleep(30)\n"
+        )
+        compile(fixture, "<synthetic-supervisor-fixture>", "exec")
         real_popen = subprocess.Popen
         spawned = []
 
