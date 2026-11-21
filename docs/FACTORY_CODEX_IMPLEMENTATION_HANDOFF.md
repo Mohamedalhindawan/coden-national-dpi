@@ -53,6 +53,14 @@
 - `docs/FACTORY_OFFLINE_WORKER_RUNBOOK.md`: end-to-end operator commands and boundaries. PR #132 has now 66 added tests on top of existing factory tests.
 - [CI run #44848783608](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/44848783608): **122 tests PASS; OpenAPI PASS**.
 - Remaining *real* work: broaden task classes beyond the synthetic demo, secure operator authorization and artifact storage, transactional queue/journal reconciliation, leased-worker supervision, approved cloud/local model adapters, cross-provider error mapping and evaluation of Hermes/OpenHands/OmniRoute.
+### New: Reconciliation and component admission (implemented diagnostics and research-only registry)
+
+- `ai_factory/reconcile.py`: read-only SQLite/Checkpoint audit. Detects mismatches, unfinished worker claims, orphan/corrupt journals, conflicting branch/commit, task file SHA drift; **never retries, approves or writes state**.
+- `tests/test_factory_reconcile.py`: 12 targeted recovery diagnostic checks. `docs/FACTORY_RECOVERY_RECONCILIATION.md` documents CLI use and conditions.
+- `configs/factory_components_proposed.json`: 16 candidate components, including Hermes / Self-Evolution / OpenHands / OmniRoute / LiteLLM / Bifrost / Serena / Harbor etc.; **research only, enabled=false and approved=false**.
+- `tests/test_factory_component_catalog.py`: four checks keep proposed upstreams uniquely identified and unapproved. `docs/FACTORY_COMPONENT_ADMISSION_MATRIX.md` documents role separation and evidence gates.
+- **Next Codex task:** start with divergence reporting and approval-safe recovery; do not blindly replay leased tasks; evaluate candidate tools only after comparing existing code and independent quality benchmarks.
+
 ## Exact remaining implementation order
 
 ### Stage A — align the branches and verify the baseline
