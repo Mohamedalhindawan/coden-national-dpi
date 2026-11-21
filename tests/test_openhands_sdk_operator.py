@@ -210,5 +210,145 @@ class OpenHandsSDKOperatorTests(unittest.TestCase):
                          {"a": 2, "b": 1})
 
 
+class ManagedWorkspace(FakeDockerWorkspace):
+    started = 0
+    closed = 0
+    def __init__(self, **kwargs):
+        type(self).started += 1
+        self.server_image = kwargs["server_image"]
+        self.volumes = kwargs["volumes"]
+        self.network = kwargs["network"]
+        self.forward_env = kwargs["forward_env"]
+        self.extra_ports = kwargs["extra_ports"]
+        self.enable_gpu = kwargs["enable_gpu"]
+        self.detach_logs = kwargs["detach_logs"]
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc):
+        type(self).closed += 1
+
+
+class OpenHandsManagedLaunchTests(OpenHandsSDKOperatorTests):
+    # Inherits the contract fixtures; management must gate Docker startup
+    # BEFORE constructing DockerWorkspace because __init__ starts containers.
+    def setUp(self):
+        super().setUp()
+        self.sdk = SimpleNamespace(**vars(SDK))
+        self.sdk.DockerWorkspace = ManagedWorkspace
+        ManagedWorkspace.started = 0
+        ManagedWorkspace.closed = 0
+        self.image = IMAGE
+        self.network = "coden_internal"
+        self.inspector_calls = []
+
+    def inspector(self, kind, name):
+        self.inspector_calls.append((kind, name))
+        if kind == "network":
+            return {"Internal": True, "Driver": "bridge", "Name": name}
+        if kind == "image":
+            return {"RepoDigests": [name], "Id": "sha256:" + "f" * 64}
+        raise AssertionError("unexpected Docker inspect")
+
+    def launch(self, **changes):
+        kwargs = {
+            "task": self.task,
+            "candidate_root": self.export,
+            "output_root": self.output,
+            "model": MODEL,
+            "base_url": "http://ollama:11434",
+            "server_image": self.image,
+            "network": self.network,
+            "allow_agent": True,
+            "sdk": self.sdk,
+            "inspect_docker": self.inspector,
+        }
+        kwargs.update(changes)
+        return openhands_sdk_operator.launch_isolated(**kwargs)
+
+    def test_managed_disabled_has_zero_side_effects(self):
+        with patch.object(project, "supported_host") as host:
+            result = self.launch(allow_agent=False)
+        self.assertEqual(result["status"], "disabled")
+        self.assertEqual(ManagedWorkspace.started, 0)
+        self.assertEqual(self.inspector_calls, [])
+        host.assert_not_called()
+
+    def test_invalid_parameters_rejected_before_docker_and_sdk(self):
+        invalid = [
+            {"server_image": "ghcr.io/openhands/agent-server:latest"},
+            {"network": "host"},
+            {"network": "bridge"},
+            {"network": "none"},
+            {"base_url": "https://ollama.com"},
+            {"model": "ollama/qwen2.5-coder:cloud"},
+            {"task": dict(self.task, data_classification="private")},
+        ]
+        for params in invalid:
+            with self.subTest(params=params), self.assertRaises(ValueError):
+                self.launch(**params)
+        self.assertEqual(ManagedWorkspace.started, 0)
+        self.assertEqual(self.inspector_calls, [])
+
+    def test_image_or_network_inspection_failed_does_not_start_docker(self):
+        for inspector in [
+            lambda kind, name: {"Internal": False, "Driver": "bridge"} if kind == "network" else self.inspector(kind,name),
+            lambda kind, name: {"Internal": True, "Driver": "host"} if kind == "network" else self.inspector(kind,name),
+            lambda kind, name: {"RepoDigests": [], "Id": "sha256:"+"f"*64} if kind == "image" else self.inspector(kind,name),
+            lambda kind, name: (_ for _ in ()).throw(OSError("sensitive docker exception")),
+        ]:
+            with self.subTest(inspector=inspector):
+                result = self.launch(inspect_docker=inspector)
+                self.assertEqual(result["status"], "unsafe_runtime")
+                self.assertFalse(result["automatic_retry_allowed"])
+                self.assertNotIn("sensitive", repr(result))
+        self.assertEqual(ManagedWorkspace.started, 0)
+
+    def test_model_authorization_and_sandbox_checked_before_docker_constructor(self):
+        with patch.dict(os.environ, {"LLM_API_KEY": "secret"}):
+            response = self.launch()
+        self.assertEqual(response["status"], "unsafe_environment")
+        with patch.object(project, "supported_host", return_value=False):
+            response = self.launch()
+        self.assertEqual(response["status"], "sandbox_unavailable")
+        self.assertEqual(ManagedWorkspace.started, 0)
+
+    def test_success_creates_single_pinned_workspace_then_uses_sdk_contract(self):
+        with patch.object(project, "supported_host", return_value=True), \
+             patch.object(openhands_multifile_review, "review",
+                          return_value={"status": "awaiting_human_review", "release_authorized": False}) as verify:
+            result = self.launch()
+        self.assertEqual(result["status"], "awaiting_human_review")
+        self.assertTrue(result["agent_session_attempted"])
+        self.assertEqual(ManagedWorkspace.started, 1)
+        self.assertEqual(ManagedWorkspace.closed, 1)
+        self.assertEqual(self.inspector_calls, [
+            ("network", self.network), ("image", self.image)
+        ])
+        verify.assert_called_once_with(self.task, self.export, self.output)
+
+    def test_launch_crash_reports_manual_review_and_workspace_is_closed(self):
+        FakeConversation.fail = True
+        with patch.object(project, "supported_host", return_value=True):
+            result = self.launch()
+        self.assertEqual(result["status"], "agent_failed_review_required")
+        self.assertEqual(ManagedWorkspace.started, 1)
+        self.assertEqual(ManagedWorkspace.closed, 1)
+        self.assertFalse(result["automatic_retry_allowed"])
+
+    def test_constructor_failure_reports_uncertain_workspace_and_never_retries(self):
+        class BrokenWorkspace(ManagedWorkspace):
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+                raise RuntimeError("sensitive startup failure after partial container creation")
+        self.sdk.DockerWorkspace = BrokenWorkspace
+        with patch.object(project, "supported_host", return_value=True):
+            result = self.launch()
+        self.assertEqual(result["status"], "workspace_start_failed_review_required")
+        self.assertNotIn("sensitive", repr(result))
+        self.assertFalse(result["automatic_retry_allowed"])
+
+
 if __name__ == "__main__":
     unittest.main()
