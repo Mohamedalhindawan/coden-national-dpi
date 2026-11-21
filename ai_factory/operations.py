@@ -147,6 +147,14 @@ class Operations:
                 "SELECT count(*) FROM calls"
             ).fetchone()[0],
         )
+        snapshot["stages"] = {
+            row["task_id"]: {
+                "attempts": row["attempts"],
+                "error": row["last_error"],
+                "elapsed_ms": (row["result"] or {}).get("elapsed_ms"),
+            }
+            for row in self.queue.list_tasks()
+        }
         return snapshot
 
 

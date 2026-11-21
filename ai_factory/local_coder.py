@@ -24,8 +24,6 @@ def extract_code(text):
 
 
 def generate(archive, model, description, cases, sandbox):
-    check_file(archive, CPU_SHA)
-    check_file(model, MODEL_SHA)
     examples = "\n".join(
         f"assert transform({c['input']!r}) == {c['expected']!r}" for c in cases
     )
@@ -39,6 +37,13 @@ def generate(archive, model, description, cases, sandbox):
         + examples
         + "<|im_end|>\n<|im_start|>assistant\n```python\ndef transform(value):\n"
     )
+    body = complete(archive, model, prompt, sandbox).split("\n```", 1)[0]
+    return extract_code("def transform(value):\n" + body)
+
+
+def complete(archive, model, prompt, sandbox, grammar=None):
+    check_file(archive, CPU_SHA)
+    check_file(model, MODEL_SHA)
     with tempfile.TemporaryDirectory() as temp:
         with tarfile.open(archive) as bundle:
             bundle.extractall(temp, filter="data")
@@ -75,10 +80,11 @@ def generate(archive, model, description, cases, sandbox):
             "-p",
             prompt,
         ]
+        if grammar:
+            args.extend(["--grammar", grammar])
         result = subprocess.run(
             args, capture_output=True, env={}, stdin=subprocess.DEVNULL, timeout=90
         )
         if result.returncode or len(result.stdout) > 16384:
             raise RuntimeError("offline completion failed")
-        body = result.stdout.decode("utf-8").split("\n```", 1)[0]
-        return extract_code("def transform(value):\n" + body)
+        return result.stdout.decode("utf-8").removesuffix("[end of text]").rstrip()
