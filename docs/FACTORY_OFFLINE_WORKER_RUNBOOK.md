@@ -68,6 +68,41 @@ python -m ai_factory.offline_worker \
 - Do not use official-sector or citizen/financial/health data in this pilot.
 - GitHub CI and local unit tests establish the limited synthetic path only, not multi-service software delivery or uninterrupted 24/7 availability.
 
+## Crash-window fault injection and manual reconciliation (2026-11-21)
+
+The worker is intentionally **not a transactional distributed system**. Once it
+invokes `project.run`, a candidate may have been written even if the call, a
+subsequent journal append, or SQLite `finish` raises. These three cases are
+regression-tested. To avoid falsely converting partial work into a terminal
+`blocked` result, the worker returns `needs_review` and intentionally leaves
+its lease uncommitted. It does **not** append a second "blocked" event, call
+`finish` again or automatically replay a potentially non-idempotent run.
+
+Before changing any state, the operator should inspect the read-only report:
+
+```bash
+python -m ai_factory.reconcile \
+  --queue-db /tmp/coden-operator-demo/queue.sqlite3 \
+  --journal /tmp/coden-operator-demo/journal \
+  --task-dir ai_factory/examples
+```
+
+While the lease is active, an incomplete run can report `active_unverified`,
+and a journal that advanced beyond SQLite can report `journal_ahead_of_queue`.
+After the lease expires, `inspect-expired` quarantines the item to
+`needs_review` rather than re-enqueuing it. **Do not** run
+`inspect-expired` while the original worker could still be running; first
+verify its termination and inspect artifacts, checkpoint chain and queue state
+from an operator-owned trusted environment.
+
+**Fault-injection evidence:** RED tests exposed three incorrect terminal
+states on [CI #44856113471](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/44856113471).
+GREEN [CI #44856167074](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/44856167074)
+verified the fail-closed fix. The additional regression verifies read-only
+queue/journal divergence reporting before/after lease-expiry quarantine.
+This is not a general crash-proof, transactional recovery, authenticated
+approval, production worker, or real Codex session resumer.
+
 ## Test commands
 
 ```bash
