@@ -140,6 +140,14 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertFalse(r["execution_authorized"])
         self.assertFalse(r["provider_approved"])
 
+    def test_unhashable_report_status_and_error_are_rejected_cleanly(self):
+        with self.assertRaises(ValueError):
+            runtime_contract.assess(request(), report(status=[]))
+        with self.assertRaises(ValueError):
+            runtime_contract.assess(request(), report(status="failed", error_code={},
+                                                      artifact_sha256=None))
+
+
 
 if __name__ == "__main__":
     unittest.main()
