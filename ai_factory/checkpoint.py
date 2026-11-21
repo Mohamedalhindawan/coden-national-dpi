@@ -24,7 +24,7 @@ ACTION = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,79}\Z")
 SHA = re.compile(r"[a-f0-9]{40}\Z")
 MAX_BYTES = 1024 * 1024
 MAX_EVENTS = 1000
-PAUSES = frozenset({"quota_exceeded", "context_exceeded", "provider_unavailable", "budget_exceeded", "worker_failed"})
+PAUSES = frozenset({"quota_exceeded", "rate_limited", "context_exceeded", "provider_unavailable", "budget_exceeded", "worker_failed"})
 EVENTS = frozenset({"checkpoint", "review_requested", "resume_requested", "blocked"}) | PAUSES
 ZERO = "0" * 64
 
