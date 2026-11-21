@@ -1,0 +1,6 @@
+[project]
+name = "coden-golden-python-service"
+version = "0.1.0"
+requires-python = ">=3.12"
+description = "Offline synthetic-only example service for CODEN engineering templates"
+dependencies = []
