@@ -14,6 +14,7 @@
 | `ai_factory/router_preflight.py` and `router_smoke.py` | Experiments, not production multi-provider routing |
 | `docs/FACTORY_ADOPTION_REGISTRY.md` | Existing narrower pilot adoption evidence |
 | `ai_factory/checkpoint.py` | **New:** offline journal foundation; no worker or gateway |
+| `ai_factory/checkpoint_project.py` | **New:** opt-in wrapper for offline project runner, records results and refuses duplicate task IDs |
 
 **Do not** recreate these modules or claim eight actual independent model-operated teams from deterministic workflow stages.
 
@@ -39,7 +40,7 @@
 - Do not merge one stacked PR to `main` without reviewing base dependencies and combined impact.
 
 ### Stage B — minimal reliable recovery
-- Create adapter from `project.py` events to checkpoint journal, with tests first.
+- The opt-in `checkpoint_project.py` project journal adapter is present; review its tests, then add real provider/worker errors and long-run durability without changing existing safety gates.
 - Simulate quota/context failure, worker restart, and retry idempotency.
 - Keep any external model fallback **off** by default.
 - Implement minimal operator-owned state and backup/restore procedures.
