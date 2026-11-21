@@ -46,6 +46,13 @@
 - `docs/FACTORY_DURABLE_QUEUE.md`: operator example and limitations; queue does NOT execute tasks or grant authorization.
 - Codex still needs trusted worker integration, checkpoint reconciliation, backup, real error adapters and independently approved retry behavior.
 
+### New: Operator-invoked offline queue worker (implemented and tested)
+
+- `ai_factory/offline_worker.py`: **submit** pre-reviewed synthetic `status-counts` JSON tasks, hash and queue them, then **work-once** executes at most one item through the existing sandboxed `project.run()` pilot. No hosted LLM or background daemon.
+- `tests/test_offline_worker.py`: 11 additional checks including an actual sandbox pilot, changed task payload refusal, corrupted journal, duplicate task ID, failed run, concurrent queue semantics inherited from earlier tests, and crash-to-human-review quarantine.
+- `docs/FACTORY_OFFLINE_WORKER_RUNBOOK.md`: end-to-end operator commands and boundaries. PR #132 has now 66 added tests on top of existing factory tests.
+- [CI run #44848783608](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/44848783608): **122 tests PASS; OpenAPI PASS**.
+- Remaining *real* work: broaden task classes beyond the synthetic demo, secure operator authorization and artifact storage, transactional queue/journal reconciliation, leased-worker supervision, approved cloud/local model adapters, cross-provider error mapping and evaluation of Hermes/OpenHands/OmniRoute.
 ## Exact remaining implementation order
 
 ### Stage A — align the branches and verify the baseline
