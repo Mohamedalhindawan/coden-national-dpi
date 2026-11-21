@@ -1,7 +1,7 @@
 # CODEN AI Factory — Additional Component Admission Matrix (Proposed)
 
 **State:** Research-only candidate registry; NOT installed, enabled, tested, security-approved, or authorized to spend.  
-**Machine-readable inventory:** `configs/factory_components_proposed.json` (16 disabled candidate entries).  
+**Machine-readable inventory:** `configs/factory_components_proposed.json` (17 disabled candidate entries).  
 **Broader candidate catalog:** Draft PR #130, 105 GitHub projects.  
 **Code foundation:** PR #132, offline synthetic task worker, checkpoint, fail-closed recovery policy and read-only reconciliation.
 
@@ -18,8 +18,9 @@ Reduce time spent by Codex when usage becomes available. Candidates are **not** 
 | [Hermes Agent](https://github.com/NousResearch/hermes-agent) | Skills, memory and optional automation | Bounded offline task; no protected repo, spend or self-approval rights |
 | [Hermes Self-Evolution](https://github.com/NousResearch/hermes-agent-self-evolution) | CAIE improvement experiment | Independent hidden evaluations, before/after results and rollback |
 | [OmniRoute](https://github.com/cheaper-inference/OmniRoute) | Model gateway option A | Only official authorized credentials, synthetic rate-limit fixtures, no quota bypass |
-| [LiteLLM](https://github.com/BerriAI/litellm) | Model gateway option B | Same workload and terms checks as OmniRoute |
-| [Bifrost](https://github.com/maximhq/bifrost) | Model gateway option C | Same workload, pricing and supply-chain checks; select **one** primary gateway |
+| [FreeLLMAPI](https://github.com/tashfeenahmed/freellmapi) | Model gateway option B | Compare exactly the same sanctioned synthetic workloads and local Ollama route; review signed catalog/feed dependencies, provider terms and real quota limits |
+| [LiteLLM](https://github.com/BerriAI/litellm) | Model gateway option C | Same workload and terms checks as OmniRoute |
+| [Bifrost](https://github.com/maximhq/bifrost) | Model gateway option D | Same workload, pricing and supply-chain checks; select **one** primary gateway |
 | [Hatchet](https://github.com/hatchet-dev/hatchet) | Durable work engine | Demonstrate benefit beyond existing SQLite queue; measure operational overhead |
 | [Temporal](https://github.com/temporalio/temporal) | Distributed orchestration reserve | Evaluate only if multiple hosts and long-horizon retries justify new infra |
 | [Serena](https://github.com/oraios/serena) | Symbol-aware repository navigation | Accurate cross-file location and measured context reduction |
@@ -47,7 +48,7 @@ Reduce time spent by Codex when usage becomes available. Candidates are **not** 
 
 **P1 — Runtime selection:** pilot OpenHands SDK versus existing local implementation; allow Hermes only in a separate sandbox to assess skills/memory benefit. Do not give Hermes direct production permissions.
 
-**P2 — Gateway decision:** compare OmniRoute / LiteLLM / Bifrost on identical fixtures and authorized APIs, select one primary route, and keep a local fallback only if it passes task-level acceptance.
+**P2 — Gateway decision:** compare OmniRoute / FreeLLMAPI / LiteLLM / Bifrost on identical fixtures and authorized APIs, select one primary route, and keep a local fallback only if it passes task-level acceptance. Local Ollama admission-probe design and exact upstream snapshots: `docs/FACTORY_OLLAMA_OMNIROUTE_FREELLMAPI_ADOPT_FIRST.md`.
 
 **P3 — Engineering scale:** integrate Serena/ast-grep and Harbor; measure held-out multi-file performance before adding distributed work engines.
 
