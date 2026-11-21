@@ -149,7 +149,7 @@ class OpenHandsSDKOperatorTests(unittest.TestCase):
                {"allow_agent": "yes"}]
         for obj in bad:
             with self.subTest(obj=obj), self.assertRaises(ValueError):
-                self.run_pilot(allow_agent=True, **obj)
+                self.run_pilot(**({"allow_agent": True} | obj))
         self.assertFalse(FakeLLM.seen)
 
     def test_rejects_stale_export_before_running(self):
