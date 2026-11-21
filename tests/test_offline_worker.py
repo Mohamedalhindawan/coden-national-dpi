@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from ai_factory import checkpoint, durable_queue, project
+from ai_factory import checkpoint, durable_queue, project, reconcile
 from ai_factory import offline_worker
 
 SHA = "d" * 40
@@ -176,6 +176,26 @@ class OfflineWorkerTests(unittest.TestCase):
         self.assertEqual(checkpoint.read(self.logs, self.id)["status"], "awaiting_human_review")
         self.assertEqual(self.queue.read(self.id)["status"], "leased")
         self.assertEqual(self.queue.recover_expired(now=10**12), 1)
+        with patch.object(project, "run") as no_replay:
+            self.assertIsNone(self.work())
+        no_replay.assert_not_called()
+
+    def test_reconciliation_flags_cross_store_divergence_without_unsafe_replay(self):
+        self.submit()
+        with patch.object(project, "run", return_value=(self.out / "candidate", "awaiting_human_review")):
+            with patch.object(self.queue, "finish", side_effect=OSError("simulated lost queue commit")):
+                result = self.work()
+        self.assertEqual(result["status"], "needs_review")
+        report = reconcile.scan(self.queue.path, self.logs, task_dir=self.tasks)
+        self.assertTrue(report["needs_attention"])
+        self.assertFalse(report["safe_to_auto_retry"])
+        self.assertFalse(report["execution_authorized"])
+        self.assertEqual(report["conditions"], {"journal_ahead_of_queue": 1})
+
+        self.assertEqual(self.queue.recover_expired(now=10**12), 1)
+        quarantined = reconcile.scan(self.queue.path, self.logs, task_dir=self.tasks)
+        self.assertTrue(quarantined["needs_attention"])
+        self.assertEqual(quarantined["conditions"], {"manual_review_required": 1})
         with patch.object(project, "run") as no_replay:
             self.assertIsNone(self.work())
         no_replay.assert_not_called()
