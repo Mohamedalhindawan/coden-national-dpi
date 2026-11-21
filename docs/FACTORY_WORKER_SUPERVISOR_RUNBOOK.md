@@ -65,6 +65,26 @@ python -m ai_factory.offline_worker \
 - Killing a process group is not proof all external side effects were rolled back. A future production worker needs stronger container/cgroup cancellation and signed independent evidence.
 - No model calls, network access, provider approvals, budgets, automatic fallback, merge or deployment in this module.
 
+## Worker result integrity — new regression gate (2026-11-21)
+
+The supervisor treats the child JSON stdout as **untrusted metadata**, not as
+approval evidence. A non-idle response must be an exact object containing
+`task_id`, a known `status` string, and `execution_authorized: false`,
+with an optional `directory` confined to the operator-owned output root.
+Missing or invalid task identifiers, unknown fields, duplicate JSON keys,
+unexpected status types and out-of-root artifact paths return
+`untrusted_worker_result` and do **not** initiate retries or approvals.
+
+**TDD evidence:**
+- [RED run #44855772322](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/44855772322): four rejected-schema expectations failed and an unhashable status raised an error in the previous supervisor.
+- [GREEN run #44855854602](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/44855854602): 207 tests executed, 1 conditional skip, full test step and OpenAPI validation PASS.
+
+**Limit:** exact JSON shape is not authenticated process identity or cross-store
+transactional evidence. It does not prove that the reported task actually
+completed correctly, that output bytes match a signed manifest, or that the
+checkpoint and SQLite database are atomic. These require an independent
+operator-owned evidence gate and security review before production use.
+
 ## Independent test gates
 
 ```bash
