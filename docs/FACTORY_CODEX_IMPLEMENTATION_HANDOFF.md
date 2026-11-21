@@ -69,6 +69,12 @@
 - Verified code commit CI: [#44849731623](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/44849731623) — **148 tests run, one conditional skip, OpenAPI PASS**.
 - Next: persistent **trusted** worker service with cancellation/heartbeat, sandbox-level resource isolation and crash-window reconciliation; still no live model/OmniRoute/Hermes integration.
 
+### New: Provider-neutral runtime evidence contract (implemented; no live integration)
+
+- `ai_factory/runtime_contract.py`: strict synthetic-only, provider-neutral task/result metadata validation for future OpenHands, Hermes and OmniRoute/LiteLLM/Bifrost adapters. Tracks task SHA, provider/model, cost, tokens, time and claimed output SHA. **No actual model calls or authorization**.
+- `tests/test_runtime_contract.py`: 13 tests for unknown fields, task/provider allowlist, budgets, invalid usage, bad report types and no self-approval. `docs/FACTORY_RUNTIME_CONTRACT.md` contains contract schemas and safe examples.
+- **Next:** trusted runtime adapter and actual file-content integrity verification, official authenticated providers where explicitly approved, and independent task benchmarks. A hash reported by an adapter is not a verified artifact.
+
 ## Exact remaining implementation order
 
 ### Stage A — align the branches and verify the baseline
