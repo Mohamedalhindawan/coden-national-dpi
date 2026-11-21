@@ -47,6 +47,47 @@ class OpenHandsManagedCLITests(unittest.TestCase):
         self.assertFalse(outcome["automatic_retry_allowed"])
         self.assertNotIn("Traceback", result.stdout + result.stderr)
 
+    def test_read_only_cli_preflight_never_starts_sdk(self):
+        import tempfile
+        from ai_factory import project
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            export = root / "export"
+            export.mkdir()
+            output = root / "output"
+            output.mkdir()
+            task_file = project.EXAMPLE
+            argv = [
+                "--task", str(task_file),
+                "--candidate-dir", str(export),
+                "--output-root", str(output),
+                "--model", "ollama/qwen2.5-coder:1.5b",
+                "--server-image", "ghcr.io/openhands/agent-server@sha256:" + "a" * 64,
+                "--network", "coden_internal",
+                "--preflight-only",
+            ]
+            with patch.object(openhands_sdk_operator, "launch_isolated",
+                              return_value={"status": "preflight_passed",
+                                            "agent_session_attempted": False,
+                                            "execution_authorized": False,
+                                            "release_authorized": False,
+                                            "automatic_retry_allowed": False}) as gate:
+                with patch("builtins.print") as printed:
+                    code = openhands_sdk_operator.main(argv)
+            self.assertEqual(code, 0)
+            self.assertEqual(json.loads(printed.call_args.args[0])["status"], "preflight_passed")
+            self.assertTrue(gate.call_args.kwargs["preflight_only"])
+            self.assertFalse(gate.call_args.kwargs["allow_agent"])
+
+    def test_docker_inspect_context_is_read_only(self):
+        valid = [{"Name": "default", "Endpoints": {"docker": {"Host": "unix:///var/run/docker.sock"}}}]
+        with patch.object(openhands_sdk_operator.subprocess, "run",
+                          return_value=SimpleNamespace(returncode=0, stdout=json.dumps(valid))) as cmd:
+            context = openhands_sdk_operator._inspect_local_docker("context", "current")
+        self.assertEqual(context["Name"], "default")
+        cmd.assert_called_once()
+        self.assertEqual(cmd.call_args.args[0], ["docker", "context", "inspect"])
+
     def test_docker_inspect_read_only_and_metadata_constrained(self):
         valid = [{"Internal": True, "Driver": "bridge", "Name": "coden_internal"}]
         with patch.object(openhands_sdk_operator.subprocess, "run",
