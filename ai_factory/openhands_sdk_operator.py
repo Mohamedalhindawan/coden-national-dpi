@@ -159,15 +159,39 @@ def run_once(*, task, candidate_root, output_root, workspace, model,
             "automatic_retry_allowed": False}
 
 
-def _inspect_local_docker(kind, name):
-    """Read metadata only, no container creation, shell, pull or image build.
+def _context_is_local(context):
+    """Restrict Docker CLI to known local Unix socket endpoints only.
 
-    The operator must separately verify that Docker's active context refers
-    to the intended local engine and that no external bridge routing exists.
+    A Unix endpoint is necessary, not sufficient, for a secure Docker daemon:
+    the operator must still verify socket ownership, image provenance,
+    firewall policy and absence of an untrusted local proxy.
     """
-    if kind not in ("network", "image"):
+    if not isinstance(context, dict):
+        return False
+    endpoints = context.get("Endpoints")
+    if not isinstance(endpoints, dict):
+        return False
+    docker = endpoints.get("docker")
+    if not isinstance(docker, dict):
+        return False
+    allowed = {
+        "unix:///var/run/docker.sock",
+        "unix:///run/docker.sock",
+        f"unix:///run/user/{os.getuid()}/docker.sock",
+    }
+    return docker.get("Host") in allowed and docker.get("SkipTLSVerify") is not True
+
+
+def _inspect_local_docker(kind, name):
+    """Read metadata only; never start a Docker container or pull an image."""
+    if kind not in ("network", "image", "context"):
         raise ValueError("unsupported Docker inspect target")
-    command = ["docker", kind, "inspect", name]
+    if kind == "context":
+        if name != "current":
+            raise ValueError("only active Docker context may be inspected")
+        command = ["docker", "context", "inspect"]
+    else:
+        command = ["docker", kind, "inspect", name]
     result = subprocess.run(
         command, capture_output=True, text=True, timeout=5, check=False
     )
@@ -181,7 +205,7 @@ def _inspect_local_docker(kind, name):
 
 def launch_isolated(*, task, candidate_root, output_root, model, base_url,
                     server_image, network, allow_agent=False,
-                    sdk=None, inspect_docker=None):
+                    sdk=None, inspect_docker=None, preflight_only=False):
     """Safe entry path: preflight before DockerWorkspace constructor side effects.
 
     A regular DockerWorkspace constructs/starts its container during init.
@@ -193,9 +217,9 @@ def launch_isolated(*, task, candidate_root, output_root, model, base_url,
     independently audited local Docker daemon, firewall, pinned model and
     external watchdog before using this on an operator-controlled machine.
     """
-    if type(allow_agent) is not bool:
-        raise ValueError("explicit boolean operator permission required")
-    if not allow_agent:
+    if type(allow_agent) is not bool or type(preflight_only) is not bool:
+        raise ValueError("explicit boolean operator mode required")
+    if not (allow_agent or preflight_only):
         return _result("disabled")
     if not project.valid(task) or task.get("recipe") != "python-transform":
         raise ValueError("synthetic-only reviewed transform required")
@@ -227,6 +251,9 @@ def launch_isolated(*, task, candidate_root, output_root, model, base_url,
 
     inspect = _inspect_local_docker if inspect_docker is None else inspect_docker
     try:
+        context = inspect("context", "current")
+        if not _context_is_local(context):
+            return _result("unsafe_runtime")
         net = inspect("network", network)
         if not isinstance(net, dict) or net.get("Internal") is not True or net.get("Driver") != "bridge":
             return _result("unsafe_runtime")
@@ -239,6 +266,11 @@ def launch_isolated(*, task, candidate_root, output_root, model, base_url,
             return _result("unsafe_runtime")
     except (OSError, ValueError, TypeError, subprocess.SubprocessError):
         return _result("unsafe_runtime")
+
+    # Preflight can confirm metadata, never Docker isolation, model readiness,
+    # signed image provenance, model weight license or available resources.
+    if preflight_only:
+        return _result("preflight_passed")
 
     installed = _official_sdk() if sdk is None else sdk
     if installed is None:
@@ -287,13 +319,16 @@ def main(argv=None):
     parser.add_argument("--base-url", default="http://ollama:11434")
     parser.add_argument("--server-image", required=True)
     parser.add_argument("--network", required=True)
-    parser.add_argument("--allow-agent", action="store_true",
-                        help="Explicit operator permission for one SDK conversation")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--allow-agent", action="store_true",
+                      help="Explicit operator permission for one SDK conversation")
+    mode.add_argument("--preflight-only", action="store_true",
+                      help="Read-only local Docker/sandbox checks, never start a container")
     args = parser.parse_args(argv)
 
     # Do not inspect directories, Docker, SDK installation, model or task when
     # no real operation is requested.
-    if not args.allow_agent:
+    if not (args.allow_agent or args.preflight_only):
         print(json.dumps(_result("disabled"), sort_keys=True))
         return 0
 
@@ -307,7 +342,8 @@ def main(argv=None):
             base_url=args.base_url,
             server_image=args.server_image,
             network=args.network,
-            allow_agent=True,
+            allow_agent=args.allow_agent,
+            preflight_only=args.preflight_only,
         )
     except (OSError, ValueError, TypeError, RuntimeError, json.JSONDecodeError):
         outcome = _result("invalid_config")
@@ -315,7 +351,7 @@ def main(argv=None):
     if "directory" in outcome:
         outcome["directory"] = str(outcome["directory"])
     print(json.dumps(outcome, sort_keys=True))
-    return 0 if outcome["status"] == "awaiting_human_review" else 1
+    return 0 if outcome["status"] in ("awaiting_human_review", "preflight_passed") else 1
 
 
 if __name__ == "__main__":
