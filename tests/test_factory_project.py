@@ -42,6 +42,24 @@ class ProjectTests(unittest.TestCase):
         self.assertEqual(self.events(run)[-1]["role"], "security")
         self.assertFalse((run / "candidate.pyz").exists())
 
+    def test_security_rejects_attribute_assignment_to_method(self):
+        # A JSON transform may call dict.get, but cannot mutate a method-like attribute.
+        source = "def transform(value):\n    value.get = 1\n    return value\n"
+        with self.assertRaises(ValueError):
+            project.inspect_source(source)
+
+    def test_security_rejects_excessive_ast_nodes(self):
+        # Limit expensive analysis of syntactically valid, function-only input.
+        source = "def transform(value):\n" + "    value = value\n" * 600 + "    return value\n"
+        with self.assertRaises(ValueError):
+            project.inspect_source(source)
+
+    def test_security_rejects_deeply_nested_ast_expression(self):
+        # A compact but very deep expression should be rejected before lint/sandbox.
+        source = "def transform(value):\n    return " + ("[" * 80) + "value" + ("]" * 80) + "\n"
+        with self.assertRaises(ValueError):
+            project.inspect_source(source)
+
     def test_dependency_failure_stops_pipeline(self):
         with patch.object(project, "lint", side_effect=RuntimeError("disabled")):
             run, status = self.run_project()
