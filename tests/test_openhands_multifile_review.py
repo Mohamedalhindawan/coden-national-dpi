@@ -5,6 +5,8 @@ stand in for an upstream SDK sandbox export.
 """
 import json
 import os
+import subprocess
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -40,6 +42,36 @@ class OpenHandsMultiFileReviewTests(unittest.TestCase):
     def assess(self, task=None):
         return openhands_multifile_review.review(
             task if task is not None else self.task, self.source, self.outputs)
+
+    def test_reviewable_checked_in_synthetic_fixture(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        tracked = repo_root / "ai_factory" / "examples" / "openhands-multifile"
+        task = json.loads(
+            (repo_root / "ai_factory" / "examples" / "openhands-multifile-task.json").read_text()
+        )
+        self.assertTrue(project.valid(task))
+        if not project.supported_host():
+            if os.getenv("CODEN_REQUIRE_SANDBOX") == "1":
+                self.fail("pinned Linux sandbox required")
+            self.skipTest("requires pinned Linux bubblewrap")
+        result = openhands_multifile_review.review(task, tracked, self.outputs)
+        self.assertEqual(result["status"], "awaiting_human_review")
+        self.assertEqual(project.execute(result["directory"] / "candidate.pyz", ["a", "a"]),
+                         {"a": 2})
+
+    def test_cli_is_inert_without_explicit_sandbox_review_switch(self):
+        cmd = [
+            sys.executable, "-m", "ai_factory.openhands_multifile_review",
+            "--task", "/unavailable-task.json",
+            "--candidate-dir", "/unavailable-candidate",
+            "--output-root", "/unavailable-output",
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=8)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = json.loads(result.stdout)
+        self.assertEqual(data["status"], "disabled")
+        self.assertFalse(data["agent_execution_performed"])
+        self.assertFalse(data["execution_authorized"])
 
     def test_rejects_non_synthetic_task_before_artifacts(self):
         for changed in ({"data_classification": "private"},
