@@ -39,7 +39,9 @@ jobs:
           meson compile -C bwrap-build bwrap
           echo "$RUNNER_TEMP/bwrap-build" >> "$GITHUB_PATH"
       - name: Run prototype contract tests
-        run: python -m unittest discover -s tests -v
+        run: |
+          python -m unittest discover -s tests -v
+          python -m unittest discover -s skills/tests -v
       - name: Validate OpenAPI contract
         run: |
           python -m pip install openapi-spec-validator==0.7.2
