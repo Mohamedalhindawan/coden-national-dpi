@@ -20,9 +20,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir empty-context
-          build=(docker build --network=none --platform linux/amd64 --build-arg SOURCE_DATE_EPOCH=0 -f .github/docker/OpenHands-review.Dockerfile)
-          "${build[@]}" --iidfile image.id -t coden-review:offline empty-context
-          "${build[@]}" --no-cache --iidfile rebuilt.id -t coden-review:rebuilt empty-context
+          docker buildx create --driver docker-container --name coden-repro --use
+          build=(docker buildx build --builder coden-repro --network none --platform linux/amd64 --build-arg SOURCE_DATE_EPOCH=0 --provenance=false -f .github/docker/OpenHands-review.Dockerfile)
+          for target in candidate rebuilt; do
+            "${build[@]}" --no-cache --output "type=docker,name=coden-review:offline,dest=$target.tar,rewrite-timestamp=true" empty-context
+            docker load -i "$target.tar"
+            docker image inspect --format '{{.Id}}' coden-review:offline > "$target.id"
+          done
+          cp candidate.id image.id
           cmp image.id rebuilt.id
           id=$(docker create --network none coden-review:offline)
           trap 'docker rm "$id" >/dev/null' EXIT
@@ -30,7 +35,6 @@ jobs:
           docker cp "$id:/usr/local/bin/openhands-agent-server" server.bin
           docker cp -L "$id:/usr/lib/x86_64-linux-gnu/libc.so.6" candidate-libc.bin
           docker image inspect --format '{{json .RootFS.Layers}}' coden-review:offline > layers.json
-          docker save -o candidate.tar coden-review:offline
       - name: Read frozen metadata and symbol versions without importing the target
         id: frozen
         run: |
