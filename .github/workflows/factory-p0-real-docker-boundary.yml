@@ -1,0 +1,150 @@
+name: CODEN Factory P0 Real Docker Cgroup and Egress Boundary
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'ai_factory/factory_docker_isolation_probe.py'
+      - 'tests/test_factory_docker_isolation_probe.py'
+      - 'docs/FACTORY_P0_REAL_DOCKER_ISOLATION_BOUNDARY.md'
+      - '.github/workflows/factory-p0-real-docker-boundary.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  real-constrained-oci-fixture:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'feat/factory-p0-real-docker-resource-boundary-20261124' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-22.04
+    timeout-minutes: 8
+    env:
+      DOCKER_IMAGE: docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+    steps:
+      - name: Checkout read-only synthetic test code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Setup Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: RED-GREEN strict Docker inspect and privilege-policy contracts
+        run: python -m unittest discover -s tests -p 'test_factory_docker_isolation_probe.py' -v
+      - name: Confirm Docker CLI targets only local operator-owned Unix daemon
+        shell: bash
+        run: |
+          set -euo pipefail
+          for var in DOCKER_HOST DOCKER_CONTEXT DOCKER_TLS_VERIFY DOCKER_CERT_PATH; do
+            if [ -n "${!var:-}" ]; then
+              echo "BLOCKED: explicit Docker daemon override present" >&2
+              exit 1
+            fi
+          done
+          docker version
+          docker info > "$RUNNER_TEMP/docker-host-info.txt"
+          docker context inspect > "$RUNNER_TEMP/docker-active-context.json"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          contexts = json.loads(
+              (Path(os.environ["RUNNER_TEMP"]) / "docker-active-context.json").read_text()
+          )
+          assert len(contexts) == 1
+          endpoint = contexts[0]["Endpoints"]["docker"]["Host"]
+          assert endpoint in ("unix:///var/run/docker.sock", "unix:///run/docker.sock",
+                              f"unix:///run/user/{os.getuid()}/docker.sock")
+          print("PASS: Docker CLI targets an explicit local Unix endpoint; daemon rootless NOT attested.")
+          PY
+
+      - name: Pull ONLY immutable published Docker Official BusyBox image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull "$DOCKER_IMAGE"
+          docker image inspect "$DOCKER_IMAGE" > "$RUNNER_TEMP/pulled-image-inspect.json"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          image = json.loads((Path(os.environ["RUNNER_TEMP"]) / "pulled-image-inspect.json").read_text())
+          assert len(image) == 1
+          assert os.environ["DOCKER_IMAGE"] in image[0]["RepoDigests"]
+          assert image[0].get("Architecture") == "amd64"
+          assert image[0].get("Os") == "linux"
+          print("PASS: exact OCI index digest, Linux amd64; image license/security approval still PENDING.")
+          PY
+
+      - name: Launch actual constrained ephemeral OCI fixture and inspect guest cgroup
+        shell: bash
+        run: |
+          set -euo pipefail
+          cname="coden-oci-boundary-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cleanup() {
+            docker rm -f "$cname" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker run --detach --rm --name "$cname" --pull=never \
+            --cpus=1 --memory=256m --memory-swap=256m --pids-limit=64 \
+            --cap-drop=ALL --security-opt=no-new-privileges \
+            --read-only --network=none --pid=private --ipc=private \
+            --user=65534:65534 \
+            --tmpfs=/tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777 \
+            --ulimit nofile=128:128 \
+            --entrypoint=/bin/sh "$DOCKER_IMAGE" -c 'sleep 180'
+          docker inspect "$cname" > "$RUNNER_TEMP/constrained-container-inspect.json"
+          python -m ai_factory.factory_docker_isolation_probe \
+            --inspect-json "$RUNNER_TEMP/constrained-container-inspect.json" \
+            --receipt "$RUNNER_TEMP/coden-docker-boundary-review.json"
+          docker exec "$cname" /bin/sh -c '
+            set -eu
+            [ "$(id -u)" = "65534" ]
+            [ "$(cat /sys/fs/cgroup/memory.max)" = "268435456" ]
+            [ "$(cat /sys/fs/cgroup/pids.max)" = "64" ]
+            set -- $(cat /sys/fs/cgroup/cpu.max)
+            [ "$1" -gt 0 ] && [ "$1" = "$2" ]
+            cap=$(awk "/^CapEff:/{print \\$2}" /proc/self/status)
+            [ "$cap" = "0000000000000000" ]
+            nnp=$(awk "/^NoNewPrivs:/{print \\$2}" /proc/self/status)
+            [ "$nnp" = "1" ]
+            [ ! -e /var/run/docker.sock ]
+            rootflags=$(awk "\\$2 == \"/\" {print \\$4; exit}" /proc/mounts)
+            case ",$rootflags," in *,ro,*) ;; *) echo "rootfs not read-only"; exit 1 ;; esac
+            touch /tmp/allowed-synthetic-write
+            if touch /bin/should-not-write >/dev/null 2>&1; then
+              echo "expected rootfs write rejection but write succeeded"
+              exit 1
+            fi
+            [ "$(awk -F: "NR>2 {gsub(/ /,\"\",\\$1); if (\\$1!=\"lo\") print \\$1}" /proc/net/dev | wc -l)" -eq 0 ]
+            echo "PASS: guest actual CPU/RAM/PID cgroup; no effective caps, no_new_privs, nonroot, read-only and no network interfaces."
+          '
+          # Reopen and augment only sanitized evidence, not raw docker inspect.
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          path = Path(os.environ["RUNNER_TEMP"]) / "coden-docker-boundary-review.json"
+          proof = json.loads(path.read_text(encoding="utf-8"))
+          assert proof["openhands_live_execution_authorized"] is False
+          assert proof["release_authorized"] is False
+          proof["actual_guest_resource_checks_passed"] = True
+          proof["actual_guest_network_readonly_privilege_checks_passed"] = True
+          proof["rootless_daemon_verified"] = False
+          proof["image_sbom_and_license_review_completed"] = False
+          proof["openhands_agent_server_executed"] = False
+          proof["actual_pinned_OpenHands_SDK_session"] = False
+          proof["factory_production_authorized"] = False
+          proof["release_authorized"] = False
+          path.write_text(json.dumps(proof, indent=2, sort_keys=True)+"\n", encoding="utf-8")
+          print("PASS: constrained Docker fixture only; official OpenHands real session BLOCKED.")
+          PY
+      - name: Preserve sanitized isolation receipt for independent review
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coden-real-docker-boundary-partial-evidence
+          path: ${{ runner.temp }}/coden-docker-boundary-review.json
+          retention-days: 2
+          if-no-files-found: error
