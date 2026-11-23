@@ -83,6 +83,14 @@ jobs:
           python -m ai_factory.free_cpu_receipt \
             --result "$RUNNER_TEMP/coden-result.json" \
             --root "$RUNNER_TEMP/coden-model-run" \
-            --summary "$RUNNER_TEMP/coden-model-summary.json"
-          echo "## Synthetic CPU inference receipt (no source code published)" >> "$GITHUB_STEP_SUMMARY"
+            --summary "$RUNNER_TEMP/coden-model-summary.json" \
+            --export-dir "$RUNNER_TEMP/coden-reviewed-artifact"
+          echo "## Synthetic CPU inference receipt (release not authorized)" >> "$GITHUB_STEP_SUMMARY"
           cat "$RUNNER_TEMP/coden-model-summary.json" >> "$GITHUB_STEP_SUMMARY"
+      - name: Retain checked synthetic source package for HUMAN review
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coden-qwen-0_5b-synthetic-reviewed-package
+          path: ${{ runner.temp }}/coden-reviewed-artifact/
+          if-no-files-found: error
+          retention-days: 7
