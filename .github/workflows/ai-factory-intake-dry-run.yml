@@ -28,6 +28,34 @@ jobs:
           python-version: "3.12"
       - name: Verify synthetic-only intake tests
         run: python -m unittest discover -s tests -p 'test_ai_factory_intake.py' -v
+      - name: Validate 72 GitHub adoption candidates (read-only, no installation)
+        shell: bash
+        run: |
+          python -m ai_factory.adopt_first_registry
+          python - <<'PY'
+          from ai_factory.adopt_first_registry import load_catalog, select
+          items = load_catalog()
+          assert len(items) == 72
+          assert len(select(items, priority="P0")) == 23
+          assert len(select(items, priority="P1")) == 33
+          assert len(select(items, priority="P2")) == 16
+          assert all(not x["enabled"] and not x["approved"] and not x["installed_by_registry"] for x in items)
+          print("PASS: all 72 upstream source candidates indexed; 0 installed/approved/enabled by registry.")
+          PY
+      - name: Validate R29 factory-only requirements and 12 additional sources
+        shell: bash
+        run: |
+          python - <<'PY'
+          from collections import Counter
+          from ai_factory.r29_factory_scope import load
+          data = load()
+          assert len(data["requirements"]) == 47
+          assert len(data["extra_sources"]) == 12
+          assert data["combined_candidate_entries"] == 84
+          assert dict(Counter(row["wave"] for row in data["requirements"])) == {"W0":19, "W1":12, "W2":5, "W3":8, "W4":3}
+          assert all(not x["approved"] and not x["enabled"] and not x["installed"] for x in data["extra_sources"])
+          print("PASS: R29 47 scoped requirements, 12 proposed source gaps, no new installations, no spending.")
+          PY
       - name: Demonstrate approval-gated plan (no execution)
         shell: bash
         run: |
