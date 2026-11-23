@@ -1,7 +1,7 @@
 {
   "id": "CODEN-SELF-REVIEW-METRIC-01",
   "title": "Generate a human-review backlog counter for CODEN AI Factory",
-  "description": "Improve the CODEN software factory review queue with a small pure Python helper. Given value, a list of job-status strings, return an integer count of entries equal to either 'pending_review' or 'needs_review'. Count duplicates individually. All other statuses must be ignored. Write only def transform(value): using a simple loop, integer counter and membership in a tuple or list. No imports, helpers, network, filesystem, recursion, or external services.",
+  "description": "Improve the CODEN software factory review queue with a small pure Python helper. Given value, a list of job-status strings, return an integer count of entries exactly equal to 'pending_review' or 'needs_review'. Count duplicates individually and ignore every other status. Use count = 0, a simple for status in value loop, and two separate if statements: compare status == 'pending_review' and status == 'needs_review' independently, increment count for each match, then return count. Avoid membership operators, boolean 'or', comprehensions, imports, helpers, network, filesystem, recursion, or external services. Generate the code yourself as a single def transform(value): function.",
   "data_classification": "synthetic",
   "requested_actions": [
     "run_tests"
