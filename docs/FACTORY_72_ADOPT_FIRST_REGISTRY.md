@@ -67,3 +67,24 @@ The indexer validates that all 72 are present, ordered, URL-scoped to GitHub, an
 - Add an independent **license/SBOM/advisory evidence registry** keyed to immutable upstream versions, separate from a candidate's mere mention in this catalog.
 
 **Release status:** Draft / not merged into `main` / no claim of 72 installed tools / no automatic expense.
+
+
+## R29 Factory-Only Requirements — Playbook V5/R29 Addendum
+
+The uploaded original CODEN V5/R29 blueprint was inspected for **factory-only** scope: coding-agent runtime, AI Control Plane boundaries, codebase intelligence, reusable GitHub sources, developer workspaces, QA/review, recoverable workers, finite budget, independent evidence and the CAIE improvement loop.
+
+The **base catalog stays exactly 72 source/file candidates**. A separate linked file `configs/factory_r29_only_requirements.json` contributes:
+- **47** R29 source requirements, selected from 52 ADDs (five general TAMAM/DPI/commercial/document-completion ADDs explicitly omitted);
+- **12** additional, non-duplicated GitHub candidate sources: devcontainer templates/CLI, FastAPI full-stack reference, SWE-bench, in-toto, SLSA generator, Keycloak (later), Grype (optional alternative), harden-runner, Argo Rollouts (later), ZAP and Rekor (optional);
+- **84 combined proposed source/file entries** (72+12), **zero new component installations**, **zero activations/approvals**;
+- R29 factory-only **W0–W4**, applicable gates **G0–G6/G8**, scenarios **T01–T10/T12**, and all five reference pilots.
+
+Inspect `docs/FACTORY_R29_ONLY_SOURCE_GAP_ANALYSIS.md` for which of the existing 72 sources meet each requirement, what remains missing, and which tools are alternatives or deferred. CLI queries:
+
+```bash
+python -m ai_factory.r29_factory_scope --wave W0
+python -m ai_factory.r29_factory_scope --wave W2
+python -m ai_factory.r29_factory_scope --missing-sources
+```
+
+A component appearing in the new R29 list **does not demonstrate installation, licensing approval, a verified executable, a test result, operational readiness or permission to spend.** The source Playbook and both candidate lists remain UNAPPROVED/proposed until independent verification.
