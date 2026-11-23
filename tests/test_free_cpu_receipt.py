@@ -88,5 +88,24 @@ class FreeCpuReceiptTests(unittest.TestCase):
             free_cpu_receipt.inspect(self.result, self.root)
 
 
+    def test_exports_only_verified_generated_package_for_human_review(self):
+        target = self.root / "human-review-export"
+        summary = free_cpu_receipt.export_reviewed(self.result, self.root, target)
+        self.assertEqual(summary["artifact_sha256"], self.sha)
+        self.assertEqual({x.name for x in target.iterdir()},
+                         {"candidate.pyz", "review.json", "model_receipt.json"})
+        self.assertEqual((target / "candidate.pyz").read_bytes(),
+                         b"synthetic generated package placeholder")
+        self.assertFalse(json.loads((target / "model_receipt.json").read_text())["release_authorized"])
+
+    def test_export_fails_closed_on_unreviewed_content(self):
+        self.events[1]["input"] = "built-in recipe"
+        self._write_events()
+        target = self.root / "human-review-export"
+        with self.assertRaises(ValueError):
+            free_cpu_receipt.export_reviewed(self.result, self.root, target)
+        self.assertFalse(target.exists())
+
+
 if __name__ == "__main__":
     unittest.main()
