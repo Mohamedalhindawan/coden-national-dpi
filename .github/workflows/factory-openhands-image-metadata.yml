@@ -10,12 +10,15 @@ jobs:
     if: github.event.repository.private == false && github.head_ref == 'audit/openhands-175-source-lock' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    outputs:
+      amd64: ${{ steps.manifest.outputs.amd64 }}
     steps:
-      - name: Inspect public manifest without starting or downloading image layers
+      - id: manifest
+        name: Inspect public manifest without starting or downloading image layers
         shell: bash
         env:
           IMAGE: ghcr.io/openhands/agent-server
-          SOURCE_TAG: 077f3fa-python
+          SOURCE_TAG: 077f3fa-python-minimal
         run: |
           set -euo pipefail
           echo 'Rootless daemon advertised by this runner:'
@@ -27,9 +30,11 @@ jobs:
           docker buildx imagetools inspect --raw "$IMAGE@$amd64" > manifest.json
           echo "${amd64#sha256:}  manifest.json" | sha256sum -c -
           printf 'Candidate index %s\nCandidate linux/amd64 manifest %s\n' "$index" "$amd64"
+          echo "amd64=$amd64" >> "$GITHUB_OUTPUT"
           # Only report attestation descriptors; authenticity and subjects require a separate review.
           jq -c '[.manifests[] | select(.annotations["vnd.docker.reference.digest"] == $subject) | .digest]' --arg subject "$amd64" index.json
   inventory:
+    needs: inspect
     if: github.event.repository.private == false && github.head_ref == 'audit/openhands-175-source-lock' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 25
@@ -37,7 +42,7 @@ jobs:
       - name: Inventory pinned image layers without executing the target
         uses: anchore/sbom-action@fbfd9c6c189226748411491745178e0c2017392d
         with:
-          image: registry:ghcr.io/openhands/agent-server@sha256:2674cd2659e626452ac46a76fe71aded046311210c7e0cc6ffcb194668037506
+          image: registry:ghcr.io/openhands/agent-server@${{ needs.inspect.outputs.amd64 }}
           syft-version: v1.38.0
           format: spdx-json
           output-file: agent-server.spdx.json
@@ -47,12 +52,13 @@ jobs:
         run: |
           jq -e '(.packages | length) > 0' agent-server.spdx.json
           jq '{packages:(.packages|length),unresolved_declared_licenses:([.packages[]|select((.licenseDeclared // "NOASSERTION")| IN("NOASSERTION","NONE"))]|length)}' agent-server.spdx.json
-      - name: Compare installed inventory with vulnerability database
+      - name: Scan pinned image directly for OS and application vulnerabilities
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
           version: v0.69.3
-          scan-type: sbom
-          scan-ref: agent-server.spdx.json
+          scan-type: image
+          image-ref: ghcr.io/openhands/agent-server@${{ needs.inspect.outputs.amd64 }}
+          scanners: vuln
           format: json
           output: vulnerabilities.json
           cache: false
@@ -61,7 +67,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: openhands-amd64-2674cd26-review
+          name: openhands-minimal-amd64-review
           path: |
             agent-server.spdx.json
             vulnerabilities.json
@@ -70,5 +76,7 @@ jobs:
       - name: Report findings and block on unresolved high or critical findings
         run: |
           jq -e '.SchemaVersion and (.Results | type == "array" and length > 0)' vulnerabilities.json
+          jq '{os:.Metadata.OS,targets:([.Results[].Class]|unique)}' vulnerabilities.json
+          jq -e '(.Metadata.OS.Family // "" | length > 0) and .Metadata.OS.Family != "none" and any(.Results[]; .Class == "os-pkgs")' vulnerabilities.json
           jq '[.Results[] | .Vulnerabilities[]? | .Severity] | group_by(.) | map({severity:first,count:length})' vulnerabilities.json
           jq -e '[.Results[] | .Vulnerabilities[]? | select(.Severity == "HIGH" or .Severity == "CRITICAL")] | length == 0' vulnerabilities.json
