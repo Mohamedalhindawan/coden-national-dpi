@@ -72,7 +72,16 @@ jobs:
           from pathlib import Path
           image = json.loads((Path(os.environ["RUNNER_TEMP"]) / "pulled-image-inspect.json").read_text())
           assert len(image) == 1
-          assert os.environ["DOCKER_IMAGE"] in image[0]["RepoDigests"]
+          # Docker normalizes docker.io/library/busybox to busybox in RepoDigests.
+          # Accept ONLY official normalized names and the exact published SHA.
+          digest = os.environ["DOCKER_IMAGE"].split("@", 1)[1]
+          permitted = {
+              "busybox@" + digest,
+              "library/busybox@" + digest,
+              "docker.io/library/busybox@" + digest,
+          }
+          assert isinstance(image[0].get("RepoDigests"), list)
+          assert any(x in permitted for x in image[0]["RepoDigests"])
           assert image[0].get("Architecture") == "amd64"
           assert image[0].get("Os") == "linux"
           print("PASS: exact OCI index digest, Linux amd64; image license/security approval still PENDING.")
@@ -99,28 +108,31 @@ jobs:
           python -m ai_factory.factory_docker_isolation_probe \
             --inspect-json "$RUNNER_TEMP/constrained-container-inspect.json" \
             --receipt "$RUNNER_TEMP/coden-docker-boundary-review.json"
-          docker exec "$cname" /bin/sh -c '
-            set -eu
-            [ "$(id -u)" = "65534" ]
-            [ "$(cat /sys/fs/cgroup/memory.max)" = "268435456" ]
-            [ "$(cat /sys/fs/cgroup/pids.max)" = "64" ]
-            set -- $(cat /sys/fs/cgroup/cpu.max)
-            [ "$1" -gt 0 ] && [ "$1" = "$2" ]
-            cap=$(awk "/^CapEff:/{print \\$2}" /proc/self/status)
-            [ "$cap" = "0000000000000000" ]
-            nnp=$(awk "/^NoNewPrivs:/{print \\$2}" /proc/self/status)
-            [ "$nnp" = "1" ]
-            [ ! -e /var/run/docker.sock ]
-            rootflags=$(awk "\\$2 == \"/\" {print \\$4; exit}" /proc/mounts)
-            case ",$rootflags," in *,ro,*) ;; *) echo "rootfs not read-only"; exit 1 ;; esac
-            touch /tmp/allowed-synthetic-write
-            if touch /bin/should-not-write >/dev/null 2>&1; then
-              echo "expected rootfs write rejection but write succeeded"
-              exit 1
-            fi
-            [ "$(awk -F: "NR>2 {gsub(/ /,\"\",\\$1); if (\\$1!=\"lo\") print \\$1}" /proc/net/dev | wc -l)" -eq 0 ]
-            echo "PASS: guest actual CPU/RAM/PID cgroup; no effective caps, no_new_privs, nonroot, read-only and no network interfaces."
-          '
+          # Fixed source-reviewed guest script, no arbitrary agent code.
+          cat > "$RUNNER_TEMP/coden-oci-guest-check.sh" <<'GUEST'
+          set -eu
+          [ "$(id -u)" = "65534" ]
+          [ "$(cat /sys/fs/cgroup/memory.max)" = "268435456" ]
+          [ "$(cat /sys/fs/cgroup/pids.max)" = "64" ]
+          set -- $(cat /sys/fs/cgroup/cpu.max)
+          [ "$1" -gt 0 ] && [ "$1" = "$2" ]
+          cap=$(awk '/^CapEff:/ {print $2}' /proc/self/status)
+          [ "$cap" = "0000000000000000" ]
+          nnp=$(awk '/^NoNewPrivs:/ {print $2}' /proc/self/status)
+          [ "$nnp" = "1" ]
+          [ ! -e /var/run/docker.sock ]
+          rootflags=$(awk '$2 == "/" {print $4; exit}' /proc/mounts)
+          case ",$rootflags," in *,ro,*) ;; *) echo "rootfs not read-only"; exit 1 ;; esac
+          touch /tmp/allowed-synthetic-write
+          if touch /bin/should-not-write >/dev/null 2>&1; then
+            echo "expected rootfs write rejection but write succeeded"
+            exit 1
+          fi
+          extra_interfaces=$(awk -F: 'NR>2 {gsub(/ /,"",$1); if ($1!="lo") print $1}' /proc/net/dev | wc -l)
+          [ "$extra_interfaces" -eq 0 ]
+          echo "PASS: real guest cgroups, nonroot, no capabilities, no_new_privs, read-only root, no external interface."
+          GUEST
+          docker exec -i "$cname" /bin/sh < "$RUNNER_TEMP/coden-oci-guest-check.sh"
           # Reopen and augment only sanitized evidence, not raw docker inspect.
           python - <<'PY'
           import json
