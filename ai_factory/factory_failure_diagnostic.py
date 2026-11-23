@@ -18,6 +18,19 @@ ERROR_TYPES = frozenset({
     "RecursionError", "ArithmeticError", "TimeoutExpired",
     "ImportError", "CalledProcessError", "SubprocessError",
 })
+# Only fixed public AST grammar names, never generated code or prompt text.
+FORBIDDEN_SHAPES = (
+    "GeneratorExp", "ListComp", "SetComp", "DictComp", "BoolOp",
+    "In", "NotIn", "While", "Try", "With", "Import", "ImportFrom",
+    "Lambda", "NamedExpr", "Yield", "YieldFrom", "Await",
+    "ClassDef", "Global", "Nonlocal", "Delete", "Raise",
+)
+
+
+def _forbidden_shape(node: ast.AST) -> str | None:
+    seen = {type(item).__name__ for item in ast.walk(node)}
+    return next((shape for shape in FORBIDDEN_SHAPES if shape in seen), None)
+
 
 
 
@@ -39,7 +52,7 @@ def _security_hint(work: Path):
         try:
             inspect_source(ast.unparse(parsed.body[0]))
         except ValueError as exc:
-            return {
+            hint = {
                 "unsupported syntax": "unsupported_syntax",
                 "expected a single function": "unexpected_source_layout",
                 "expected transform(value)": "wrong_interface",
@@ -48,6 +61,9 @@ def _security_hint(work: Path):
                 "unsupported attribute": "unsupported_attribute",
                 "unsupported call": "unsupported_call",
             }.get(str(exc), "ast_validation_failure")
+            if hint == "unsupported_syntax":
+                return (hint, _forbidden_shape(parsed.body[0]))
+            return hint
         return "lint_or_other"
     except (OSError, ValueError, SyntaxError, UnicodeError, RecursionError):
         return None
@@ -94,7 +110,11 @@ def summarize(result_path: Path, output_root: Path) -> dict:
         summary = {"status": "failed", "stage": role, "error_type": error}
         if role == "security" and error == "ValueError":
             hint = _security_hint(work)
-            if hint is not None:
+            if isinstance(hint, tuple):
+                summary["security_hint"] = hint[0]
+                if hint[1] is not None:
+                    summary["security_node"] = hint[1]
+            elif hint is not None:
                 summary["security_hint"] = hint
         return summary
     except (OSError, UnicodeError, ValueError, TypeError, json.JSONDecodeError):
