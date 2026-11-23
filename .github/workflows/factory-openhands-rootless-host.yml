@@ -1,0 +1,42 @@
+name: OpenHands rootless host prerequisite
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/factory-openhands-rootless-host.yml'
+permissions: {}
+jobs:
+  probe:
+    if: github.event.repository.private == false && github.head_ref == 'audit/openhands-175-source-lock' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Verify rootless cgroup delegation using the previously pinned synthetic image
+        shell: bash
+        env:
+          IMAGE: docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          command -v podman
+          podman info --format json > host.json
+          jq '{rootless:.host.security.rootless,cgroups:.host.cgroupVersion,controllers:.host.cgroupControllers}' host.json
+          jq -e '.host.security.rootless == true and .host.cgroupVersion == "v2" and (.host.cgroupControllers | contains(["cpu","memory","pids"]))' host.json
+          podman pull --platform linux/amd64 "$IMAGE"
+          trap 'podman rm --ignore --force coden-prereq >/dev/null' EXIT
+          podman run --name coden-prereq --pull never --read-only --read-only-tmpfs=false --cap-drop=all --security-opt=no-new-privileges --network=none --http-proxy=false --pid=private --cgroupns=private --user 65534:65534 --cpus=0.5 --memory=64m --memory-swap=64m --pids-limit=16 "$IMAGE" sh -eu -c '
+            sleep 20 &
+            child=$!
+            trap "kill $child 2>/dev/null || true" EXIT
+            test "$(id -u)" = 65534
+            test "$(cat /sys/fs/cgroup/memory.max)" = 67108864
+            test "$(cat /sys/fs/cgroup/pids.max)" = 16
+            read -r quota period < /sys/fs/cgroup/cpu.max
+            test "$((quota * 2))" -eq "$period"
+            cmp /proc/self/cgroup "/proc/$child/cgroup"
+            grep -Eq "^CapEff:[[:space:]]+0+$" "/proc/$child/status"
+            grep -Eq "^NoNewPrivs:[[:space:]]+1$" "/proc/$child/status"
+            test "$(ls /sys/class/net)" = lo
+            test ! -S /var/run/docker.sock
+            echo "Synthetic parent and child share verified CPU, memory and PID limits."
+          '
