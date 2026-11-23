@@ -1,0 +1,2511 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "version": 1,
+  "metadata": {
+    "properties": [
+      {
+        "name": "coden:inventory-scope",
+        "value": "Universal upstream uv.lock including optional and development packages; installed OCI contents unknown"
+      },
+      {
+        "name": "coden:lock-sha256",
+        "value": "71c5479cb609b60872a7cbd34da764a0804c2e50c2658dba1bb5255e180d3603"
+      }
+    ]
+  },
+  "components": [
+    {
+      "type": "library",
+      "name": "agent-client-protocol",
+      "version": "1.0.0",
+      "purl": "pkg:pypi/agent-client-protocol@1.0.0"
+    },
+    {
+      "type": "library",
+      "name": "aiofile",
+      "version": "3.12.3",
+      "purl": "pkg:pypi/aiofile@3.12.3"
+    },
+    {
+      "type": "library",
+      "name": "aiofiles",
+      "version": "25.1.0",
+      "purl": "pkg:pypi/aiofiles@25.1.0"
+    },
+    {
+      "type": "library",
+      "name": "aiohappyeyeballs",
+      "version": "2.6.1",
+      "purl": "pkg:pypi/aiohappyeyeballs@2.6.1"
+    },
+    {
+      "type": "library",
+      "name": "aiohttp",
+      "version": "3.14.3",
+      "purl": "pkg:pypi/aiohttp@3.14.3"
+    },
+    {
+      "type": "library",
+      "name": "aiosignal",
+      "version": "1.4.0",
+      "purl": "pkg:pypi/aiosignal@1.4.0"
+    },
+    {
+      "type": "library",
+      "name": "aiosqlite",
+      "version": "0.22.1",
+      "purl": "pkg:pypi/aiosqlite@0.22.1"
+    },
+    {
+      "type": "library",
+      "name": "alembic",
+      "version": "1.20.1",
+      "purl": "pkg:pypi/alembic@1.20.1"
+    },
+    {
+      "type": "library",
+      "name": "altair",
+      "version": "5.5.0",
+      "purl": "pkg:pypi/altair@5.5.0"
+    },
+    {
+      "type": "library",
+      "name": "altgraph",
+      "version": "0.17.4",
+      "purl": "pkg:pypi/altgraph@0.17.4"
+    },
+    {
+      "type": "library",
+      "name": "annotated-doc",
+      "version": "0.0.4",
+      "purl": "pkg:pypi/annotated-doc@0.0.4"
+    },
+    {
+      "type": "library",
+      "name": "annotated-types",
+      "version": "0.7.0",
+      "purl": "pkg:pypi/annotated-types@0.7.0"
+    },
+    {
+      "type": "library",
+      "name": "anthropic",
+      "version": "0.75.0",
+      "purl": "pkg:pypi/anthropic@0.75.0"
+    },
+    {
+      "type": "library",
+      "name": "anyio",
+      "version": "4.14.2",
+      "purl": "pkg:pypi/anyio@4.14.2"
+    },
+    {
+      "type": "library",
+      "name": "attrs",
+      "version": "25.3.0",
+      "purl": "pkg:pypi/attrs@25.3.0"
+    },
+    {
+      "type": "library",
+      "name": "authlib",
+      "version": "1.9.5",
+      "purl": "pkg:pypi/authlib@1.9.5"
+    },
+    {
+      "type": "library",
+      "name": "backoff",
+      "version": "2.2.1",
+      "purl": "pkg:pypi/backoff@2.2.1"
+    },
+    {
+      "type": "library",
+      "name": "beartype",
+      "version": "0.22.9",
+      "purl": "pkg:pypi/beartype@0.22.9"
+    },
+    {
+      "type": "library",
+      "name": "beartype",
+      "version": "0.23.1",
+      "purl": "pkg:pypi/beartype@0.23.1"
+    },
+    {
+      "type": "library",
+      "name": "beautifulsoup4",
+      "version": "4.14.2",
+      "purl": "pkg:pypi/beautifulsoup4@4.14.2"
+    },
+    {
+      "type": "library",
+      "name": "binaryornot",
+      "version": "0.6.0",
+      "purl": "pkg:pypi/binaryornot@0.6.0"
+    },
+    {
+      "type": "library",
+      "name": "blake3",
+      "version": "1.0.9",
+      "purl": "pkg:pypi/blake3@1.0.9"
+    },
+    {
+      "type": "library",
+      "name": "boto3",
+      "version": "1.44.3",
+      "purl": "pkg:pypi/boto3@1.44.3"
+    },
+    {
+      "type": "library",
+      "name": "botocore",
+      "version": "1.44.3",
+      "purl": "pkg:pypi/botocore@1.44.3"
+    },
+    {
+      "type": "library",
+      "name": "browser-use",
+      "version": "0.11.9",
+      "purl": "pkg:pypi/browser-use@0.11.9"
+    },
+    {
+      "type": "library",
+      "name": "browser-use-sdk",
+      "version": "2.0.15",
+      "purl": "pkg:pypi/browser-use-sdk@2.0.15"
+    },
+    {
+      "type": "library",
+      "name": "bubus",
+      "version": "1.5.6",
+      "purl": "pkg:pypi/bubus@1.5.6"
+    },
+    {
+      "type": "library",
+      "name": "cachetools",
+      "version": "8.0.0",
+      "purl": "pkg:pypi/cachetools@8.0.0"
+    },
+    {
+      "type": "library",
+      "name": "caio",
+      "version": "0.12.10",
+      "purl": "pkg:pypi/caio@0.12.10"
+    },
+    {
+      "type": "library",
+      "name": "cdp-use",
+      "version": "1.4.4",
+      "purl": "pkg:pypi/cdp-use@1.4.4"
+    },
+    {
+      "type": "library",
+      "name": "certifi",
+      "version": "2026.10.19",
+      "purl": "pkg:pypi/certifi@2026.10.19"
+    },
+    {
+      "type": "library",
+      "name": "cffi",
+      "version": "2.0.0",
+      "purl": "pkg:pypi/cffi@2.0.0"
+    },
+    {
+      "type": "library",
+      "name": "cfgv",
+      "version": "3.4.0",
+      "purl": "pkg:pypi/cfgv@3.4.0"
+    },
+    {
+      "type": "library",
+      "name": "charset-normalizer",
+      "version": "3.4.3",
+      "purl": "pkg:pypi/charset-normalizer@3.4.3"
+    },
+    {
+      "type": "library",
+      "name": "click",
+      "version": "8.1.8",
+      "purl": "pkg:pypi/click@8.1.8"
+    },
+    {
+      "type": "library",
+      "name": "cloudpickle",
+      "version": "3.1.2",
+      "purl": "pkg:pypi/cloudpickle@3.1.2"
+    },
+    {
+      "type": "library",
+      "name": "colorama",
+      "version": "0.4.6",
+      "purl": "pkg:pypi/colorama@0.4.6"
+    },
+    {
+      "type": "library",
+      "name": "coverage",
+      "version": "7.10.6",
+      "purl": "pkg:pypi/coverage@7.10.6"
+    },
+    {
+      "type": "library",
+      "name": "cryptography",
+      "version": "48.0.1",
+      "purl": "pkg:pypi/cryptography@48.0.1"
+    },
+    {
+      "type": "library",
+      "name": "cryptography",
+      "version": "50.0.0",
+      "purl": "pkg:pypi/cryptography@50.0.0"
+    },
+    {
+      "type": "library",
+      "name": "cyclopts",
+      "version": "4.6.0",
+      "purl": "pkg:pypi/cyclopts@4.6.0"
+    },
+    {
+      "type": "library",
+      "name": "cython",
+      "version": "3.1.4",
+      "purl": "pkg:pypi/cython@3.1.4"
+    },
+    {
+      "type": "library",
+      "name": "deprecation",
+      "version": "2.1.0",
+      "purl": "pkg:pypi/deprecation@2.1.0"
+    },
+    {
+      "type": "library",
+      "name": "distlib",
+      "version": "0.4.4",
+      "purl": "pkg:pypi/distlib@0.4.4"
+    },
+    {
+      "type": "library",
+      "name": "distro",
+      "version": "1.9.0",
+      "purl": "pkg:pypi/distro@1.9.0"
+    },
+    {
+      "type": "library",
+      "name": "dnspython",
+      "version": "2.8.0",
+      "purl": "pkg:pypi/dnspython@2.8.0"
+    },
+    {
+      "type": "library",
+      "name": "docker",
+      "version": "7.2.0",
+      "purl": "pkg:pypi/docker@7.2.0"
+    },
+    {
+      "type": "library",
+      "name": "docstring-parser",
+      "version": "0.17.0",
+      "purl": "pkg:pypi/docstring-parser@0.17.0"
+    },
+    {
+      "type": "library",
+      "name": "docutils",
+      "version": "0.22.2",
+      "purl": "pkg:pypi/docutils@0.22.2"
+    },
+    {
+      "type": "library",
+      "name": "durationpy",
+      "version": "0.10",
+      "purl": "pkg:pypi/durationpy@0.10"
+    },
+    {
+      "type": "library",
+      "name": "email-validator",
+      "version": "2.3.0",
+      "purl": "pkg:pypi/email-validator@2.3.0"
+    },
+    {
+      "type": "library",
+      "name": "exceptiongroup",
+      "version": "1.3.0",
+      "purl": "pkg:pypi/exceptiongroup@1.3.0"
+    },
+    {
+      "type": "library",
+      "name": "execnet",
+      "version": "2.1.2",
+      "purl": "pkg:pypi/execnet@2.1.2"
+    },
+    {
+      "type": "library",
+      "name": "fakeredis",
+      "version": "2.40.0",
+      "purl": "pkg:pypi/fakeredis@2.40.0"
+    },
+    {
+      "type": "library",
+      "name": "fastapi",
+      "version": "0.136.3",
+      "purl": "pkg:pypi/fastapi@0.136.3"
+    },
+    {
+      "type": "library",
+      "name": "fastmcp",
+      "version": "4.2.0",
+      "purl": "pkg:pypi/fastmcp@4.2.0"
+    },
+    {
+      "type": "library",
+      "name": "fastmcp-slim",
+      "version": "4.2.0",
+      "purl": "pkg:pypi/fastmcp-slim@4.2.0"
+    },
+    {
+      "type": "library",
+      "name": "fastuuid",
+      "version": "0.14.0",
+      "purl": "pkg:pypi/fastuuid@0.14.0"
+    },
+    {
+      "type": "library",
+      "name": "filelock",
+      "version": "4.2.10",
+      "purl": "pkg:pypi/filelock@4.2.10"
+    },
+    {
+      "type": "library",
+      "name": "frozenlist",
+      "version": "1.8.0",
+      "purl": "pkg:pypi/frozenlist@1.8.0"
+    },
+    {
+      "type": "library",
+      "name": "fsspec",
+      "version": "2025.9.0",
+      "purl": "pkg:pypi/fsspec@2025.9.0"
+    },
+    {
+      "type": "library",
+      "name": "func-timeout",
+      "version": "4.3.5",
+      "purl": "pkg:pypi/func-timeout@4.3.5"
+    },
+    {
+      "type": "library",
+      "name": "google-api-core",
+      "version": "2.31.0",
+      "purl": "pkg:pypi/google-api-core@2.31.0"
+    },
+    {
+      "type": "library",
+      "name": "google-api-python-client",
+      "version": "2.184.0",
+      "purl": "pkg:pypi/google-api-python-client@2.184.0"
+    },
+    {
+      "type": "library",
+      "name": "google-auth",
+      "version": "2.53.0",
+      "purl": "pkg:pypi/google-auth@2.53.0"
+    },
+    {
+      "type": "library",
+      "name": "google-auth-httplib2",
+      "version": "0.2.0",
+      "purl": "pkg:pypi/google-auth-httplib2@0.2.0"
+    },
+    {
+      "type": "library",
+      "name": "google-auth-oauthlib",
+      "version": "1.2.2",
+      "purl": "pkg:pypi/google-auth-oauthlib@1.2.2"
+    },
+    {
+      "type": "library",
+      "name": "google-cloud-aiplatform",
+      "version": "2.9.0",
+      "purl": "pkg:pypi/google-cloud-aiplatform@2.9.0"
+    },
+    {
+      "type": "library",
+      "name": "google-cloud-bigquery",
+      "version": "3.41.0",
+      "purl": "pkg:pypi/google-cloud-bigquery@3.41.0"
+    },
+    {
+      "type": "library",
+      "name": "google-cloud-core",
+      "version": "2.6.0",
+      "purl": "pkg:pypi/google-cloud-core@2.6.0"
+    },
+    {
+      "type": "library",
+      "name": "google-cloud-resource-manager",
+      "version": "1.17.0",
+      "purl": "pkg:pypi/google-cloud-resource-manager@1.17.0"
+    },
+    {
+      "type": "library",
+      "name": "google-cloud-storage",
+      "version": "3.11.0",
+      "purl": "pkg:pypi/google-cloud-storage@3.11.0"
+    },
+    {
+      "type": "library",
+      "name": "google-cloud-storage",
+      "version": "3.4.1",
+      "purl": "pkg:pypi/google-cloud-storage@3.4.1"
+    },
+    {
+      "type": "library",
+      "name": "google-crc32c",
+      "version": "1.8.0",
+      "purl": "pkg:pypi/google-crc32c@1.8.0"
+    },
+    {
+      "type": "library",
+      "name": "google-genai",
+      "version": "1.75.0",
+      "purl": "pkg:pypi/google-genai@1.75.0"
+    },
+    {
+      "type": "library",
+      "name": "google-resumable-media",
+      "version": "2.10.0",
+      "purl": "pkg:pypi/google-resumable-media@2.10.0"
+    },
+    {
+      "type": "library",
+      "name": "googleapis-common-protos",
+      "version": "1.70.0",
+      "purl": "pkg:pypi/googleapis-common-protos@1.70.0"
+    },
+    {
+      "type": "library",
+      "name": "griffe",
+      "version": "2.4.1",
+      "purl": "pkg:pypi/griffe@2.4.1"
+    },
+    {
+      "type": "library",
+      "name": "griffecli",
+      "version": "2.4.1",
+      "purl": "pkg:pypi/griffecli@2.4.1"
+    },
+    {
+      "type": "library",
+      "name": "griffelib",
+      "version": "2.4.1",
+      "purl": "pkg:pypi/griffelib@2.4.1"
+    },
+    {
+      "type": "library",
+      "name": "groq",
+      "version": "0.32.0",
+      "purl": "pkg:pypi/groq@0.32.0"
+    },
+    {
+      "type": "library",
+      "name": "grpc-google-iam-v1",
+      "version": "0.14.4",
+      "purl": "pkg:pypi/grpc-google-iam-v1@0.14.4"
+    },
+    {
+      "type": "library",
+      "name": "grpcio",
+      "version": "1.76.0",
+      "purl": "pkg:pypi/grpcio@1.76.0"
+    },
+    {
+      "type": "library",
+      "name": "grpcio-status",
+      "version": "1.76.0",
+      "purl": "pkg:pypi/grpcio-status@1.76.0"
+    },
+    {
+      "type": "library",
+      "name": "h11",
+      "version": "0.16.0",
+      "purl": "pkg:pypi/h11@0.16.0"
+    },
+    {
+      "type": "library",
+      "name": "h2",
+      "version": "4.4.1",
+      "purl": "pkg:pypi/h2@4.4.1"
+    },
+    {
+      "type": "library",
+      "name": "hf-xet",
+      "version": "1.1.10",
+      "purl": "pkg:pypi/hf-xet@1.1.10"
+    },
+    {
+      "type": "library",
+      "name": "hpack",
+      "version": "4.2.0",
+      "purl": "pkg:pypi/hpack@4.2.0"
+    },
+    {
+      "type": "library",
+      "name": "httpcore",
+      "version": "1.0.9",
+      "purl": "pkg:pypi/httpcore@1.0.9"
+    },
+    {
+      "type": "library",
+      "name": "httpcore2",
+      "version": "2.16.0",
+      "purl": "pkg:pypi/httpcore2@2.16.0"
+    },
+    {
+      "type": "library",
+      "name": "httplib2",
+      "version": "0.32.0",
+      "purl": "pkg:pypi/httplib2@0.32.0"
+    },
+    {
+      "type": "library",
+      "name": "httpx",
+      "version": "0.28.1",
+      "purl": "pkg:pypi/httpx@0.28.1"
+    },
+    {
+      "type": "library",
+      "name": "httpx2",
+      "version": "2.16.0",
+      "purl": "pkg:pypi/httpx2@2.16.0"
+    },
+    {
+      "type": "library",
+      "name": "httpx2-jsfetch",
+      "version": "1.0",
+      "purl": "pkg:pypi/httpx2-jsfetch@1.0"
+    },
+    {
+      "type": "library",
+      "name": "huggingface-hub",
+      "version": "0.35.3",
+      "purl": "pkg:pypi/huggingface-hub@0.35.3"
+    },
+    {
+      "type": "library",
+      "name": "hyperframe",
+      "version": "6.1.0",
+      "purl": "pkg:pypi/hyperframe@6.1.0"
+    },
+    {
+      "type": "library",
+      "name": "identify",
+      "version": "2.6.14",
+      "purl": "pkg:pypi/identify@2.6.14"
+    },
+    {
+      "type": "library",
+      "name": "idna",
+      "version": "3.20",
+      "purl": "pkg:pypi/idna@3.20"
+    },
+    {
+      "type": "library",
+      "name": "importlib-metadata",
+      "version": "8.5.0",
+      "purl": "pkg:pypi/importlib-metadata@8.5.0"
+    },
+    {
+      "type": "library",
+      "name": "iniconfig",
+      "version": "2.1.0",
+      "purl": "pkg:pypi/iniconfig@2.1.0"
+    },
+    {
+      "type": "library",
+      "name": "inquirerpy",
+      "version": "0.3.4",
+      "purl": "pkg:pypi/inquirerpy@0.3.4"
+    },
+    {
+      "type": "library",
+      "name": "itsdangerous",
+      "version": "2.2.0",
+      "purl": "pkg:pypi/itsdangerous@2.2.0"
+    },
+    {
+      "type": "library",
+      "name": "jinja2",
+      "version": "3.1.6",
+      "purl": "pkg:pypi/jinja2@3.1.6"
+    },
+    {
+      "type": "library",
+      "name": "jiter",
+      "version": "0.11.0",
+      "purl": "pkg:pypi/jiter@0.11.0"
+    },
+    {
+      "type": "library",
+      "name": "jmespath",
+      "version": "1.0.1",
+      "purl": "pkg:pypi/jmespath@1.0.1"
+    },
+    {
+      "type": "library",
+      "name": "joserfc",
+      "version": "1.8.0",
+      "purl": "pkg:pypi/joserfc@1.8.0"
+    },
+    {
+      "type": "library",
+      "name": "json-repair",
+      "version": "0.60.1",
+      "purl": "pkg:pypi/json-repair@0.60.1"
+    },
+    {
+      "type": "library",
+      "name": "jsonref",
+      "version": "1.1.0",
+      "purl": "pkg:pypi/jsonref@1.1.0"
+    },
+    {
+      "type": "library",
+      "name": "jsonschema",
+      "version": "4.26.0",
+      "purl": "pkg:pypi/jsonschema@4.26.0"
+    },
+    {
+      "type": "library",
+      "name": "jsonschema-path",
+      "version": "0.3.4",
+      "purl": "pkg:pypi/jsonschema-path@0.3.4"
+    },
+    {
+      "type": "library",
+      "name": "jsonschema-specifications",
+      "version": "2025.9.1",
+      "purl": "pkg:pypi/jsonschema-specifications@2025.9.1"
+    },
+    {
+      "type": "library",
+      "name": "k8s-agent-sandbox",
+      "version": "0.5.1",
+      "purl": "pkg:pypi/k8s-agent-sandbox@0.5.1"
+    },
+    {
+      "type": "library",
+      "name": "kubernetes",
+      "version": "36.0.0",
+      "purl": "pkg:pypi/kubernetes@36.0.0"
+    },
+    {
+      "type": "library",
+      "name": "libtmux",
+      "version": "0.62.0",
+      "purl": "pkg:pypi/libtmux@0.62.0"
+    },
+    {
+      "type": "library",
+      "name": "litellm",
+      "version": "1.108.3",
+      "purl": "pkg:pypi/litellm@1.108.3"
+    },
+    {
+      "type": "library",
+      "name": "lmnr",
+      "version": "0.7.60",
+      "purl": "pkg:pypi/lmnr@0.7.60"
+    },
+    {
+      "type": "library",
+      "name": "lmnr-claude-code-proxy",
+      "version": "0.1.23",
+      "purl": "pkg:pypi/lmnr-claude-code-proxy@0.1.23"
+    },
+    {
+      "type": "library",
+      "name": "lupa",
+      "version": "2.8",
+      "purl": "pkg:pypi/lupa@2.8"
+    },
+    {
+      "type": "library",
+      "name": "lxml",
+      "version": "6.1.0",
+      "purl": "pkg:pypi/lxml@6.1.0"
+    },
+    {
+      "type": "library",
+      "name": "macholib",
+      "version": "1.16.3",
+      "purl": "pkg:pypi/macholib@1.16.3"
+    },
+    {
+      "type": "library",
+      "name": "mako",
+      "version": "1.3.12",
+      "purl": "pkg:pypi/mako@1.3.12"
+    },
+    {
+      "type": "library",
+      "name": "markdown-it-py",
+      "version": "4.0.0",
+      "purl": "pkg:pypi/markdown-it-py@4.0.0"
+    },
+    {
+      "type": "library",
+      "name": "markdownify",
+      "version": "1.2.0",
+      "purl": "pkg:pypi/markdownify@1.2.0"
+    },
+    {
+      "type": "library",
+      "name": "markupsafe",
+      "version": "3.0.2",
+      "purl": "pkg:pypi/markupsafe@3.0.2"
+    },
+    {
+      "type": "library",
+      "name": "mcp",
+      "version": "2.3.0",
+      "purl": "pkg:pypi/mcp@2.3.0"
+    },
+    {
+      "type": "library",
+      "name": "mcp-types",
+      "version": "2.3.0",
+      "purl": "pkg:pypi/mcp-types@2.3.0"
+    },
+    {
+      "type": "library",
+      "name": "mdurl",
+      "version": "0.1.2",
+      "purl": "pkg:pypi/mdurl@0.1.2"
+    },
+    {
+      "type": "library",
+      "name": "multidict",
+      "version": "6.7.0",
+      "purl": "pkg:pypi/multidict@6.7.0"
+    },
+    {
+      "type": "library",
+      "name": "narwhals",
+      "version": "2.5.0",
+      "purl": "pkg:pypi/narwhals@2.5.0"
+    },
+    {
+      "type": "library",
+      "name": "nodeenv",
+      "version": "1.9.1",
+      "purl": "pkg:pypi/nodeenv@1.9.1"
+    },
+    {
+      "type": "library",
+      "name": "nodejs-wheel-binaries",
+      "version": "24.19.0",
+      "purl": "pkg:pypi/nodejs-wheel-binaries@24.19.0"
+    },
+    {
+      "type": "library",
+      "name": "numpy",
+      "version": "2.3.3",
+      "purl": "pkg:pypi/numpy@2.3.3"
+    },
+    {
+      "type": "library",
+      "name": "oauthlib",
+      "version": "3.3.1",
+      "purl": "pkg:pypi/oauthlib@3.3.1"
+    },
+    {
+      "type": "library",
+      "name": "ollama",
+      "version": "0.6.0",
+      "purl": "pkg:pypi/ollama@0.6.0"
+    },
+    {
+      "type": "library",
+      "name": "openai",
+      "version": "2.33.0",
+      "purl": "pkg:pypi/openai@2.33.0"
+    },
+    {
+      "type": "library",
+      "name": "openapi-pydantic",
+      "version": "0.6.0",
+      "purl": "pkg:pypi/openapi-pydantic@0.6.0"
+    },
+    {
+      "type": "library",
+      "name": "openhands-agent-server",
+      "version": "1.63.1"
+    },
+    {
+      "type": "library",
+      "name": "openhands-sdk",
+      "version": "1.63.1"
+    },
+    {
+      "type": "library",
+      "name": "openhands-tools",
+      "version": "1.63.1"
+    },
+    {
+      "type": "library",
+      "name": "openhands-workspace",
+      "version": "1.63.1"
+    },
+    {
+      "type": "library",
+      "name": "opentelemetry-api",
+      "version": "1.39.1",
+      "purl": "pkg:pypi/opentelemetry-api@1.39.1"
+    },
+    {
+      "type": "library",
+      "name": "opentelemetry-exporter-otlp-proto-common",
+      "version": "1.39.1",
+      "purl": "pkg:pypi/opentelemetry-exporter-otlp-proto-common@1.39.1"
+    },
+    {
+      "type": "library",
+      "name": "opentelemetry-exporter-otlp-proto-grpc",
+      "version": "1.39.1",
+      "purl": "pkg:pypi/opentelemetry-exporter-otlp-proto-grpc@1.39.1"
+    },
+    {
+      "type": "library",
+      "name": "opentelemetry-exporter-otlp-proto-http",
+      "version": "1.39.1",
+      "purl": "pkg:pypi/opentelemetry-exporter-otlp-proto-http@1.39.1"
+    },
+    {
+      "type": "library",
+      "name": "opentelemetry-instrumentation",
+      "version": "0.60b1",
+      "purl": "pkg:pypi/opentelemetry-instrumentation@0.60b1"
+    },
+    {
+      "type": "library",
+      "name": "opentelemetry-instrumentation-threading",
+      "version": "0.60b1",
+      "purl": "pkg:pypi/opentelemetry-instrumentation-threading@0.60b1"
+    },
+    {
+      "type": "library",
+      "name": "opentelemetry-proto",
+      "version": "1.39.1",
+      "purl": "pkg:pypi/opentelemetry-proto@1.39.1"
+    },
+    {
+      "type": "library",
+      "name": "opentelemetry-sdk",
+      "version": "1.39.1",
+      "purl": "pkg:pypi/opentelemetry-sdk@1.39.1"
+    },
+    {
+      "type": "library",
+      "name": "opentelemetry-semantic-conventions",
+      "version": "0.60b1",
+      "purl": "pkg:pypi/opentelemetry-semantic-conventions@0.60b1"
+    },
+    {
+      "type": "library",
+      "name": "opentelemetry-semantic-conventions-ai",
+      "version": "0.4.13",
+      "purl": "pkg:pypi/opentelemetry-semantic-conventions-ai@0.4.13"
+    },
+    {
+      "type": "library",
+      "name": "orjson",
+      "version": "3.11.7",
+      "purl": "pkg:pypi/orjson@3.11.7"
+    },
+    {
+      "type": "library",
+      "name": "packaging",
+      "version": "26.3",
+      "purl": "pkg:pypi/packaging@26.3"
+    },
+    {
+      "type": "library",
+      "name": "pandas",
+      "version": "2.3.2",
+      "purl": "pkg:pypi/pandas@2.3.2"
+    },
+    {
+      "type": "library",
+      "name": "pathable",
+      "version": "0.4.4",
+      "purl": "pkg:pypi/pathable@0.4.4"
+    },
+    {
+      "type": "library",
+      "name": "pefile",
+      "version": "2023.2.7",
+      "purl": "pkg:pypi/pefile@2023.2.7"
+    },
+    {
+      "type": "library",
+      "name": "pfzy",
+      "version": "0.3.4",
+      "purl": "pkg:pypi/pfzy@0.3.4"
+    },
+    {
+      "type": "library",
+      "name": "pillow",
+      "version": "13.0.0",
+      "purl": "pkg:pypi/pillow@13.0.0"
+    },
+    {
+      "type": "library",
+      "name": "pip",
+      "version": "26.2.2",
+      "purl": "pkg:pypi/pip@26.2.2"
+    },
+    {
+      "type": "library",
+      "name": "platformdirs",
+      "version": "4.4.0",
+      "purl": "pkg:pypi/platformdirs@4.4.0"
+    },
+    {
+      "type": "library",
+      "name": "pluggy",
+      "version": "1.6.0",
+      "purl": "pkg:pypi/pluggy@1.6.0"
+    },
+    {
+      "type": "library",
+      "name": "portalocker",
+      "version": "2.10.1",
+      "purl": "pkg:pypi/portalocker@2.10.1"
+    },
+    {
+      "type": "library",
+      "name": "posthog",
+      "version": "7.91.1",
+      "purl": "pkg:pypi/posthog@7.91.1"
+    },
+    {
+      "type": "library",
+      "name": "pre-commit",
+      "version": "4.7.0",
+      "purl": "pkg:pypi/pre-commit@4.7.0"
+    },
+    {
+      "type": "library",
+      "name": "prometheus-client",
+      "version": "0.25.0",
+      "purl": "pkg:pypi/prometheus-client@0.25.0"
+    },
+    {
+      "type": "library",
+      "name": "prompt-toolkit",
+      "version": "3.0.52",
+      "purl": "pkg:pypi/prompt-toolkit@3.0.52"
+    },
+    {
+      "type": "library",
+      "name": "propcache",
+      "version": "0.4.1",
+      "purl": "pkg:pypi/propcache@0.4.1"
+    },
+    {
+      "type": "library",
+      "name": "proto-plus",
+      "version": "1.26.1",
+      "purl": "pkg:pypi/proto-plus@1.26.1"
+    },
+    {
+      "type": "library",
+      "name": "protobuf",
+      "version": "6.33.5",
+      "purl": "pkg:pypi/protobuf@6.33.5"
+    },
+    {
+      "type": "library",
+      "name": "psutil",
+      "version": "7.2.2",
+      "purl": "pkg:pypi/psutil@7.2.2"
+    },
+    {
+      "type": "library",
+      "name": "py-key-value-aio",
+      "version": "0.4.6",
+      "purl": "pkg:pypi/py-key-value-aio@0.4.6"
+    },
+    {
+      "type": "library",
+      "name": "pyarrow",
+      "version": "23.0.1",
+      "purl": "pkg:pypi/pyarrow@23.0.1"
+    },
+    {
+      "type": "library",
+      "name": "pyasn1",
+      "version": "0.6.4",
+      "purl": "pkg:pypi/pyasn1@0.6.4"
+    },
+    {
+      "type": "library",
+      "name": "pyasn1-modules",
+      "version": "0.4.2",
+      "purl": "pkg:pypi/pyasn1-modules@0.4.2"
+    },
+    {
+      "type": "library",
+      "name": "pycodestyle",
+      "version": "2.15.0",
+      "purl": "pkg:pypi/pycodestyle@2.15.0"
+    },
+    {
+      "type": "library",
+      "name": "pycparser",
+      "version": "2.23",
+      "purl": "pkg:pypi/pycparser@2.23"
+    },
+    {
+      "type": "library",
+      "name": "pydantic",
+      "version": "2.14.3",
+      "purl": "pkg:pypi/pydantic@2.14.3"
+    },
+    {
+      "type": "library",
+      "name": "pydantic-core",
+      "version": "2.50.4",
+      "purl": "pkg:pypi/pydantic-core@2.50.4"
+    },
+    {
+      "type": "library",
+      "name": "pydantic-settings",
+      "version": "2.16.1",
+      "purl": "pkg:pypi/pydantic-settings@2.16.1"
+    },
+    {
+      "type": "library",
+      "name": "pydeck",
+      "version": "0.9.1",
+      "purl": "pkg:pypi/pydeck@0.9.1"
+    },
+    {
+      "type": "library",
+      "name": "pygments",
+      "version": "2.20.0",
+      "purl": "pkg:pypi/pygments@2.20.0"
+    },
+    {
+      "type": "library",
+      "name": "pyinstaller",
+      "version": "6.22.3",
+      "purl": "pkg:pypi/pyinstaller@6.22.3"
+    },
+    {
+      "type": "library",
+      "name": "pyinstaller-hooks-contrib",
+      "version": "2026.7",
+      "purl": "pkg:pypi/pyinstaller-hooks-contrib@2026.7"
+    },
+    {
+      "type": "library",
+      "name": "pyjwt",
+      "version": "2.14.0",
+      "purl": "pkg:pypi/pyjwt@2.14.0"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-core",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-core@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-accessibility",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-accessibility@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-accounts",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-accounts@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-addressbook",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-addressbook@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-adservices",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-adservices@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-adsupport",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-adsupport@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-applescriptkit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-applescriptkit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-applescriptobjc",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-applescriptobjc@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-applicationservices",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-applicationservices@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-apptrackingtransparency",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-apptrackingtransparency@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-audiovideobridging",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-audiovideobridging@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-authenticationservices",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-authenticationservices@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-automaticassessmentconfiguration",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-automaticassessmentconfiguration@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-automator",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-automator@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-avfoundation",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-avfoundation@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-avkit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-avkit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-avrouting",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-avrouting@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-backgroundassets",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-backgroundassets@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-browserenginekit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-browserenginekit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-businesschat",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-businesschat@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-calendarstore",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-calendarstore@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-callkit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-callkit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-carbon",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-carbon@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-cfnetwork",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-cfnetwork@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-cinematic",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-cinematic@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-classkit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-classkit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-cloudkit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-cloudkit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-cocoa",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-cocoa@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-collaboration",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-collaboration@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-colorsync",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-colorsync@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-contacts",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-contacts@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-contactsui",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-contactsui@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-coreaudio",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-coreaudio@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-coreaudiokit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-coreaudiokit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-corebluetooth",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-corebluetooth@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-coredata",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-coredata@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-corehaptics",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-corehaptics@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-corelocation",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-corelocation@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-coremedia",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-coremedia@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-coremediaio",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-coremediaio@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-coremidi",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-coremidi@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-coreml",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-coreml@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-coremotion",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-coremotion@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-coreservices",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-coreservices@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-corespotlight",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-corespotlight@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-coretext",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-coretext@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-corewlan",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-corewlan@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-cryptotokenkit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-cryptotokenkit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-datadetection",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-datadetection@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-devicecheck",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-devicecheck@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-devicediscoveryextension",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-devicediscoveryextension@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-dictionaryservices",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-dictionaryservices@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-discrecording",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-discrecording@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-discrecordingui",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-discrecordingui@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-diskarbitration",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-diskarbitration@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-dvdplayback",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-dvdplayback@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-eventkit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-eventkit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-exceptionhandling",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-exceptionhandling@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-executionpolicy",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-executionpolicy@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-extensionkit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-extensionkit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-externalaccessory",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-externalaccessory@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-fileprovider",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-fileprovider@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-fileproviderui",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-fileproviderui@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-findersync",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-findersync@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-fsevents",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-fsevents@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-fskit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-fskit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-gamecenter",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-gamecenter@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-gamecontroller",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-gamecontroller@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-gamekit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-gamekit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-gameplaykit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-gameplaykit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-healthkit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-healthkit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-imagecapturecore",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-imagecapturecore@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-inputmethodkit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-inputmethodkit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-installerplugins",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-installerplugins@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-instantmessage",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-instantmessage@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-intents",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-intents@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-intentsui",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-intentsui@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-iobluetooth",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-iobluetooth@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-iobluetoothui",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-iobluetoothui@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-iosurface",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-iosurface@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-ituneslibrary",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-ituneslibrary@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-kernelmanagement",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-kernelmanagement@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-latentsemanticmapping",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-latentsemanticmapping@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-launchservices",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-launchservices@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-libdispatch",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-libdispatch@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-libxpc",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-libxpc@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-linkpresentation",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-linkpresentation@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-localauthentication",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-localauthentication@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-localauthenticationembeddedui",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-localauthenticationembeddedui@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-mailkit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-mailkit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-mapkit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-mapkit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-mediaaccessibility",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-mediaaccessibility@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-mediaextension",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-mediaextension@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-medialibrary",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-medialibrary@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-mediaplayer",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-mediaplayer@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-mediatoolbox",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-mediatoolbox@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-metal",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-metal@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-metalfx",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-metalfx@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-metalkit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-metalkit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-metalperformanceshaders",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-metalperformanceshaders@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-metalperformanceshadersgraph",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-metalperformanceshadersgraph@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-metrickit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-metrickit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-mlcompute",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-mlcompute@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-modelio",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-modelio@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-multipeerconnectivity",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-multipeerconnectivity@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-naturallanguage",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-naturallanguage@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-netfs",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-netfs@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-network",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-network@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-networkextension",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-networkextension@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-notificationcenter",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-notificationcenter@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-opendirectory",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-opendirectory@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-osakit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-osakit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-oslog",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-oslog@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-passkit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-passkit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-pencilkit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-pencilkit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-phase",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-phase@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-photos",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-photos@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-photosui",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-photosui@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-preferencepanes",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-preferencepanes@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-pubsub",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-pubsub@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-pushkit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-pushkit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-quartz",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-quartz@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-quicklookthumbnailing",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-quicklookthumbnailing@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-replaykit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-replaykit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-safariservices",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-safariservices@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-safetykit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-safetykit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-scenekit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-scenekit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-screencapturekit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-screencapturekit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-screensaver",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-screensaver@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-screentime",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-screentime@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-scriptingbridge",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-scriptingbridge@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-searchkit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-searchkit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-security",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-security@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-securityfoundation",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-securityfoundation@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-securityinterface",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-securityinterface@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-securityui",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-securityui@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-sensitivecontentanalysis",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-sensitivecontentanalysis@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-servicemanagement",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-servicemanagement@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-sharedwithyou",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-sharedwithyou@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-sharedwithyoucore",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-sharedwithyoucore@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-shazamkit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-shazamkit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-social",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-social@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-soundanalysis",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-soundanalysis@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-speech",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-speech@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-spritekit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-spritekit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-storekit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-storekit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-symbols",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-symbols@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-syncservices",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-syncservices@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-systemconfiguration",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-systemconfiguration@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-systemextensions",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-systemextensions@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-threadnetwork",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-threadnetwork@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-uniformtypeidentifiers",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-uniformtypeidentifiers@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-usernotifications",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-usernotifications@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-usernotificationsui",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-usernotificationsui@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-videosubscriberaccount",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-videosubscriberaccount@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-videotoolbox",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-videotoolbox@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-virtualization",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-virtualization@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-vision",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-vision@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyobjc-framework-webkit",
+      "version": "11.1",
+      "purl": "pkg:pypi/pyobjc-framework-webkit@11.1"
+    },
+    {
+      "type": "library",
+      "name": "pyotp",
+      "version": "2.9.0",
+      "purl": "pkg:pypi/pyotp@2.9.0"
+    },
+    {
+      "type": "library",
+      "name": "pyparsing",
+      "version": "3.2.5",
+      "purl": "pkg:pypi/pyparsing@3.2.5"
+    },
+    {
+      "type": "library",
+      "name": "pypdf",
+      "version": "6.14.2",
+      "purl": "pkg:pypi/pypdf@6.14.2"
+    },
+    {
+      "type": "library",
+      "name": "pyperclip",
+      "version": "1.11.0",
+      "purl": "pkg:pypi/pyperclip@1.11.0"
+    },
+    {
+      "type": "library",
+      "name": "pyright",
+      "version": "1.1.414",
+      "purl": "pkg:pypi/pyright@1.1.414"
+    },
+    {
+      "type": "library",
+      "name": "pytest",
+      "version": "9.2.0",
+      "purl": "pkg:pypi/pytest@9.2.0"
+    },
+    {
+      "type": "library",
+      "name": "pytest-asyncio",
+      "version": "1.5.0",
+      "purl": "pkg:pypi/pytest-asyncio@1.5.0"
+    },
+    {
+      "type": "library",
+      "name": "pytest-cov",
+      "version": "7.1.0",
+      "purl": "pkg:pypi/pytest-cov@7.1.0"
+    },
+    {
+      "type": "library",
+      "name": "pytest-forked",
+      "version": "1.7.5",
+      "purl": "pkg:pypi/pytest-forked@1.7.5"
+    },
+    {
+      "type": "library",
+      "name": "pytest-timeout",
+      "version": "2.4.0",
+      "purl": "pkg:pypi/pytest-timeout@2.4.0"
+    },
+    {
+      "type": "library",
+      "name": "pytest-xdist",
+      "version": "3.8.0",
+      "purl": "pkg:pypi/pytest-xdist@3.8.0"
+    },
+    {
+      "type": "library",
+      "name": "python-dateutil",
+      "version": "2.9.0.post0",
+      "purl": "pkg:pypi/python-dateutil@2.9.0.post0"
+    },
+    {
+      "type": "library",
+      "name": "python-discovery",
+      "version": "1.9.5",
+      "purl": "pkg:pypi/python-discovery@1.9.5"
+    },
+    {
+      "type": "library",
+      "name": "python-docx",
+      "version": "1.2.0",
+      "purl": "pkg:pypi/python-docx@1.2.0"
+    },
+    {
+      "type": "library",
+      "name": "python-dotenv",
+      "version": "1.2.2",
+      "purl": "pkg:pypi/python-dotenv@1.2.2"
+    },
+    {
+      "type": "library",
+      "name": "python-frontmatter",
+      "version": "1.3.0",
+      "purl": "pkg:pypi/python-frontmatter@1.3.0"
+    },
+    {
+      "type": "library",
+      "name": "python-json-logger",
+      "version": "4.2.0",
+      "purl": "pkg:pypi/python-json-logger@4.2.0"
+    },
+    {
+      "type": "library",
+      "name": "python-multipart",
+      "version": "0.0.31",
+      "purl": "pkg:pypi/python-multipart@0.0.31"
+    },
+    {
+      "type": "library",
+      "name": "pytz",
+      "version": "2025.2",
+      "purl": "pkg:pypi/pytz@2025.2"
+    },
+    {
+      "type": "library",
+      "name": "pywin32",
+      "version": "311",
+      "purl": "pkg:pypi/pywin32@311"
+    },
+    {
+      "type": "library",
+      "name": "pywin32-ctypes",
+      "version": "0.2.3",
+      "purl": "pkg:pypi/pywin32-ctypes@0.2.3"
+    },
+    {
+      "type": "library",
+      "name": "pyyaml",
+      "version": "6.0.3",
+      "purl": "pkg:pypi/pyyaml@6.0.3"
+    },
+    {
+      "type": "library",
+      "name": "redis",
+      "version": "7.2.1",
+      "purl": "pkg:pypi/redis@7.2.1"
+    },
+    {
+      "type": "library",
+      "name": "referencing",
+      "version": "0.36.2",
+      "purl": "pkg:pypi/referencing@0.36.2"
+    },
+    {
+      "type": "library",
+      "name": "regex",
+      "version": "2025.9.18",
+      "purl": "pkg:pypi/regex@2025.9.18"
+    },
+    {
+      "type": "library",
+      "name": "reportlab",
+      "version": "4.4.4",
+      "purl": "pkg:pypi/reportlab@4.4.4"
+    },
+    {
+      "type": "library",
+      "name": "requests",
+      "version": "2.33.0",
+      "purl": "pkg:pypi/requests@2.33.0"
+    },
+    {
+      "type": "library",
+      "name": "requests-oauthlib",
+      "version": "2.0.0",
+      "purl": "pkg:pypi/requests-oauthlib@2.0.0"
+    },
+    {
+      "type": "library",
+      "name": "rich",
+      "version": "14.3.3",
+      "purl": "pkg:pypi/rich@14.3.3"
+    },
+    {
+      "type": "library",
+      "name": "rich-rst",
+      "version": "1.3.2",
+      "purl": "pkg:pypi/rich-rst@1.3.2"
+    },
+    {
+      "type": "library",
+      "name": "rpds-py",
+      "version": "0.27.1",
+      "purl": "pkg:pypi/rpds-py@0.27.1"
+    },
+    {
+      "type": "library",
+      "name": "ruff",
+      "version": "0.17.5",
+      "purl": "pkg:pypi/ruff@0.17.5"
+    },
+    {
+      "type": "library",
+      "name": "s3transfer",
+      "version": "0.19.3",
+      "purl": "pkg:pypi/s3transfer@0.19.3"
+    },
+    {
+      "type": "library",
+      "name": "screeninfo",
+      "version": "0.8.1",
+      "purl": "pkg:pypi/screeninfo@0.8.1"
+    },
+    {
+      "type": "library",
+      "name": "setuptools",
+      "version": "80.9.0",
+      "purl": "pkg:pypi/setuptools@80.9.0"
+    },
+    {
+      "type": "library",
+      "name": "six",
+      "version": "1.17.0",
+      "purl": "pkg:pypi/six@1.17.0"
+    },
+    {
+      "type": "library",
+      "name": "sniffio",
+      "version": "1.3.1",
+      "purl": "pkg:pypi/sniffio@1.3.1"
+    },
+    {
+      "type": "library",
+      "name": "socksio",
+      "version": "1.0.0",
+      "purl": "pkg:pypi/socksio@1.0.0"
+    },
+    {
+      "type": "library",
+      "name": "sortedcontainers",
+      "version": "2.4.0",
+      "purl": "pkg:pypi/sortedcontainers@2.4.0"
+    },
+    {
+      "type": "library",
+      "name": "soupsieve",
+      "version": "2.8.4",
+      "purl": "pkg:pypi/soupsieve@2.8.4"
+    },
+    {
+      "type": "library",
+      "name": "sqlalchemy",
+      "version": "2.1.8",
+      "purl": "pkg:pypi/sqlalchemy@2.1.8"
+    },
+    {
+      "type": "library",
+      "name": "sse-starlette",
+      "version": "3.0.2",
+      "purl": "pkg:pypi/sse-starlette@3.0.2"
+    },
+    {
+      "type": "library",
+      "name": "starlette",
+      "version": "1.3.1",
+      "purl": "pkg:pypi/starlette@1.3.1"
+    },
+    {
+      "type": "library",
+      "name": "streamlit",
+      "version": "1.67.0",
+      "purl": "pkg:pypi/streamlit@1.67.0"
+    },
+    {
+      "type": "library",
+      "name": "tabulate",
+      "version": "0.10.0",
+      "purl": "pkg:pypi/tabulate@0.10.0"
+    },
+    {
+      "type": "library",
+      "name": "tenacity",
+      "version": "9.1.2",
+      "purl": "pkg:pypi/tenacity@9.1.2"
+    },
+    {
+      "type": "library",
+      "name": "tiktoken",
+      "version": "0.12.0",
+      "purl": "pkg:pypi/tiktoken@0.12.0"
+    },
+    {
+      "type": "library",
+      "name": "tokenizers",
+      "version": "0.23.1",
+      "purl": "pkg:pypi/tokenizers@0.23.1"
+    },
+    {
+      "type": "library",
+      "name": "tom-swe",
+      "version": "1.0.3",
+      "purl": "pkg:pypi/tom-swe@1.0.3"
+    },
+    {
+      "type": "library",
+      "name": "toolshield",
+      "version": "0.1.3",
+      "purl": "pkg:pypi/toolshield@0.1.3"
+    },
+    {
+      "type": "library",
+      "name": "tqdm",
+      "version": "4.67.1",
+      "purl": "pkg:pypi/tqdm@4.67.1"
+    },
+    {
+      "type": "library",
+      "name": "tree-sitter",
+      "version": "0.26.1",
+      "purl": "pkg:pypi/tree-sitter@0.26.1"
+    },
+    {
+      "type": "library",
+      "name": "tree-sitter-bash",
+      "version": "0.25.1",
+      "purl": "pkg:pypi/tree-sitter-bash@0.25.1"
+    },
+    {
+      "type": "library",
+      "name": "truststore",
+      "version": "0.10.5",
+      "purl": "pkg:pypi/truststore@0.10.5"
+    },
+    {
+      "type": "library",
+      "name": "typing-extensions",
+      "version": "4.16.0",
+      "purl": "pkg:pypi/typing-extensions@4.16.0"
+    },
+    {
+      "type": "library",
+      "name": "typing-inspection",
+      "version": "0.4.5",
+      "purl": "pkg:pypi/typing-inspection@0.4.5"
+    },
+    {
+      "type": "library",
+      "name": "tzdata",
+      "version": "2025.2",
+      "purl": "pkg:pypi/tzdata@2025.2"
+    },
+    {
+      "type": "library",
+      "name": "uncalled-for",
+      "version": "0.6.1",
+      "purl": "pkg:pypi/uncalled-for@0.6.1"
+    },
+    {
+      "type": "library",
+      "name": "uritemplate",
+      "version": "4.2.0",
+      "purl": "pkg:pypi/uritemplate@4.2.0"
+    },
+    {
+      "type": "library",
+      "name": "urllib3",
+      "version": "2.8.0",
+      "purl": "pkg:pypi/urllib3@2.8.0"
+    },
+    {
+      "type": "library",
+      "name": "uuid7",
+      "version": "0.1.0",
+      "purl": "pkg:pypi/uuid7@0.1.0"
+    },
+    {
+      "type": "library",
+      "name": "uvicorn",
+      "version": "0.54.0",
+      "purl": "pkg:pypi/uvicorn@0.54.0"
+    },
+    {
+      "type": "library",
+      "name": "virtualenv",
+      "version": "21.15.6",
+      "purl": "pkg:pypi/virtualenv@21.15.6"
+    },
+    {
+      "type": "library",
+      "name": "watchdog",
+      "version": "6.0.0",
+      "purl": "pkg:pypi/watchdog@6.0.0"
+    },
+    {
+      "type": "library",
+      "name": "watchfiles",
+      "version": "1.1.1",
+      "purl": "pkg:pypi/watchfiles@1.1.1"
+    },
+    {
+      "type": "library",
+      "name": "wcwidth",
+      "version": "0.2.14",
+      "purl": "pkg:pypi/wcwidth@0.2.14"
+    },
+    {
+      "type": "library",
+      "name": "websocket-client",
+      "version": "1.9.0",
+      "purl": "pkg:pypi/websocket-client@1.9.0"
+    },
+    {
+      "type": "library",
+      "name": "websockets",
+      "version": "15.0.1",
+      "purl": "pkg:pypi/websockets@15.0.1"
+    },
+    {
+      "type": "library",
+      "name": "wheel",
+      "version": "0.46.3",
+      "purl": "pkg:pypi/wheel@0.46.3"
+    },
+    {
+      "type": "library",
+      "name": "wrapt",
+      "version": "1.17.3",
+      "purl": "pkg:pypi/wrapt@1.17.3"
+    },
+    {
+      "type": "library",
+      "name": "wsproto",
+      "version": "1.3.2",
+      "purl": "pkg:pypi/wsproto@1.3.2"
+    },
+    {
+      "type": "library",
+      "name": "yarl",
+      "version": "1.22.0",
+      "purl": "pkg:pypi/yarl@1.22.0"
+    },
+    {
+      "type": "library",
+      "name": "zipp",
+      "version": "3.23.0",
+      "purl": "pkg:pypi/zipp@3.23.0"
+    }
+  ]
+}
