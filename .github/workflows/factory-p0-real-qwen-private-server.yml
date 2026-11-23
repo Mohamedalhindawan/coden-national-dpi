@@ -1,0 +1,281 @@
+name: CODEN Factory P0 REAL Qwen Private Model Server
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/docker/Factory-Qwen-CPU.Dockerfile'
+      - '.github/workflows/factory-p0-real-qwen-private-server.yml'
+      - 'ai_factory/factory_real_qwen_server_admission.py'
+      - 'tests/test_factory_real_qwen_private_server.py'
+      - 'docs/FACTORY_REAL_QWEN_PRIVATE_SERVER_EVIDENCE.md'
+
+permissions:
+  contents: read
+
+jobs:
+  authentic-qwen-cpu-isolated-server:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'feat/factory-p0-real-qwen-private-server-20261124' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-22.04
+    timeout-minutes: 14
+    env:
+      CLIENT_IMAGE: docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+      BASE_IMAGE: docker.io/library/ubuntu@sha256:f64b2ffc2f10ab8f8505aa56b2664bd846cbb9df87c7e2532e30f7667021c0e6
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Checkout sandbox pilot without persistent tokens
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Fail-closed independent metadata/model-completion contract tests
+        run: python -m unittest discover -s tests -p 'test_factory_real_qwen_private_server.py' -v
+
+      - name: Verify local Docker endpoint and official immutable base images
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in DOCKER_HOST DOCKER_CONTEXT DOCKER_TLS_VERIFY DOCKER_CERT_PATH; do
+            if [ -n "${!key:-}" ]; then
+              echo 'BLOCKED: Docker daemon override' >&2
+              exit 1
+            fi
+          done
+          docker context inspect > "$RUNNER_TEMP/coden-docker-context.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          contexts = json.loads((Path(os.environ["RUNNER_TEMP"])/"coden-docker-context.json").read_text())
+          assert len(contexts) == 1
+          endpoint = contexts[0]["Endpoints"]["docker"]["Host"]
+          assert endpoint in (
+              "unix:///var/run/docker.sock",
+              "unix:///run/docker.sock",
+              f"unix:///run/user/{os.getuid()}/docker.sock",
+          )
+          print("PASS: local Docker only; rootless host UNVERIFIED.")
+          PY
+          docker pull "$CLIENT_IMAGE"
+          docker pull "$BASE_IMAGE"
+          docker image inspect "$CLIENT_IMAGE" > "$RUNNER_TEMP/busybox-image.json"
+          docker image inspect "$BASE_IMAGE" > "$RUNNER_TEMP/ubuntu-base-image.json"
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          for env, filename, name in (
+              ("CLIENT_IMAGE", "busybox-image.json", "busybox"),
+              ("BASE_IMAGE", "ubuntu-base-image.json", "ubuntu"),
+          ):
+              image = json.loads((Path(os.environ["RUNNER_TEMP"])/filename).read_text())
+              assert len(image)==1
+              assert image[0]["Os"]=="linux" and image[0]["Architecture"]=="amd64"
+              digest=os.environ[env].split("@", 1)[1]
+              options={name+"@"+digest,"library/"+name+"@"+digest,
+                       "docker.io/library/"+name+"@"+digest}
+              assert any(d in options for d in image[0]["RepoDigests"])
+          print("PASS: exact published Docker Official base image indexes, Linux amd64.")
+          PY
+
+      - name: Download PREVIOUSLY VERIFIED Qwen GGUF and llama.cpp b12600 assets (SHA mandatory)
+        shell: bash
+        run: |
+          set -euo pipefail
+          staging="$RUNNER_TEMP/coden-qwen-server-build"
+          mkdir -p "$staging"
+          cd "$staging"
+          curl --fail --silent --show-error --location --retry 2 --connect-timeout 15 --max-time 150 \
+            -o llama-b12600-bin-ubuntu-x64.tar.gz \
+            https://github.com/ggml-org/llama.cpp/releases/download/b12600/llama-b12600-bin-ubuntu-x64.tar.gz
+          echo "da524c71f9dd09913df29264bb7229b99a2de82d8a26e6902e6921d413560d6d  llama-b12600-bin-ubuntu-x64.tar.gz" | sha256sum --check
+          curl --fail --silent --show-error --location --retry 2 --connect-timeout 20 --max-time 270 \
+            -o qwen-model.gguf \
+            "https://huggingface.co/Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF/resolve/ebb2015119c907b064c512bf053e945850b5875f/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf?download=true"
+          echo "1d9614638d18024d0fbb36575a15f1302a3adf044df10345688ec4f6e1c4ff32  qwen-model.gguf" | sha256sum --check
+          tar -xf llama-b12600-bin-ubuntu-x64.tar.gz
+          test -x llama-b12600/llama-server
+          # Exact immutable Ubuntu security package archives, verified BEFORE extraction.
+          curl --fail --silent --show-error --location --retry 2 --connect-timeout 10 --max-time 70 \
+            -o libgomp1.deb \
+            "https://security.ubuntu.com/ubuntu/pool/main/g/gcc-12/libgomp1_12.3.0-1ubuntu1~22.04.3_amd64.deb"
+          echo "870c27299185a5dd4accad3b15bf82a7409fd7073cccaa8025875307da4d0ce2  libgomp1.deb" | sha256sum --check
+          curl --fail --silent --show-error --location --retry 2 --connect-timeout 10 --max-time 70 \
+            -o libcurl4.deb \
+            "https://security.ubuntu.com/ubuntu/pool/main/c/curl/libcurl4_7.81.0-1ubuntu1.30_amd64.deb"
+          echo "2fc35b8056aebaa6cfe9a5672a8e06339c3e690657fbebc6c5d6b50d9f9626fb  libcurl4.deb" | sha256sum --check
+          curl --fail --silent --show-error --location --retry 2 --connect-timeout 10 --max-time 70 \
+            -o libstdcxx6.deb \
+            "https://security.ubuntu.com/ubuntu/pool/main/g/gcc-12/libstdc++6_12.3.0-1ubuntu1~22.04.3_amd64.deb"
+          echo "29ef3d289b272704b75141906c8f683db0f2bdb0942061366691333bfb289bdc  libstdcxx6.deb" | sha256sum --check
+          mkdir -p runtime-libs
+          for package in libgomp1.deb libcurl4.deb libstdcxx6.deb; do
+            dpkg-deb -x "$package" runtime-libs
+          done
+          # Only the exact pinned archives are extracted. No install script.
+          echo 'PASS: official llama.cpp and genuine Qwen weights pinned and extracted.'
+
+      - name: Build bounded local inference image without build-time network access
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="coden-qwen-private:${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          DOCKER_BUILDKIT=1 docker build --network=none \
+            --file .github/docker/Factory-Qwen-CPU.Dockerfile \
+            --tag "$name" "$RUNNER_TEMP/coden-qwen-server-build"
+          docker image inspect "$name" > "$RUNNER_TEMP/coden-built-model-image.json"
+          echo 'PASS: self-contained local CPU image built offline from pinned inputs.'
+
+      - name: Preflight image dynamic loader inside an equally constrained offline container
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="coden-qwen-private:${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          dependencies=$(docker run --rm --network=none --cpus=1 \
+            --memory=256m --memory-swap=256m --pids-limit=64 \
+            --cap-drop=ALL --security-opt=no-new-privileges \
+            --read-only --user=65534:65534 --entrypoint=/usr/bin/ldd \
+            "$name" /opt/llama/llama-server)
+          printf '%s\\n' "$dependencies"
+          if printf '%s\\n' "$dependencies" | grep -F 'not found'; then
+            echo 'BLOCKED: runtime dependency missing, never start model server' >&2
+            exit 1
+          fi
+          echo 'PASS: exact pinned llama-server dependency preflight inside isolated Ubuntu image.'
+
+      - name: Run REAL Qwen server and client on private internal bridge, deny external egress
+        shell: bash
+        run: |
+          set -euo pipefail
+          network="coden-factory-real-qwen-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          client="coden-qwen-client-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          server="coden-qwen-server-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          model_image="coden-qwen-private:${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cleanup() {
+            result=$?
+            if [ "$result" -ne 0 ]; then
+              echo 'Startup diagnostics (synthetic model only; no secrets or customer data):'
+              docker inspect "$server" --format 'container_exit={{.State.ExitCode}} status={{.State.Status}}' 2>/dev/null || true
+              docker logs --tail=22 "$server" 2>&1 || true
+            fi
+            docker rm -f "$client" "$server" >/dev/null 2>&1 || true
+            docker network rm "$network" >/dev/null 2>&1 || true
+            docker image rm -f "$model_image" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker network create --internal --driver bridge "$network"
+
+          docker run --detach --rm --pull=never --name "$server" \
+            --network="$network" --network-alias ollama \
+            --cpus=2 --memory=1536m --memory-swap=1536m --pids-limit=64 \
+            --cap-drop=ALL --security-opt=no-new-privileges --read-only \
+            --ipc=private --user=65534:65534 \
+            --tmpfs=/tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777 \
+            --ulimit nofile=128:128 "$model_image" \
+            --model /opt/model.gguf --host 0.0.0.0 --port 11434 \
+            --ctx-size 512 --threads 2 --n-gpu-layers 0 --no-warmup
+
+          docker run --detach --rm --pull=never --name "$client" \
+            --network="$network" \
+            --cpus=1 --memory=256m --memory-swap=256m --pids-limit=64 \
+            --cap-drop=ALL --security-opt=no-new-privileges --read-only \
+            --ipc=private --user=65534:65534 \
+            --tmpfs=/tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777 \
+            --ulimit nofile=128:128 --entrypoint=/bin/sh \
+            "$CLIENT_IMAGE" -c 'sleep 220'
+
+          docker network inspect "$network" > "$RUNNER_TEMP/qwen-private-network.json"
+          docker inspect "$client" > "$RUNNER_TEMP/qwen-client-inspect.json"
+          docker inspect "$server" > "$RUNNER_TEMP/qwen-server-inspect.json"
+
+          # Actual Linux host+guest proof: first inspect both resources, then POST
+          # a real prompt from the synthetic client to the real local Qwen model.
+          cat > "$RUNNER_TEMP/coden-real-model-client.sh" <<'GUEST'
+          set -eu
+          [ "$(id -u)" = "65534" ]
+          [ "$(cat /sys/fs/cgroup/memory.max)" = "268435456" ]
+          [ "$(cat /sys/fs/cgroup/pids.max)" = "64" ]
+          set -- $(cat /sys/fs/cgroup/cpu.max)
+          [ "$1" -gt 0 ] && [ "$1" = "$2" ]
+          [ "$(awk '/^CapEff:/ {print $2}' /proc/self/status)" = "0000000000000000" ]
+          [ "$(awk '/^NoNewPrivs:/ {print $2}' /proc/self/status)" = "1" ]
+          rootflags=$(awk '$2=="/"{print $4;exit}' /proc/mounts)
+          case ",$rootflags," in *,ro,*) ;; *) exit 1 ;; esac
+          [ ! -e /var/run/docker.sock ]
+          if touch /bin/unsafe >/dev/null 2>&1; then exit 1; fi
+          i=0
+          until wget -q -T 3 -t 1 -O /tmp/qwen-health http://ollama:11434/health; do
+            i=$((i+1)); [ "$i" -le 24 ] || exit 1; sleep 2
+          done
+          [ -s /tmp/qwen-health ]
+          echo "PASS: real llama-server /health over private bridge."
+          if wget -q -T 3 -t 1 -O /tmp/bad-ip http://1.1.1.1/ >/dev/null 2>&1; then
+            echo "external IP egress not denied" >&2; exit 1
+          fi
+          if wget -q -T 3 -t 1 -O /tmp/bad-dns http://example.com/ >/dev/null 2>&1; then
+            echo "external DNS egress not denied" >&2; exit 1
+          fi
+          echo "PASS: external public IP and DNS HTTP egress denied."
+          GUEST
+          docker exec -i "$client" /bin/sh < "$RUNNER_TEMP/coden-real-model-client.sh"
+
+          # This is an actual completion request to an actual Qwen model.
+          docker exec "$client" /bin/wget -q -T 40 -t 1 \
+            --header="Content-Type: application/json" \
+            --post-data='{"prompt":"CODEN AI Factory synthetic test. Complete this short greeting: Hello","n_predict":12,"temperature":0,"seed":7}' \
+            -O - http://ollama:11434/completion \
+            > "$RUNNER_TEMP/coden-qwen-private-completion.json"
+
+          # Prevent confusing shell expansion of awk "$2" with a real guest value.
+          cat > "$RUNNER_TEMP/coden-real-qwen-guest-check.sh" <<'GUEST'
+          set -eu
+          [ "$(id -u)" = "65534" ]
+          [ "$(cat /sys/fs/cgroup/memory.max)" = "1610612736" ]
+          [ "$(cat /sys/fs/cgroup/pids.max)" = "64" ]
+          set -- $(cat /sys/fs/cgroup/cpu.max)
+          [ "$1" -eq $((2*$2)) ]
+          [ "$(awk '/^CapEff:/ {print $2}' /proc/self/status)" = "0000000000000000" ]
+          [ "$(awk '/^NoNewPrivs:/ {print $2}' /proc/self/status)" = "1" ]
+          [ ! -e /var/run/docker.sock ]
+          rootflags=$(awk '$2 == "/" {print $4;exit}' /proc/mounts)
+          case ",$rootflags," in *,ro,*) ;; *) exit 1 ;; esac
+          if touch /bin/unsafe-write >/dev/null 2>&1; then exit 1; fi
+          GUEST
+          docker exec -i "$server" /bin/sh < "$RUNNER_TEMP/coden-real-qwen-guest-check.sh"
+
+          python -m ai_factory.factory_real_qwen_server_admission \
+            --network "$RUNNER_TEMP/qwen-private-network.json" \
+            --client "$RUNNER_TEMP/qwen-client-inspect.json" \
+            --server "$RUNNER_TEMP/qwen-server-inspect.json" \
+            --completion "$RUNNER_TEMP/coden-qwen-private-completion.json" \
+            --receipt "$RUNNER_TEMP/coden-real-qwen-private-review.json"
+
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          p=Path(os.environ["RUNNER_TEMP"])/"coden-real-qwen-private-review.json"
+          report=json.loads(p.read_text())
+          assert report["real_cpu_completion"]["tokens_predicted"] >= 1
+          assert report["real_cpu_completion"]["response_sha256"]
+          assert report["actual_real_qwen_completion_verified"] is True
+          assert report["openhands_live_execution_authorized"] is False
+          assert report["release_authorized"] is False
+          report["actual_public_ip_and_dns_egress_denied"] = True
+          report["actual_guest_CPU_RAM_PIDs_and_capabilities_checked"] = True
+          report["rootless_daemon_verified"] = False
+          report["real_openhands_sdk_session_executed"] = False
+          report["paid_calls"] = 0
+          p.write_text(json.dumps(report, sort_keys=True, indent=2)+"\n")
+          print("PASS: real local Qwen CPU inference over isolated network, no external egress, no OpenHands approval.")
+          PY
+      - name: Upload only sanitized real inference review receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coden-real-qwen-isolated-model-server-review
+          path: ${{ runner.temp }}/coden-real-qwen-private-review.json
+          retention-days: 2
+          if-no-files-found: error
