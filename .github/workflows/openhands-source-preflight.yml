@@ -1,0 +1,55 @@
+name: CODEN OpenHands pinned source preflight (NO agent run)
+
+on:
+  pull_request:
+    paths:
+      - "ai_factory/openhands_upstream_preflight.py"
+      - "third_party/source_pilots/openhands-077f3fad/**"
+      - "tests/test_openhands_upstream_preflight.py"
+      - ".github/workflows/openhands-source-preflight.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  upstream-source-only:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout review-only branch without GitHub write credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Verify authentic pinned local Git object bytes and fail-closed checks
+        run: python -m unittest discover -s tests -p 'test_openhands_upstream_preflight.py' -v
+      - name: Produce review-only report of real OpenHands source constraints
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m ai_factory.openhands_upstream_preflight --receipt "$RUNNER_TEMP/coden-openhands-source-preflight.json"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          data = json.loads((Path(os.environ["RUNNER_TEMP"])/"coden-openhands-source-preflight.json").read_text())
+          assert data["source_integrity_verified"] is True
+          assert data["runtime_state"] == "BLOCKED_FOR_REAL_SESSION"
+          assert data["live_agent_execution_authorized"] is False
+          assert data["release_authorized"] is False
+          assert data["docker_container_started"] is False
+          assert data["paid_calls"] == 0
+          assert len(data["missing_docker_controls"]) >= 5
+          print("PASS: exact Git snapshot validated; live OpenHands execution remains BLOCKED.")
+          PY
+      - name: Retain source risk receipt for independent review only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coden-openhands-upstream-source-risk
+          path: ${{ runner.temp }}/coden-openhands-source-preflight.json
+          if-no-files-found: error
+          retention-days: 2
