@@ -1,0 +1,59 @@
+{
+  "id": "CODEN-V1-WORKER-RECOVERY-03",
+  "title": "AI Factory real local model assists approved v1 by deriving worker recovery workload metric",
+  "description": "Given value, a list of synthetic CODEN Worker task-state strings, produce one integer counting all entries exactly equal to 'lease_expired' or 'cancel_requested', counting duplicates separately. Ignore 'active', 'completed', 'cancelled', 'blocked', 'recovered', empty and other values. Start count = 0. Use a simple for status in value loop and TWO INDEPENDENT if statements: one status == 'lease_expired' and a different if status == 'cancel_requested'; increment count for each exact match and return count. Do not use boolean or/and, membership checks, comprehensions, imports, helper functions, filesystem, network, approvals, retries or external services. Create only def transform(value):. This is a read-only recovery-workload metric for founder-approved CODEN Factory v1 section 51, NOT permission to cancel, retry or run workers.",
+  "data_classification": "synthetic",
+  "estimated_cost_usd": 0,
+  "requested_actions": [
+    "run_tests"
+  ],
+  "recipe": "python-transform",
+  "cases": [
+    {
+      "input": [],
+      "expected": 0
+    },
+    {
+      "input": [
+        "lease_expired",
+        "active",
+        "cancel_requested"
+      ],
+      "expected": 2
+    },
+    {
+      "input": [
+        "completed",
+        "active",
+        "recovered"
+      ],
+      "expected": 0
+    }
+  ],
+  "review_cases": [
+    {
+      "input": [
+        "lease_expired",
+        "lease_expired",
+        "cancel_requested",
+        "active"
+      ],
+      "expected": 3
+    },
+    {
+      "input": [
+        "cancel_requested",
+        "completed",
+        "lease_expired",
+        "cancel_requested"
+      ],
+      "expected": 3
+    },
+    {
+      "input": [
+        "lease_expired"
+      ],
+      "expected": 1
+    }
+  ]
+}
