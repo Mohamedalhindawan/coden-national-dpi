@@ -7,6 +7,7 @@ CODEN / YDS / Tamam is a proposal and prototype, not an approved national produc
 
 ## Start here
 
+- [**Founder-approved CODEN AI Factory v1.0 master plan**](docs/CODEN_AI_FACTORY_MASTER_PLAN_v1.0_APPROVED.md) — 80 sections, 26 parts, fixed internal implementation baseline; [approval and version-control decision](docs/decisions/CODEN_FACTORY_V1_0_FOUNDER_APPROVAL.md). **No production approval** or automatic merge is implied.
 - [**Master engineering playbook**](CODEN_MASTER_ENGINEERING_PLAYBOOK.md) — full vision, 31-sector/DPI scope, workflow, and status
 - [CODEN Visual Documentation & Design Skills](skills/visual-documentation/README.md) — brand identity, enterprise document design, architecture diagrams, dashboards, visual QA, accessibility, and PDF production
 - [Project overview](docs/PROJECT_OVERVIEW.md)
