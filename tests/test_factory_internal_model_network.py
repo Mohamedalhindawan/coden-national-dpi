@@ -20,7 +20,7 @@ NAME = "coden-factory-ollama-55555-1"
 def fixtures():
     ids = ("a" * 64, "b" * 64)
     network = {
-        "Name": NAME, "Internal": True, "Driver": "bridge", "Scope": "local",
+        "Name": NAME, "Id": "f" * 64, "Internal": True, "Driver": "bridge", "Scope": "local",
         "Containers": {
             ids[0]: {"Name": "coden-model-synthetic-55555-1"},
             ids[1]: {"Name": "coden-client-synthetic-55555-1"},
