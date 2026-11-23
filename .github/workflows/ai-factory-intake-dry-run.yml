@@ -91,6 +91,36 @@ jobs:
                      and x["enabled"] is False for x in rows)
           print("PASS: 84 indexed and linked, 0 admitted/installed/enabled by registry.")
           PY
+      - name: Verify real 84-source admission review backlog (Qwen candidate remains QUARANTINED)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tests -p 'test_factory_84_admission_review_report.py' -v
+          python -m ai_factory.factory_84_admission_report --json > "$RUNNER_TEMP/coden-84-review-backlog.json"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          r = json.loads((Path(os.environ["RUNNER_TEMP"])/"coden-84-review-backlog.json").read_text())
+          assert r["source_entries"] == 84
+          assert r["unique_upstream_repositories"] == 76
+          assert r["license_review_pending"] == 84
+          assert r["security_review_pending"] == 84
+          assert r["review_checks_pending"] == 168
+          assert r["source_approval_pending"] == 84
+          assert r["model_candidate_executed_by_report"] is False
+          assert r["release_authorized"] is False
+          assert r["source_catalog_modified"] is False
+          assert r["paid_calls"] == 0
+          print("PASS: actual CODEN 84-source review backlog = 168 checks; candidate execution denied.")
+          PY
+      - name: Retain real catalog review report for human verification only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coden-real-84-source-review-backlog
+          path: ${{ runner.temp }}/coden-84-review-backlog.json
+          if-no-files-found: error
+          retention-days: 2
       - name: Demonstrate approval-gated plan (no execution)
         shell: bash
         run: |
