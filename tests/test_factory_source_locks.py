@@ -4,6 +4,8 @@ A pinned upstream commit is NOT a license/security admission or install grant.
 """
 import copy
 import json
+import hashlib
+import tempfile
 from pathlib import Path
 import re
 import unittest
@@ -102,6 +104,37 @@ class FactoryCandidatePinsTests(unittest.TestCase):
         self.assertFalse(one[0]["runtime_enabled"])
         with self.assertRaises(ValueError):
             factory_source_locks.select(self.rows, source_id="source-999")
+
+
+    def test_staged_file_git_blob_hash_matches_record_and_reports_sha256(self):
+        payload = b"safe synthetic source text for integrity check\n"
+        blob = hashlib.sha1(b"blob " + str(len(payload)).encode() + b"\\0" + payload).hexdigest()
+        with tempfile.TemporaryDirectory() as temp:
+            file = Path(temp) / "source.txt"
+            file.write_bytes(payload)
+            result = factory_source_locks.verify_staged_blob(file, blob)
+            self.assertEqual(result["git_blob_sha1"], blob)
+            self.assertEqual(result["sha256"], hashlib.sha256(payload).hexdigest())
+            self.assertEqual(result["size_bytes"], len(payload))
+            file.write_bytes(payload + b"# tampering")
+            with self.assertRaises(ValueError):
+                factory_source_locks.verify_staged_blob(file, blob)
+
+    def test_staged_file_blocks_symlinks_and_oversize_inputs(self):
+        payload = b"safe"
+        blob = hashlib.sha1(b"blob " + str(len(payload)).encode() + b"\\0" + payload).hexdigest()
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            file = root / "source.txt"
+            file.write_bytes(payload)
+            alias = root / "alias"
+            alias.symlink_to(file)
+            with self.assertRaises(ValueError):
+                factory_source_locks.verify_staged_blob(alias, blob)
+            with self.assertRaises(ValueError):
+                factory_source_locks.verify_staged_blob(root, blob)
+            with self.assertRaises(ValueError):
+                factory_source_locks.verify_staged_blob(file, blob, max_bytes=2)
 
 
 if __name__ == "__main__":
