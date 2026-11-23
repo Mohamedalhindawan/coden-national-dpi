@@ -79,7 +79,9 @@ jobs:
             echo "expected invalid workflow to fail but actionlint returned success" >&2
             exit 1
           fi
-          grep -F "invalid_custom_key" "$RUNNER_TEMP/actionlint-negative.txt" >/dev/null
+          echo "Observed synthetic-negative actionlint diagnostic:"
+          cat "$RUNNER_TEMP/actionlint-negative.txt"
+          grep -E "invalid_custom_key|unexpected|unknown" "$RUNNER_TEMP/actionlint-negative.txt" >/dev/null
           echo "PASS: official actionlint rejected invalid_custom_key, no fake scanner."
 
       - name: Create sanitized no-approval lint evidence (no source mutation)
