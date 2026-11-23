@@ -90,15 +90,25 @@ class DurableQueue:
         with closing(self._connect()) as db:
             return self._summary(db.execute('SELECT * FROM tasks WHERE task_id=?', (task_id,)).fetchone())
 
-    def claim(self, worker_id, *, now=None, lease_seconds=60):
+    def claim(self, worker_id, *, now=None, lease_seconds=60, task_id=None):
         checkpoint._id(worker_id)
+        if task_id is not None:
+            checkpoint._id(task_id)
         stamp = self._now(now)
         self._duration(lease_seconds)
         with closing(self._connect()) as db:
             with db:
                 db.execute('BEGIN IMMEDIATE')
-                row = db.execute("SELECT task_id FROM tasks WHERE status='queued' "
-                                 'ORDER BY created_at,task_id LIMIT 1').fetchone()
+                if task_id is None:
+                    row = db.execute("SELECT task_id FROM tasks WHERE status='queued' "
+                                     'ORDER BY created_at,task_id LIMIT 1').fetchone()
+                else:
+                    # Exact-task binding is crucial: a supervisor monitoring
+                    # cancellation of task A must never kill task B's child.
+                    row = db.execute(
+                        "SELECT task_id FROM tasks WHERE status='queued' AND task_id=?",
+                        (task_id,)
+                    ).fetchone()
                 if row is None:
                     return None
                 token = uuid4().hex

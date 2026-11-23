@@ -1,0 +1,79 @@
+name: CODEN Factory Trusted Worker Real Child Cancellation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'ai_factory/worker_supervisor.py'
+      - 'ai_factory/offline_worker.py'
+      - 'ai_factory/durable_queue.py'
+      - 'tests/test_factory_supervisor_cancel_stop.py'
+      - 'docs/FACTORY_SUPERVISOR_REAL_PROCESS_CANCELLATION.md'
+      - '.github/workflows/factory-supervisor-child-cancel.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  real-owned-child-stop-proof:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'feat/factory-supervisor-cancel-process-evidence-20261123' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-22.04
+    timeout-minutes: 6
+    steps:
+      - name: Checkout operator-only synthetic test code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install pinned Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Real Linux SQLite, cancellation and grandchild SIGKILL tests (not mocks)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tests -p 'test_factory_supervisor_cancel_stop.py' -v
+          python -m unittest discover -s tests -p 'test_factory_operator_cancellation.py' -v
+          python -m unittest discover -s tests -p 'test_worker_supervisor.py' -v
+          python -m unittest discover -s tests -p 'test_durable_queue.py' -v
+      - name: Produce review-only bounded subprocess-stop verification receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import platform
+          from pathlib import Path
+          assert platform.system() == "Linux"
+          receipt = {
+              "pilot": "operator-owned-single-bound-task-real-linux-cancellation",
+              "source": "existing CODEN DurableQueue + offline_worker + worker_supervisor",
+              "execution_evidence": "real Linux process-group SIGKILL with actual child and grandchild tested by unittest",
+              "task_ids_and_tokens_retained": False,
+              "specific_task_claim_required": True,
+              "cancel_request_only_authorizes_owned_child_stop": True,
+              "child_leader_reaped_under_test": True,
+              "all_descendants_absence_proven_in_production": False,
+              "human_queue_journal_reconciliation_required": True,
+              "openhands_live_runtime_verified": False,
+              "no_automatic_retry": True,
+              "no_automatic_merge": True,
+              "production_release_authorized": False,
+              "paid_calls": 0,
+              "workflow_head_sha": os.environ["GITHUB_SHA"],
+          }
+          output = Path(os.environ["RUNNER_TEMP"]) / "factory-owned-child-cancel-review-receipt.json"
+          output.write_text(json.dumps(receipt, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+          print(json.dumps(receipt, sort_keys=True))
+          PY
+      - name: Retain sanitized review evidence for two days only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coden-factory-real-child-cancel-review
+          path: ${{ runner.temp }}/factory-owned-child-cancel-review-receipt.json
+          retention-days: 2
+          if-no-files-found: error
