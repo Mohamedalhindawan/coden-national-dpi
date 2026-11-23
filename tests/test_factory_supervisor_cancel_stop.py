@@ -85,6 +85,8 @@ class MonitoredSupervisorCancellationTests(unittest.TestCase):
         process.wait.return_value = 0
         def begin(cmd, **kwargs):
             self.assertEqual(cmd[-2:], ["--task-id", "target"])
+            lease = self.q.claim("mock_fixture_worker", task_id="target", lease_seconds=30)
+            self.q.finish("target", lease["lease_token"], "blocked")
             kwargs["stdout"].write(result_json)
             self.assertTrue(kwargs["start_new_session"])
             return process
