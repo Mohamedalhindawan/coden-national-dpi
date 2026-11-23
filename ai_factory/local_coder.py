@@ -49,7 +49,18 @@ def prompt_for(description, cases, feedback=None):
             " The FIRST generated candidate was rejected by the AST safety policy "
             "for a BoolOp node. Generate a fresh body, not a patch. "
             "A combined if condition using 'or' or 'and' is invalid. "
-            "Use two distinct if statements with simple == comparisons."
+            "Use two distinct if statements with simple == comparisons. "
+            "An UNRELATED toy example counting 'red' and 'blue' labels has this "
+            "AST-safe function body (do NOT use these toy labels in the real task):\n"
+            "    count = 0\n"
+            "    for item in value:\n"
+            "        if item == 'red':\n"
+            "            count += 1\n"
+            "        if item == 'blue':\n"
+            "            count += 1\n"
+            "    return count\n"
+            "For the actual candidate, write a NEW body using the actual task's "
+            "labels, keeping the same independent-if structure."
         )
     return (
         "<|im_start|>system\n" + rules
