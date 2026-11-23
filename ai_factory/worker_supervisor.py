@@ -14,6 +14,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 
 from . import checkpoint
 
@@ -84,8 +85,68 @@ def _minimal_environment():
             "LC_ALL": "C.UTF-8"}
 
 
+def _monitor_bound_task(proc, *, queue_db, journal, task_id, timeout_seconds):
+    """Watch only the selected worker task; stop only our owned child group.
+
+    A process-group SIGKILL followed by wait() confirms the leader was reaped,
+    NOT that all its descendants vanished or that the task can be retried.
+    Queue status and journal remain review-only and fail closed.
+    """
+    from .durable_queue import DurableQueue
+
+    queue = DurableQueue(queue_db)
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        state = queue.read(task_id)["status"]
+        if state in ("cancel_requested", "cancelled"):
+            if proc.returncode is None:
+                _terminate_process_group(proc)
+            else:
+                proc.wait(timeout=0)
+            # This is an evidence record, not a declaration of safe finality.
+            # If it fails, refuse any success receipt; queue remains pending.
+            try:
+                checkpoint.record(
+                    journal, task_id, event="blocked",
+                    next_action="inspect_cancel_stop",
+                    event_key="supervisor_cancel_stop",
+                )
+            except (OSError, ValueError, TypeError) as exc:
+                raise SupervisorError("cancelled child journal unverified; operator review required") from exc
+            return dict(
+                _result("cancel_stop_review_required"),
+                owned_process_leader_reaped=True,
+                process_tree_absence_verified=False,
+                queue_state=state,
+                queue_reconciliation_required=True,
+            )
+        if state not in (
+            "queued", "leased", "awaiting_human_review", "blocked",
+            "failed", "needs_review",
+        ):
+            # Unexpected queue transition cannot permit child continuation.
+            if proc.returncode is None:
+                _terminate_process_group(proc)
+            raise SupervisorError("unexpected task state; operator reconciliation required")
+        remaining = deadline - __import__("time").monotonic()
+        if remaining <= 0:
+            if proc.returncode is None:
+                _terminate_process_group(proc)
+            return _result("timed_out_review_required")
+        try:
+            proc.wait(timeout=min(0.10, remaining))
+        except subprocess.TimeoutExpired:
+            continue
+        # Exit can race with a cancel request. Re-read at least once so a
+        # successful child exit never masks an already registered cancel.
+        final_state = queue.read(task_id)["status"]
+        if final_state in ("cancel_requested", "cancelled"):
+            continue
+        return None
+
+
 def run_once(*, queue_db, journal, task_dir, output_root, worker_id,
-             timeout_seconds=60, lease_seconds=120):
+             timeout_seconds=60, lease_seconds=120, task_id=None):
     """Operator explicitly starts ONE fixed offline synthetic worker process.
 
     A timeout kills its process group and never replays tasks. Existing
@@ -99,6 +160,11 @@ def run_once(*, queue_db, journal, task_dir, output_root, worker_id,
     ):
         raise ValueError("lease must exceed timeout with 10s grace; max 3600 seconds")
     db = _db(queue_db)
+    if task_id is not None:
+        checkpoint._id(task_id)
+        from .durable_queue import DurableQueue
+        if DurableQueue(db).read(task_id)["status"] != "queued":
+            raise ValueError("explicit task is not currently queued; do not spawn")
     journals = _dir(journal, label="journal")
     tasks = _dir(task_dir, label="task")
     outputs = _dir(output_root, label="output")
@@ -106,22 +172,33 @@ def run_once(*, queue_db, journal, task_dir, output_root, worker_id,
            "--queue-db", db, "--journal", journals, "--task-dir", tasks,
            "work-once", "--output-root", outputs,
            "--worker-id", worker_id, "--lease-seconds", str(lease_seconds)]
+    if task_id is not None:
+        cmd.extend(["--task-id", task_id])
     try:
         with tempfile.TemporaryFile(mode="w+b") as stdout:
             proc = subprocess.Popen(cmd, cwd=str(Path(__file__).resolve().parent.parent),
                                     env=_minimal_environment(), stdin=subprocess.DEVNULL,
                                     stdout=stdout, stderr=subprocess.DEVNULL,
                                     start_new_session=True, close_fds=True)
-            try:
-                proc.communicate(timeout=timeout_seconds)
-            except subprocess.TimeoutExpired:
-                _terminate_process_group(proc)
-                return _result("timed_out_review_required")
-            except OSError as exc:
-                # A failed IPC operation does not prove that the worker exited.
-                # It may still hold a queue lease or have created artifacts.
-                _terminate_process_group(proc)
-                raise SupervisorError("worker communication failed; manual review required") from exc
+            if task_id is not None:
+                # NEW opt-in branch: actual SQLite cancellation is monitored
+                # while our single explicitly bound child is running.
+                monitored = _monitor_bound_task(
+                    proc, queue_db=db, journal=journals,
+                    task_id=task_id, timeout_seconds=timeout_seconds
+                )
+                if monitored is not None:
+                    return monitored
+            else:
+                # Preserve the proven old operator-only FIFO path.
+                try:
+                    proc.communicate(timeout=timeout_seconds)
+                except subprocess.TimeoutExpired:
+                    _terminate_process_group(proc)
+                    return _result("timed_out_review_required")
+                except OSError as exc:
+                    _terminate_process_group(proc)
+                    raise SupervisorError("worker communication failed; manual review required") from exc
             if proc.returncode != 0:
                 return _result("worker_failed_review_required")
             stdout.seek(0)
@@ -170,6 +247,7 @@ def make_parser():
     parser.add_argument("--worker-id", default="offline_operator")
     parser.add_argument("--timeout-seconds", type=int, default=60)
     parser.add_argument("--lease-seconds", type=int, default=120)
+    parser.add_argument("--task-id", help="Bind monitored one-shot child to this queue task only")
     actions = parser.add_subparsers(dest="command", required=True)
     actions.add_parser("work-once", help="supervise one operator-authorized synthetic run")
     return parser
@@ -181,7 +259,7 @@ def main(argv=None):
         outcome = run_once(queue_db=args.queue_db, journal=args.journal,
                            task_dir=args.task_dir, output_root=args.output_root,
                            worker_id=args.worker_id, timeout_seconds=args.timeout_seconds,
-                           lease_seconds=args.lease_seconds)
+                           lease_seconds=args.lease_seconds, task_id=args.task_id)
     except (OSError, ValueError):
         print("Supervisor blocked; inspect local queue and checkpoint evidence", file=sys.stderr)
         return 2
