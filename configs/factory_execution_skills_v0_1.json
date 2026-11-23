@@ -1,0 +1,70 @@
+{
+  "schema_version": "0.1.0",
+  "scope": "CODEN_FACTORY_ONLY",
+  "status": "DRAFT_UNAPPROVED",
+  "automatic_skill_installation": false,
+  "automatic_runtime_execution": false,
+  "paid_calls_authorized": false,
+  "skills": [
+    {
+      "name": "factory-batch-intake",
+      "task_kind": "intake",
+      "purpose": "Turn an issue into a synthetic, bounded and reviewable task",
+      "path": ".github/skills/factory-batch-intake/SKILL.md",
+      "status": "DRAFT_NOT_AUTO_ACTIVATED",
+      "installed_by_catalog": false,
+      "runtime_invoked": false,
+      "release_authorized": false
+    },
+    {
+      "name": "factory-tdd-multifile",
+      "task_kind": "multifile",
+      "purpose": "RED/GREEN and independent multi-file acceptance",
+      "path": ".github/skills/factory-tdd-multifile/SKILL.md",
+      "status": "DRAFT_NOT_AUTO_ACTIVATED",
+      "installed_by_catalog": false,
+      "runtime_invoked": false,
+      "release_authorized": false
+    },
+    {
+      "name": "factory-sandbox-preflight",
+      "task_kind": "sandbox",
+      "purpose": "Verify isolation and refuse an unsafe OpenHands session",
+      "path": ".github/skills/factory-sandbox-preflight/SKILL.md",
+      "status": "DRAFT_NOT_AUTO_ACTIVATED",
+      "installed_by_catalog": false,
+      "runtime_invoked": false,
+      "release_authorized": false
+    },
+    {
+      "name": "factory-adopt-first-gate",
+      "task_kind": "admission",
+      "purpose": "Review one upstream source with immutable pin, license and SBOM",
+      "path": ".github/skills/factory-adopt-first-gate/SKILL.md",
+      "status": "DRAFT_NOT_AUTO_ACTIVATED",
+      "installed_by_catalog": false,
+      "runtime_invoked": false,
+      "release_authorized": false
+    },
+    {
+      "name": "factory-independent-review",
+      "task_kind": "review",
+      "purpose": "Verify real model origin, SHA-256, hidden tests, no release",
+      "path": ".github/skills/factory-independent-review/SKILL.md",
+      "status": "DRAFT_NOT_AUTO_ACTIVATED",
+      "installed_by_catalog": false,
+      "runtime_invoked": false,
+      "release_authorized": false
+    },
+    {
+      "name": "factory-pr-stack-recovery",
+      "task_kind": "recovery",
+      "purpose": "Review staged pull-request dependencies and integration order",
+      "path": ".github/skills/factory-pr-stack-recovery/SKILL.md",
+      "status": "DRAFT_NOT_AUTO_ACTIVATED",
+      "installed_by_catalog": false,
+      "runtime_invoked": false,
+      "release_authorized": false
+    }
+  ]
+}
