@@ -5,6 +5,9 @@ scanner, license clearance or agent runtime admission service. Git object IDs
 are SHA-1, and must not be misrepresented as distribution-file SHA-256 hashes.
 """
 import argparse
+import hashlib
+import os
+import stat
 import json
 from pathlib import Path
 import re
@@ -126,16 +129,72 @@ def select(rows, *, source_id=None):
     return selection
 
 
+
+def verify_staged_blob(file_path, expected_blob_sha, *, max_bytes=2_000_000):
+    """Verify one staged, local regular file against its pinned Git blob SHA-1.
+
+    Checks byte-for-byte Git object identity only. This does NOT execute the
+    staged file, certify source authenticity against GitHub, grant install
+    permission or replace modern SHA-256 signed-distribution verification.
+    """
+    if (not isinstance(expected_blob_sha, str)
+            or GIT_SHA.fullmatch(expected_blob_sha) is None):
+        raise ValueError("expected Git blob object SHA-1 must be 40 lowercase hex characters")
+    if type(max_bytes) is not int or not 1 <= max_bytes <= 2_000_000:
+        raise ValueError("invalid maximum staged source size")
+    if not hasattr(os, "O_NOFOLLOW"):
+        raise ValueError("safe no-follow file access unavailable")
+    flags = os.O_RDONLY | os.O_NOFOLLOW
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    try:
+        fd = os.open(file_path, flags)
+    except OSError as exc:
+        raise ValueError("cannot open staged source without following symlinks") from exc
+    try:
+        with os.fdopen(fd, "rb") as stream:
+            info = os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= max_bytes:
+                raise ValueError("staged source is not a bounded regular file")
+            content = stream.read(max_bytes + 1)
+            if len(content) != info.st_size:
+                raise ValueError("staged source size changed while reading")
+    except OSError as exc:
+        raise ValueError("could not securely read staged source file") from exc
+    # Git SHA-1 object ID is SHA1("blob " + decimal length + NUL + file bytes).
+    git_blob_sha1 = hashlib.sha1(
+        b"blob " + str(len(content)).encode("ascii") + b"\0" + content
+    ).hexdigest()
+    if git_blob_sha1 != expected_blob_sha:
+        raise ValueError("staged source bytes differ from pinned Git blob object")
+    return {
+        "git_blob_sha1": git_blob_sha1,
+        "sha256": hashlib.sha256(content).hexdigest(),
+        "size_bytes": len(content),
+        "integrity": "local_bytes_match_recorded_git_blob_object",
+        "install_authorized": False,
+    }
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Read-only 11-source immutable GitHub candidate snapshots")
     parser.add_argument("--source-id", choices=sorted(CRITICAL_IDS))
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--verify-file", type=Path, help="Verify local bytes against locked Git blob, never execute")
     args = parser.parse_args(argv)
     try:
         rows = select(load(), source_id=args.source_id)
     except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
         parser.exit(2, f"Source locks BLOCKED ({type(exc).__name__})\n")
-    if args.json:
+    if args.verify_file is not None:
+        if args.source_id is None:
+            parser.exit(2, "Source locks BLOCKED (explicit --source-id required)\n")
+        try:
+            proof = verify_staged_blob(args.verify_file, rows[0]["blob_sha"])
+        except ValueError as exc:
+            parser.exit(2, f"Staged source integrity BLOCKED ({type(exc).__name__})\n")
+        print(json.dumps({"source_id": rows[0]["source_id"], **proof}, sort_keys=True))
+    elif args.json:
         print(json.dumps(rows, indent=2, ensure_ascii=False))
     else:
         for row in rows:
