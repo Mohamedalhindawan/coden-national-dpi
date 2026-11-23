@@ -50,6 +50,14 @@ class FactoryOSSAdmissionQwenTrialTests(unittest.TestCase):
         self.assertNotIn("pull_request_target:", flow)
         self.assertNotIn("actions/checkout@v", flow)
 
+    def test_real_model_zipapp_is_sandbox_tested_at_84_source_scale(self):
+        flow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("project.execute(candidate, synthetic_flags)", flow)
+        self.assertIn("for _ in range(84)", flow)
+        self.assertIn("expected_blockers = 168", flow)
+        self.assertIn("project.digest(candidate)", flow)
+        self.assertIn("model_receipt.json", flow)
+
     def test_admission_flags_have_real_hidden_edge_cases(self):
         task = json.loads(TASK.read_text(encoding="utf-8"))
         examples = task["cases"] + task["review_cases"]
