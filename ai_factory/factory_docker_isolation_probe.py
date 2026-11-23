@@ -61,7 +61,7 @@ def inspect_config(data):
     _require(host.get("Privileged") is False, "privileged forbidden")
     _require(host.get("ReadonlyRootfs") is True, "read-only root missing")
     _require(host.get("NetworkMode") == "none", "outbound network not denied")
-    _require(host.get("PidMode") == "private", "PID host namespace forbidden")
+    _require(host.get("PidMode") in ("", "private"), "PID host namespace forbidden")
     _require(host.get("IpcMode") == "private", "IPC host namespace forbidden")
     _require(host.get("SecurityOpt") == ["no-new-privileges"],
              "no-new-privileges absent")
