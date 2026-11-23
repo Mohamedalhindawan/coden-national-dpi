@@ -29,7 +29,7 @@ class MonitoredSupervisorCancellationTests(unittest.TestCase):
         self.root = Path(temp.name)
         self.db = self.root / "operator" / "queue.sqlite3"
         self.journal = self.root / "operator" / "journal"
-        self.journal.mkdir()
+        self.journal.mkdir(parents=True)
         self.tasks = self.root / "tasks"
         self.tasks.mkdir()
         self.out = self.root / "outputs"
@@ -188,6 +188,7 @@ class MonitoredSupervisorCancellationTests(unittest.TestCase):
         self.create()
         process = MagicMock()
         process.pid = 41000
+        process.returncode = None
 
         def wait_side_effect(*args, **kwargs):
             self.q.claim("child", task_id="target", lease_seconds=30)
