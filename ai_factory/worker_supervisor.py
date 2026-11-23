@@ -98,7 +98,7 @@ def _monitor_bound_task(proc, *, queue_db, journal, task_id, timeout_seconds):
     deadline = time.monotonic() + timeout_seconds
     while True:
         state = queue.read(task_id)["status"]
-        if state in ("cancel_requested", "cancelled"):
+        if state in ("cancel_requested", "cancelled", "needs_review"):
             if proc.returncode is None:
                 _terminate_process_group(proc)
             else:
@@ -140,8 +140,10 @@ def _monitor_bound_task(proc, *, queue_db, journal, task_id, timeout_seconds):
         # Exit can race with a cancel request. Re-read at least once so a
         # successful child exit never masks an already registered cancel.
         final_state = queue.read(task_id)["status"]
-        if final_state in ("cancel_requested", "cancelled"):
+        if final_state in ("cancel_requested", "cancelled", "needs_review"):
             continue
+        if final_state == "queued":
+            return _result("target_not_claimed_review_required")
         return None
 
 
@@ -220,11 +222,23 @@ def run_once(*, queue_db, journal, task_dir, output_root, worker_id,
                 checkpoint._id(parsed["task_id"])
             except (ValueError, TypeError):
                 return _result("untrusted_worker_result")
+            if task_id is not None and parsed["task_id"] != task_id:
+                return _result("untrusted_worker_result")
             status = parsed["status"]
             if not isinstance(status, str) or status not in VALID_RESULTS:
                 return _result("untrusted_worker_result")
             if parsed["execution_authorized"] is not False:
                 return _result("untrusted_worker_result")
+            if task_id is not None:
+                from .durable_queue import DurableQueue
+                state = DurableQueue(db).read(task_id)["status"]
+                expected = {
+                    "awaiting_human_review": "awaiting_human_review",
+                    "blocked": "blocked",
+                    "needs_review": "needs_review",
+                }
+                if state != expected.get(status):
+                    return _result("untrusted_worker_result")
             if "directory" in parsed:
                 dirname = parsed["directory"]
                 if not isinstance(dirname, str) or not dirname or len(dirname) > 4096:
