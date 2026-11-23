@@ -7,6 +7,7 @@ invocation by executing pinned llama.cpp and hash-verified Qwen weights.
 import argparse
 import hashlib
 import json
+import shutil
 from pathlib import Path
 import sys
 
@@ -107,14 +108,46 @@ def inspect(result_file, output_root):
     }
 
 
+def export_reviewed(result_file, output_root, destination):
+    """Export only the verified package and two sanitized review receipts."""
+    summary = inspect(result_file, output_root)
+    result = _read_json(Path(result_file), 4096)
+    work = Path(result["directory"])
+    destination = Path(destination)
+    if (destination.exists() or destination.is_symlink()
+            or destination.parent.is_symlink()
+            or not destination.parent.is_dir()):
+        raise ValueError("review export must be a fresh trusted directory")
+    # All paths were validated by inspect; revalidate the digest before export.
+    artifact = work / "candidate.pyz"
+    if artifact.is_symlink() or hashlib.sha256(artifact.read_bytes()).hexdigest() != summary["artifact_sha256"]:
+        raise ValueError("model artifact changed after evidence verification")
+    destination.mkdir(mode=0o700)
+    try:
+        for name in ("candidate.pyz", "review.json"):
+            src = work / name
+            if src.is_symlink() or not src.is_file():
+                raise ValueError("untrusted review source")
+            shutil.copyfile(src, destination / name)
+        (destination / "model_receipt.json").write_text(
+            json.dumps(summary, sort_keys=True, indent=2) + "\n", encoding="utf-8"
+        )
+    except Exception:
+        shutil.rmtree(destination)
+        raise
+    return summary
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--result", type=Path, required=True)
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--summary", type=Path, required=True)
+    parser.add_argument("--export-dir", type=Path, help="Export verified synthetic artifact for independent human review")
     args = parser.parse_args(argv)
     try:
-        summary = inspect(args.result, args.root)
+        summary = (export_reviewed(args.result, args.root, args.export_dir)
+                   if args.export_dir else inspect(args.result, args.root))
         if args.summary.is_symlink() or not args.summary.parent.is_dir():
             raise ValueError("invalid evidence target")
         args.summary.write_text(json.dumps(summary, sort_keys=True, indent=2) + "\n", encoding="utf-8")
