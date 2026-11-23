@@ -163,6 +163,20 @@ class ProjectTests(unittest.TestCase):
         self.assertFalse((run / "candidate.pyz").exists())
         self.assertEqual(self.events(run)[-1]["role"], "security")
 
+    def test_reprompt_includes_unrelated_two_if_fewshot_without_hidden_cases(self):
+        from ai_factory import local_coder
+
+        prompt = local_coder.prompt_for(
+            "Count pending and needs_review labels",
+            [{"input": ["visible"], "expected": 0}],
+            feedback="BoolOp",
+        )
+        self.assertIn("if item == 'red':", prompt)
+        self.assertIn("if item == 'blue':", prompt)
+        self.assertIn("candidate was rejected", prompt)
+        self.assertNotIn("review_cases", prompt)
+        self.assertNotIn("secret-sentinel", prompt)
+
     def test_offline_prompt_withholds_review_examples(self):
         import tarfile
         from types import SimpleNamespace
