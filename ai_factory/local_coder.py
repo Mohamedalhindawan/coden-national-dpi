@@ -23,22 +23,48 @@ def extract_code(text):
     return (fenced.group(1) if fenced else text) + "\n"
 
 
-def generate(archive, model, description, cases, sandbox):
-    check_file(archive, CPU_SHA)
-    check_file(model, MODEL_SHA)
+def prompt_for(description, cases, feedback=None):
+    """Policy-bounded task prompt; never include hidden review cases or prior code."""
+    if feedback not in (None, "BoolOp"):
+        raise ValueError("unsupported offline candidate feedback")
     examples = "\n".join(
         f"assert transform({c['input']!r}) == {c['expected']!r}" for c in cases
     )
-    prompt = (
-        "<|im_start|>system\nReturn only Python source for a single function called "
-        "transform(value). No explanation, annotations, imports or helpers. Use simple "
-        "builtins, loops and dictionaries. The caller already decodes input and encodes output. "
-        "Return the native Python value directly. Do not call json.loads or json.dumps.<|im_end|>\n<|im_start|>user\n"
+    rules = (
+        "Return only Python code completing the EXISTING def transform(value): header. "
+        "Write an indented function body, not a repeated function definition. "
+        "No explanation, markdown, imports, helpers, or annotations. "
+        "Allowed: assignments, integer increments, for loops, independent if statements, "
+        "equality ==, simple builtin len and dict.get if required, and return. "
+        "Do NOT use boolean 'or' or 'and': BoolOp is forbidden by the AST safety gate. "
+        "Do NOT use comprehensions, generators, membership comparisons such as "
+        "if status in (...), lambda, any(), or all(). "
+        "For multiple labels, compare them using TWO SEPARATE IF statements, "
+        "each with its own == condition and increment; never combine conditions. "
+        "In a for loop, the required word 'in' is allowed. "
+        "The caller already parses JSON and serializes the native Python return value."
+    )
+    if feedback == "BoolOp":
+        rules += (
+            " The FIRST generated candidate was rejected by the AST safety policy "
+            "for a BoolOp node. Generate a fresh body, not a patch. "
+            "A combined if condition using 'or' or 'and' is invalid. "
+            "Use two distinct if statements with simple == comparisons."
+        )
+    return (
+        "<|im_start|>system\n" + rules
+        + "<|im_end|>\n<|im_start|>user\n"
         + description
-        + "\nThe function must pass these Python assertions:\n"
+        + "\nThe function must pass these public Python assertions:\n"
         + examples
         + "<|im_end|>\n<|im_start|>assistant\n```python\ndef transform(value):\n"
     )
+
+
+def generate(archive, model, description, cases, sandbox, *, feedback=None):
+    check_file(archive, CPU_SHA)
+    check_file(model, MODEL_SHA)
+    prompt = prompt_for(description, cases, feedback)
     with tempfile.TemporaryDirectory() as temp:
         with tarfile.open(archive) as bundle:
             bundle.extractall(temp, filter="data")
