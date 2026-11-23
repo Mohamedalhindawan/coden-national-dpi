@@ -185,7 +185,7 @@ class RealQwenPrivateServerAdmissionTests(unittest.TestCase):
             "qwen2.5-coder-0.5b-instruct-q4_k_m.gguf",
             "docker network create --internal",
             "docker build", "docker inspect", "docker exec",
-            "dpkg-deb -x", "ldd /opt/llama/llama-server", "docker logs",
+            "dpkg-deb -x", "--entrypoint=/usr/bin/ldd", "docker logs",
             "http://ollama:11434/health", "http://ollama:11434/completion",
             "tokens_predicted", "actual_real_qwen_completion_verified",
             "http://1.1.1.1/", "http://example.com/",

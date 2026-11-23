@@ -11,7 +11,7 @@ LABEL org.coden.llama_archive_sha256="da524c71f9dd09913df29264bb7229b99a2de82d8a
 COPY --chown=65534:65534 llama-b12600/ /opt/llama/
 COPY --chown=65534:65534 qwen-model.gguf /opt/model.gguf
 # Exact verified Ubuntu security runtime .debs extracted on the host.
-# No unpinned apt-get or build-stage network access.
+# No unpinned package manager invocations or build-stage network access.
 COPY --chown=65534:65534 runtime-libs/usr/lib/x86_64-linux-gnu/ /opt/runtime-libs/
 ENV LD_LIBRARY_PATH=/opt/llama:/opt/runtime-libs
 USER 65534:65534
