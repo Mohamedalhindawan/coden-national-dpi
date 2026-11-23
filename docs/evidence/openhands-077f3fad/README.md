@@ -24,9 +24,22 @@ The release tag v1.63.1 resolves to `722e5d403cf75d4e032b79296cfaf178f8678a93`. 
 | Python OpenHands package lookup | Absent |
 | Anonymous HTTPS request to ghcr.io/v2/ | Timed out, HTTP 000 |
 
-## Resume boundary
+## Executed checks on GitHub-hosted public runners
 
-1. Review the PR's manifest-inspection job. Record its outcome separately from the host observations. If the commit-derived image has no verifiable producer/source binding, select an auditable image build from the pinned commit. Preserve the index and architecture-specific digest, signed build evidence, actual image SBOM, licenses and vulnerability findings before admission.
-2. On the selected rootless runner verify actual agent-server and child cgroups, CPU, RAM, PIDs, disk/inodes, wall time, cleanup, mount and secret boundaries. Prove authenticated access to the model and deny other egress. #173–175 concern different workloads.
-3. Once gates pass, use #149 for one official Conversation against Qwen. Capture sanitized trace and export. Apply #148's independent verifier. Its current exact contract is app/logic.py, tests/test_logic.py, README.md; a requirement for three code files needs a new reviewed contract before the run.
-4. This checkpoint has no agent output, test result for a generated candidate, release authorization or production approval.
+A separate [rootless Podman probe](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/45275067691) verified cgroup v2 delegation, half a CPU, 64 MiB RAM and 16 PIDs on a synthetic non-root BusyBox workload. Its child shared the parent's cgroup, had zero effective capabilities and no-new-privileges; the container had loopback only and no system Docker socket. This measures a different workload from the official agent. The default Docker daemon in the metadata job reported rootless=false. The [prototype contract job](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/45275067689) is independent of both image gates.
+
+The source CycloneDX inventory passed the official CycloneDX 1.5 JSON schema. Syft generated the **separate image SPDX inventories** below. Both image artifacts and the Qwen receipt were downloaded, SHA-256 checked and archived here to survive expiration of the CI artifacts. No image was executed during scanning.
+
+| Upstream Python candidate | linux/amd64 manifest SHA-256 | SPDX packages | Missing/unknown declared license | HIGH findings |
+| --- | --- | ---: | ---: | ---: |
+| Default | 2674cd2659e626452ac46a76fe71aded046311210c7e0cc6ffcb194668037506 | 3,292 | 2,150 | 10 via SBOM scan |
+| Minimal | 9a36355fa2baacaae1c6dd5a1a80492bba89d1dec5a536af572ba5fb3e96e22f | 280 | 10 | 124 via direct image scan |
+
+- [Default scan](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/45274550368) and [full-image-review.zip](full-image-review.zip), archive SHA-256 `0b53fa311bed1765915569ad578b6c3b7ced5943d3507d98f65a48e07702f28d`. Trivy reported OS family none when consuming the SPDX, so these results do not cover OS vulnerabilities. The HIGH records concerned embedded Go dependencies of container tooling. Two docker/docker records had no reported fixed version.
+- To address those findings we evaluated the official minimal variant from the same pinned source; its build definition omits the additional container capabilities. [Direct scan](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/45275067686) and [minimal-image-review.zip](minimal-image-review.zip), archive SHA-256 `6b773af239eb96921e17e329ce99a3c33e1dcd35a8afe9eef2570156b7d8c843`. Trivy recognized Debian 13.7. All 124 HIGH records are OS-package findings covering 36 advisory IDs; 68 records have no fixed version listed by this scan. The raw report contains available fix versions per package. The different scan scopes prevent direct comparison of finding counts. Neither scan establishes coverage of all dependencies bundled into the agent binary.
+- [qwen-pr175-receipt.zip](qwen-pr175-receipt.zip), SHA-256 `a3f6a57cad76ed684e5d4ee22bab2ec4a51eefb01ce8b093ae95806eb93364f1`. Original receipt reports eight predicted tokens, zero paid calls, and no official OpenHands session. No inference replay.
+- The PR shows two failed image admission gates on their respective revisions. The scanners completed and uploaded evidence before admission rejected their results. No severity suppression or release approval.
+
+## Runtime handoff under issue #162
+
+Start with the minimal image report. Rebuild or obtain a patched, provenance-verifiable image, rescan its new digest and resolve outstanding license and bundled-binary coverage. Confirm actual process and child limits, disk/inodes, secrets, cleanup and authenticated local-only model communication in the selected agent runtime. The current bridge only accepts an Ollama provider name; #175 exercised llama.cpp /completion. Prove authenticated chat/tool compatibility before starting a session. #148 currently accepts one Python implementation, a Python test and a README. A three-code-file task requires an independently reviewed candidate contract. No agent-created source was produced or tested, and issue #162 remains open.
