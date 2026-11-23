@@ -4,6 +4,7 @@ Never return generated Python, prompts, paths, event details or exception messag
 This is diagnostic metadata only and does not prove inference succeeded.
 """
 import argparse
+import ast
 import json
 from pathlib import Path
 
@@ -17,6 +18,39 @@ ERROR_TYPES = frozenset({
     "RecursionError", "ArithmeticError", "TimeoutExpired",
     "ImportError", "CalledProcessError", "SubprocessError",
 })
+
+
+
+def _security_hint(work: Path):
+    """Classify an AST rejection without running or exposing generated source."""
+    program = work / "program.py"
+    try:
+        if (program.is_symlink() or not program.is_file()
+                or program.stat().st_size > 32768):
+            return None
+        parsed = ast.parse(program.read_text(encoding="utf-8"))
+        # project.py appends its own fixed __main__ block after generated transform.
+        if (len(parsed.body) != 2
+                or not isinstance(parsed.body[0], ast.FunctionDef)
+                or not isinstance(parsed.body[1], ast.If)):
+            return "unexpected_source_layout"
+        from .project import inspect_source
+
+        try:
+            inspect_source(ast.unparse(parsed.body[0]))
+        except ValueError as exc:
+            return {
+                "unsupported syntax": "unsupported_syntax",
+                "expected a single function": "unexpected_source_layout",
+                "expected transform(value)": "wrong_interface",
+                "source AST exceeds policy limits": "ast_limit",
+                "private name": "private_name",
+                "unsupported attribute": "unsupported_attribute",
+                "unsupported call": "unsupported_call",
+            }.get(str(exc), "ast_validation_failure")
+        return "lint_or_other"
+    except (OSError, ValueError, SyntaxError, UnicodeError, RecursionError):
+        return None
 
 
 def summarize(result_path: Path, output_root: Path) -> dict:
@@ -57,7 +91,12 @@ def summarize(result_path: Path, output_root: Path) -> dict:
         error = last.get("error")
         if error not in ERROR_TYPES:
             return dict(UNAVAILABLE)
-        return {"status": "failed", "stage": role, "error_type": error}
+        summary = {"status": "failed", "stage": role, "error_type": error}
+        if role == "security" and error == "ValueError":
+            hint = _security_hint(work)
+            if hint is not None:
+                summary["security_hint"] = hint
+        return summary
     except (OSError, UnicodeError, ValueError, TypeError, json.JSONDecodeError):
         return dict(UNAVAILABLE)
 
