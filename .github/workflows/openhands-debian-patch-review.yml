@@ -1,0 +1,72 @@
+name: OpenHands Debian patch availability
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/openhands-debian-patch-review.yml'
+      - 'scripts/openhands_debian_patch_check.py'
+permissions:
+  contents: read
+jobs:
+  verify-packages:
+    if: github.event.repository.private == false && github.head_ref == 'audit/openhands-debian-repair' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      IMAGE: ghcr.io/openhands/agent-server@sha256:9a36355fa2baacaae1c6dd5a1a80492bba89d1dec5a536af572ba5fb3e96e22f
+      LC_ALL: C
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Read original dpkg status without starting the image
+        run: |
+          set -euo pipefail
+          mkdir -p apt-review/{lists/partial,cache/archives/partial,empty}
+          docker pull --platform linux/amd64 "$IMAGE"
+          id=$(docker create --network none --entrypoint /bin/false "$IMAGE")
+          trap 'docker rm "$id" >/dev/null' EXIT
+          docker cp "$id:/var/lib/dpkg/status" apt-review/status
+          test -s apt-review/status
+          test "$(docker inspect -f '{{.State.Status}}' "$id")" = created
+      - name: Authenticate Debian 13 metadata in an isolated APT directory
+        run: |
+          set -euo pipefail
+          dir="$PWD/apt-review"
+          for pair in 'archive-key-13 04B54C3CDCA79751B16BC6B5225629DF75B188BD' 'archive-key-13-security 5E04A1E3223A19A20706E20F9904613D4CCE68C6'; do
+            read -r name expected <<< "$pair"
+            curl -fsSL --proto '=https' "https://ftp-master.debian.org/keys/$name.asc" -o "$dir/$name.asc"
+            actual=$(gpg --batch --show-keys --with-colons "$dir/$name.asc" | awk -F: '$1=="pub"{want=1} $1=="fpr" && want{print $10;want=0}')
+            test "$actual" = "$expected"
+          done
+          echo "deb [arch=amd64 signed-by=$dir/archive-key-13.asc] https://deb.debian.org/debian trixie main" > "$dir/sources.list"
+          echo "deb [arch=amd64 signed-by=$dir/archive-key-13.asc] https://deb.debian.org/debian trixie-updates main" >> "$dir/sources.list"
+          echo "deb [arch=amd64 signed-by=$dir/archive-key-13-security.asc] https://deb.debian.org/debian-security trixie-security main" >> "$dir/sources.list"
+          cat > "$dir/apt.conf" <<CONF
+          Dir::Etc::parts "$dir/empty";
+          Dir::Etc::main "/dev/null";
+          Dir::Etc::sourcelist "$dir/sources.list";
+          Dir::Etc::sourceparts "$dir/empty";
+          Dir::Etc::preferences "/dev/null";
+          Dir::Etc::preferencesparts "$dir/empty";
+          Dir::State "$dir";
+          Dir::State::status "$dir/status";
+          Dir::State::lists "$dir/lists";
+          Dir::Cache "$dir/cache";
+          Dir::Cache::archives "$dir/cache/archives";
+          APT::Architecture "amd64";
+          APT::Install-Recommends "false";
+          APT::Update::Error-Mode "any";
+          CONF
+          export APT_CONFIG="$dir/apt.conf"
+          apt-get update
+          python3 scripts/openhands_debian_patch_check.py
+          sha256sum "$dir"/lists/*InRelease > signed-index-hashes.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: debian-patch-review
+          path: |
+            patch-review.json
+            solver.txt
+            signed-index-hashes.txt
+          if-no-files-found: error
+          retention-days: 14
