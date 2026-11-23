@@ -58,6 +58,13 @@ def _queue_rows(db_path):
 
 
 def _evaluate(queue_state, journal_state):
+    if queue_state == "cancelled" and journal_state == "prepared":
+        # Operator cancelled before any successful claim or execution.
+        return "consistent_cancelled_before_start"
+    if queue_state == "cancel_requested":
+        # The process may still be alive, even after its leader was reaped.
+        # Retain a human review requirement; never certify fully cancelled.
+        return "cancel_stop_reconciliation_required"
     if queue_state == "needs_review":
         return "manual_review_required"
     if queue_state == "queued" and journal_state == "prepared":
@@ -115,7 +122,8 @@ def scan(queue_db, journal_dir, task_dir=None):
             "journal_status": journal_status,
             "condition": condition,
             "needs_attention": condition not in
-                ("consistent_queued", "consistent_review", "consistent_blocked"),
+                ("consistent_queued", "consistent_review", "consistent_blocked",
+                 "consistent_cancelled_before_start"),
             "execution_authorized": False,
             "safe_to_auto_retry": False,
         })
