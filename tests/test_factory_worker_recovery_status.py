@@ -48,7 +48,7 @@ class WorkerRecoveryReadOnlyTests(unittest.TestCase):
         self.assertEqual(report["leased_expired_pending_review"], 1)
         self.assertEqual(report["needs_review_quarantined"], 1)
         self.assertEqual(report["manual_attention_total"], 2)
-        self.assertEqual(report["cancellation_support"], "NOT_IMPLEMENTED")
+        self.assertEqual(report["cancellation_support"], "REQUEST_ONLY_NO_PROCESS_TERMINATION")
         self.assertEqual(report["qwen_candidate_status"], "QUARANTINED_NOT_EXECUTED")
         self.assertFalse(report["automatic_retry_authorized"])
         self.assertFalse(report["queue_modified"])

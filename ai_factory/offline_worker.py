@@ -152,6 +152,8 @@ def main(argv=None):
     once.add_argument("--output-root", type=Path, required=True)
     once.add_argument("--worker-id", default="offline_operator")
     once.add_argument("--lease-seconds", type=int, default=300)
+    cancel = modes.add_parser("request-cancel", help="Operator-only request; never kill/retry running code")
+    cancel.add_argument("task_id")
     modes.add_parser("inspect-expired", help="Quarantine expired leases, never replay")
     args = parser.parse_args(argv)
     try:
@@ -161,6 +163,8 @@ def main(argv=None):
         elif args.command == "work-once":
             output = work_once(q, args.journal, args.task_dir, args.output_root,
                                worker_id=args.worker_id, lease_seconds=args.lease_seconds)
+        elif args.command == "request-cancel":
+            output = q.request_cancel(args.task_id)
         else:
             output = {"quarantined": q.recover_expired(), "execution_authorized": False}
     except (OSError, ValueError, TypeError) as exc:

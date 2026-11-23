@@ -4,8 +4,8 @@ No generated candidate source is imported or executed here. Source was
 independently reviewed after the real Qwen task #169, but that candidate
 is QUARANTINED, not approved or silently promoted.
 
-This report CANNOT cancel/retry/recover leases; the DurableQueue writer is the
-ONLY owner of state transitions. Fail closed on invalid/unknown task statuses.
+This report CANNOT request cancellation, retry, or recover leases; the DurableQueue writer is the
+ONLY owner of state transitions. Cancellation requests do NOT terminate processes. Fail closed on invalid/unknown task statuses.
 """
 import argparse
 from contextlib import closing
@@ -22,7 +22,7 @@ import time
 MAX_DATABASE_BYTES = 64 * 1024 * 1024
 MAX_ROWS = 10_000
 STATUSES = frozenset({
-    "queued", "leased", "needs_review", "awaiting_human_review", "blocked", "failed"
+    "queued", "leased", "cancel_requested", "cancelled", "needs_review", "awaiting_human_review", "blocked", "failed"
 })
 REQUIRED_COLUMNS = frozenset({
     "task_id", "status", "lease_token", "lease_until"
@@ -90,20 +90,28 @@ def snapshot(path, *, now=None):
             counts = {s: 0 for s in STATUSES}
             active = 0
             expired = 0
+            cancel_active = 0
+            cancel_expired = 0
             for row in rows:
                 state, until, token = row["status"], row["lease_until"], row["lease_token"]
                 if not isinstance(state, str) or state not in STATUSES:
                     raise ValueError("unrecognized queue state; fail closed")
-                if state == "leased":
+                if state in ("leased", "cancel_requested"):
                     if (type(until) not in (int, float) or
                             not math.isfinite(until) or until < 0 or
                             not isinstance(token, str) or
                             LEASE_TOKEN.fullmatch(token) is None):
                         raise ValueError("invalid leased task metadata")
                     if until < stamp:
-                        expired += 1
+                        if state == "leased":
+                            expired += 1
+                        else:
+                            cancel_expired += 1
                     else:
-                        active += 1
+                        if state == "leased":
+                            active += 1
+                        else:
+                            cancel_active += 1
                 elif token is not None or until is not None:
                     raise ValueError("unexpected lease secrets outside active lease")
                 counts[state] += 1
@@ -118,11 +126,17 @@ def snapshot(path, *, now=None):
             "leased_active": active,
             "leased_expired_pending_review": expired,
             "needs_review_quarantined": counts["needs_review"],
-            "manual_attention_total": expired + counts["needs_review"],
+            "cancelled_before_start": counts["cancelled"],
+            "cancel_requested_active": cancel_active,
+            "cancel_requested_expired": cancel_expired,
+            "manual_attention_total": (
+                expired + counts["needs_review"] + cancel_active + cancel_expired
+            ),
             "awaiting_human_review": counts["awaiting_human_review"],
             "blocked": counts["blocked"],
             "failed": counts["failed"],
-            "cancellation_support": "NOT_IMPLEMENTED",
+            "cancellation_support": "REQUEST_ONLY_NO_PROCESS_TERMINATION",
+            "cancellation_process_termination_verified": False,
             "qwen_candidate_status": "QUARANTINED_NOT_EXECUTED",
             "model_code_executed": False,
             "queue_modified": False,
