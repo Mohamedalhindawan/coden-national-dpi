@@ -108,7 +108,7 @@ class FactoryCandidatePinsTests(unittest.TestCase):
 
     def test_staged_file_git_blob_hash_matches_record_and_reports_sha256(self):
         payload = b"safe synthetic source text for integrity check\n"
-        blob = hashlib.sha1(b"blob " + str(len(payload)).encode() + b"\\0" + payload).hexdigest()
+        blob = hashlib.sha1(b"blob " + str(len(payload)).encode() + b"\0" + payload).hexdigest()
         with tempfile.TemporaryDirectory() as temp:
             file = Path(temp) / "source.txt"
             file.write_bytes(payload)
@@ -122,7 +122,7 @@ class FactoryCandidatePinsTests(unittest.TestCase):
 
     def test_staged_file_blocks_symlinks_and_oversize_inputs(self):
         payload = b"safe"
-        blob = hashlib.sha1(b"blob " + str(len(payload)).encode() + b"\\0" + payload).hexdigest()
+        blob = hashlib.sha1(b"blob " + str(len(payload)).encode() + b"\0" + payload).hexdigest()
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             file = root / "source.txt"
