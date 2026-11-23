@@ -78,7 +78,7 @@ jobs:
             > "$RUNNER_TEMP/coden-result.json"; then
             echo "Candidate passed initial model and sandbox gates; human review remains mandatory."
           else
-            # Print ONLY allowlisted stage and exception class; no prompts or generated source.
+            # Fail-closed; report only stage, exception class and allowlisted AST hint (never code).
             python -m ai_factory.factory_failure_diagnostic \
               --result "$RUNNER_TEMP/coden-result.json" \
               --root "$RUNNER_TEMP/coden-model-run"
