@@ -66,6 +66,15 @@ class Factory72RegistryTests(unittest.TestCase):
         self.assertEqual(items["Hermes Self-Evolution"]["priority"], "P2")
         self.assertNotIn("valorisa/FreeLLMAPI", [x["upstream_repo"] for x in self.items])
 
+    def test_audited_upstream_links_and_file_case(self):
+        by_id = {row["id"]: row for row in self.items}
+        self.assertEqual(by_id["source-055"]["upstream_repo"], "gvisor/gvisor")
+        self.assertEqual(by_id["source-055"]["source_url"], "https://github.com/gvisor/gvisor")
+        self.assertEqual(
+            by_id["source-062"]["source_url"],
+            "https://github.com/renovatebot/renovate/blob/HEAD/readme.md",
+        )
+
     def test_query_is_read_only_and_does_not_promote(self):
         p0 = adopt_first_registry.select(self.items, priority="P0")
         self.assertEqual(len(p0), 23)
