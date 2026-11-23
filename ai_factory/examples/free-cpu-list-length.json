@@ -1,0 +1,44 @@
+{
+  "id": "FREE-CPU-LIST-LENGTH",
+  "title": "Synthetic list-length transform from a real CPU model",
+  "description": "Return the number of elements of the input JSON list as an integer. Implement only def transform(value): and use the built-in len(value). No imports or helpers.",
+  "data_classification": "synthetic",
+  "requested_actions": [
+    "run_tests"
+  ],
+  "estimated_cost_usd": 0,
+  "recipe": "python-transform",
+  "cases": [
+    {
+      "input": [],
+      "expected": 0
+    },
+    {
+      "input": [
+        "alpha",
+        "beta",
+        "gamma"
+      ],
+      "expected": 3
+    }
+  ],
+  "review_cases": [
+    {
+      "input": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "expected": 5
+    },
+    {
+      "input": [
+        "تجريبي",
+        "demo"
+      ],
+      "expected": 2
+    }
+  ]
+}

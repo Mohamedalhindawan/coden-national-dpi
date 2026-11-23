@@ -1,0 +1,96 @@
+name: CODEN Free CPU Real Model Trial
+
+# Only the manually named, first-party Draft PR runs the large one-off CPU
+# inference job when this workflow itself changes; never a public fork PR.
+# This job cannot consume model APIs, stored secrets or paid GPU runners.
+on:
+  pull_request:
+    types: [synchronize]
+    paths:
+      - .github/workflows/factory-free-cpu-pilot.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-cpu-model:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'feat/factory-free-cpu-real-inference-20261123' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-22.04
+    timeout-minutes: 12
+    env:
+      CODEN_REQUIRE_SANDBOX: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout unprivileged synthetic-only working tree
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Set up Python runtime
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Prepare pinned bubblewrap sandbox and static lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --require-hashes --no-deps --only-binary=:all: -r ai_factory/locks/review-linux-x86_64.txt -r ai_factory/locks/ci-build.txt
+          cd "$RUNNER_TEMP"
+          curl --fail --silent --show-error --location --retry 2 --connect-timeout 10 -o bubblewrap.tar.xz https://github.com/containers/bubblewrap/releases/download/v0.12.0/bubblewrap-0.12.0.tar.xz
+          echo "9760d007363e3abba7c747489910f9f82d9fca53ba3bd3282e396fa3c97a3314  bubblewrap.tar.xz" | sha256sum --check
+          curl --fail --silent --show-error --location --retry 2 --connect-timeout 10 -o libcap.deb https://security.ubuntu.com/ubuntu/pool/main/libc/libcap2/libcap-dev_2.44-1ubuntu0.22.04.3_amd64.deb
+          echo "5c733a6f0d9e438763ab123e15b26113efc391ced3a785e20e8723c5b354aefc  libcap.deb" | sha256sum --check
+          dpkg-deb -x libcap.deb headers
+          export PKG_CONFIG_PATH="$PWD/headers/usr/lib/x86_64-linux-gnu/pkgconfig"
+          export CFLAGS="-I$PWD/headers/usr/include"
+          export LDFLAGS="-L$PWD/headers/usr/lib/x86_64-linux-gnu"
+          tar -xf bubblewrap.tar.xz
+          meson setup bwrap-build bubblewrap-0.12.0 -Dman=disabled -Dselinux=disabled -Dtests=false -Dbash_completion=disabled -Dzsh_completion=disabled --wrap-mode=nodownload
+          meson compile -C bwrap-build bwrap
+          echo "$RUNNER_TEMP/bwrap-build" >> "$GITHUB_PATH"
+      - name: Fetch official hash-pinned llama.cpp and Qwen GGUF
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          # This is a public GitHub release, not an install shell script.
+          curl --fail --silent --show-error --location --retry 2 --connect-timeout 10 --max-time 120 \
+            -o llama-b12600-bin-ubuntu-x64.tar.gz \
+            https://github.com/ggml-org/llama.cpp/releases/download/b12600/llama-b12600-bin-ubuntu-x64.tar.gz
+          echo "da524c71f9dd09913df29264bb7229b99a2de82d8a26e6902e6921d413560d6d  llama-b12600-bin-ubuntu-x64.tar.gz" | sha256sum --check
+          # Exact immutable model revision, SHA matches ai_factory/local_coder.py.
+          curl --fail --silent --show-error --location --retry 2 --connect-timeout 15 --max-time 240 \
+            -o qwen2.5-coder-0.5b-instruct-q4_k_m.gguf \
+            "https://huggingface.co/Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF/resolve/ebb2015119c907b064c512bf053e945850b5875f/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf?download=true"
+          echo "1d9614638d18024d0fbb36575a15f1302a3adf044df10345688ec4f6e1c4ff32  qwen2.5-coder-0.5b-instruct-q4_k_m.gguf" | sha256sum --check
+      - name: Invoke REAL model once inside Linux network-isolated sandbox
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/coden-model-run"
+          python -m ai_factory.project \
+            --task ai_factory/examples/free-cpu-list-length.json \
+            --local-model "$RUNNER_TEMP/llama-b12600-bin-ubuntu-x64.tar.gz" "$RUNNER_TEMP/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf" \
+            --output "$RUNNER_TEMP/coden-model-run" \
+            > "$RUNNER_TEMP/coden-result.json"
+      - name: Validate held-out cases and sanitized, unapproved evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m ai_factory.free_cpu_receipt \
+            --result "$RUNNER_TEMP/coden-result.json" \
+            --root "$RUNNER_TEMP/coden-model-run" \
+            --summary "$RUNNER_TEMP/coden-model-summary.json" \
+            --export-dir "$RUNNER_TEMP/coden-reviewed-artifact"
+          echo "## Synthetic CPU inference receipt (release not authorized)" >> "$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/coden-model-summary.json" >> "$GITHUB_STEP_SUMMARY"
+      - name: Retain checked synthetic source package for HUMAN review
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coden-qwen-0_5b-synthetic-reviewed-package
+          path: ${{ runner.temp }}/coden-reviewed-artifact/
+          if-no-files-found: error
+          retention-days: 7
