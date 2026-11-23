@@ -1,0 +1,120 @@
+"""TDD contract: query all 84 source candidates safely INSIDE CODEN ai_factory.
+
+This is a read-only union of the existing 72 catalog, R29's 12, and the
+dated availability snapshot. Passing does NOT approve or install 84 tools.
+"""
+import copy
+import json
+from collections import Counter
+from pathlib import Path
+import unittest
+
+from ai_factory import factory_84_registry
+
+ROOT = Path(__file__).resolve().parents[1] / "configs"
+
+
+def fixture(name):
+    return json.loads((ROOT / name).read_text(encoding="utf-8"))
+
+
+class Factory84UnifiedRegistryTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.base = fixture("factory_72_adopt_first.json")
+        cls.r29 = fixture("factory_r29_only_requirements.json")
+        cls.audit = fixture("factory_84_source_availability_audit_2026-11-23.json")
+
+    def test_full_84_registry_is_indexed_without_installing_anything(self):
+        rows = factory_84_registry.load()
+        self.assertEqual(len(rows), 84)
+        self.assertEqual(len({x["id"] for x in rows}), 84)
+        self.assertEqual(len({x["upstream_repo"].casefold() for x in rows}), 76)
+        self.assertEqual(
+            dict(Counter(x["priority"] for x in rows)),
+            {"P0": 26, "P1": 39, "P2": 19},
+        )
+        self.assertEqual([x["id"] for x in rows[:72]],
+                         [f"source-{i:03d}" for i in range(1, 73)])
+        self.assertEqual([x["id"] for x in rows[72:]],
+                         [f"r29-{i:02d}" for i in range(1, 13)])
+        for item in rows:
+            self.assertEqual(item["admission"], "proposed_only")
+            self.assertFalse(item["enabled"])
+            self.assertFalse(item["approved"])
+            self.assertFalse(item["installed"])
+            self.assertIsNone(item["pinned_commit"])
+            self.assertEqual(item["license_review"], "pending")
+            self.assertEqual(item["security_review"], "pending")
+            self.assertTrue(item["source_url"].startswith("https://github.com/"))
+
+    def test_requirement_links_come_from_existing_r29_and_not_invention(self):
+        rows = factory_84_registry.load()
+        source_map = {x["id"]: x for x in rows}
+        self.assertIn("ADD-13", source_map["r29-03"]["required_by"])
+        self.assertIn("ADD-13", source_map["source-001"]["required_by"])
+        self.assertEqual(source_map["r29-03"]["wave"], "W2")
+        self.assertIn("W1", source_map["r29-03"]["requirement_waves"])
+        self.assertEqual(source_map["source-001"]["wave"], None)
+        self.assertEqual(len(self.r29["requirements"]), 47)
+
+    def test_explicitly_requested_upstreams_are_present_and_disabled(self):
+        rows = factory_84_registry.load()
+        repos = {x["upstream_repo"] for x in rows}
+        for name in (
+            "NousResearch/hermes-agent", "NousResearch/hermes-agent-self-evolution",
+            "cheaper-inference/OmniRoute", "tashfeenahmed/freellmapi",
+            "devcontainers/templates", "fastapi/full-stack-fastapi-template",
+            "SWE-bench/SWE-bench", "sigstore/rekor",
+        ):
+            self.assertIn(name, repos)
+        self.assertEqual(len(factory_84_registry.select(rows, priority="P0")), 26)
+        self.assertEqual(len(factory_84_registry.select(rows, requires="ADD-13")), 4)
+
+    def test_query_by_source_id_name_requirement_and_wave(self):
+        rows = factory_84_registry.load()
+        self.assertEqual(factory_84_registry.select(rows, source_id="r29-03")[0]["upstream_repo"],
+                         "fastapi/full-stack-fastapi-template")
+        self.assertEqual(len(factory_84_registry.select(rows, text="freellmapi")), 1)
+        self.assertGreater(len(factory_84_registry.select(rows, wave="W0")), 0)
+        with self.assertRaises(ValueError):
+            factory_84_registry.select(rows, wave="W9")
+        with self.assertRaises(ValueError):
+            factory_84_registry.select(rows, requires="ADD-99")
+        with self.assertRaises(ValueError):
+            factory_84_registry.select(rows, source_id="../credentials")
+
+    def test_rejects_admission_tamper_and_snapshot_drift(self):
+        cases = [
+            ("base", "candidates", 0, "enabled", True),
+            ("base", "candidates", 0, "pinned_commit", "abc"),
+            ("r29", "extra_sources", 0, "installed", True),
+            ("r29", "extra_sources", 1, "approved", True),
+            ("audit", "entries", 0, "enabled", True),
+            ("audit", "entries", 0, "url", "https://elsewhere.example/remote.py"),
+        ]
+        for section, key, number, field, value in cases:
+            with self.subTest(section=section, field=field):
+                data = {name: copy.deepcopy(getattr(self, name))
+                        for name in ("base", "r29", "audit")}
+                data[section][key][number][field] = value
+                with self.assertRaises(ValueError):
+                    factory_84_registry.build_view(
+                        data["base"], data["r29"], data["audit"]
+                    )
+
+    def test_cannot_hide_new_or_missing_sources(self):
+        data = {name: copy.deepcopy(getattr(self, name))
+                for name in ("base", "r29", "audit")}
+        data["audit"]["entries"].pop()
+        with self.assertRaises(ValueError):
+            factory_84_registry.build_view(data["base"], data["r29"], data["audit"])
+        data = {name: copy.deepcopy(getattr(self, name))
+                for name in ("base", "r29", "audit")}
+        data["audit"]["source_enabled_by_this_audit"] = 1
+        with self.assertRaises(ValueError):
+            factory_84_registry.build_view(data["base"], data["r29"], data["audit"])
+
+
+if __name__ == "__main__":
+    unittest.main()
