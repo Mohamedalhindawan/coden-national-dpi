@@ -55,13 +55,13 @@ class FailureDiagnosticTests(unittest.TestCase):
             work = root / "coden-project-synthetic"
             work.mkdir()
             (work / "events.jsonl").write_text(
-                json.dumps({"role": "security", "state": "failed", "error": "ValueError"}) + "\\n",
+                json.dumps({"role": "security", "state": "failed", "error": "ValueError"}) + "\n",
                 encoding="utf-8",
             )
             (work / "program.py").write_text(
-                "def transform(value):\\n"
-                "    return sum(1 for status in value if status in ('pending_review', 'needs_review'))\\n"
-                "\\nif __name__ == '__main__':\\n    pass\\n",
+                "def transform(value):\n"
+                "    return sum(1 for status in value if status in ('pending_review', 'needs_review'))\n"
+                "\nif __name__ == '__main__':\n    pass\n",
                 encoding="utf-8",
             )
             result = Path(temp) / "result.json"
