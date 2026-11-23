@@ -1,0 +1,59 @@
+{
+  "id": "CODEN-OSS-ADMISSION-BLOCKERS-02",
+  "title": "Develop a factory admission-review backlog metric for 84 open-source candidates",
+  "description": "Improve CODEN AI Factory's Adopt-First source admission review process. Given value, a list of synthetic source review flag strings, return one integer counting entries exactly equal to 'license_pending' or 'security_pending'. Count duplicate flags separately. Ignore 'approved', 'source_pinned', 'runtime_disabled', 'security_passed', empty strings and every other label. Start with count = 0, use a simple for flag in value loop, use TWO INDEPENDENT if statements, one with flag == 'license_pending', another with flag == 'security_pending', increment count for each exact match and then return count. Do not use boolean 'or'/'and', combined comparisons, comprehensions, membership comparisons, imports, helper functions, network, files or other services. Generate original Python source as only def transform(value):; do not return or hardcode the values of the examples. This only measures review backlog, it cannot admit or enable software.",
+  "data_classification": "synthetic",
+  "requested_actions": [
+    "run_tests"
+  ],
+  "estimated_cost_usd": 0,
+  "recipe": "python-transform",
+  "cases": [
+    {
+      "input": [],
+      "expected": 0
+    },
+    {
+      "input": [
+        "license_pending",
+        "approved",
+        "security_pending"
+      ],
+      "expected": 2
+    },
+    {
+      "input": [
+        "source_pinned",
+        "runtime_disabled",
+        "approved"
+      ],
+      "expected": 0
+    }
+  ],
+  "review_cases": [
+    {
+      "input": [
+        "license_pending",
+        "license_pending",
+        "security_pending",
+        "approved"
+      ],
+      "expected": 3
+    },
+    {
+      "input": [
+        "unknown",
+        "security_pending",
+        "license_pending",
+        "security_pending"
+      ],
+      "expected": 3
+    },
+    {
+      "input": [
+        "security_pending"
+      ],
+      "expected": 1
+    }
+  ]
+}
