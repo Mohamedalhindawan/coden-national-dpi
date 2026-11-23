@@ -90,6 +90,18 @@ class RealQwenPrivateServerAdmissionTests(unittest.TestCase):
         self.assertFalse(result["release_authorized"])
         self.assertEqual(result["paid_calls"], 0)
 
+    def test_inherited_ubuntu_oci_labels_are_known_and_strict(self):
+        net, client, server = _fixture()
+        server["Config"]["Labels"].update({
+            "org.opencontainers.image.ref.name": "ubuntu",
+            "org.opencontainers.image.version": "22.04",
+        })
+        self.assertEqual(adm.audit_pair(net, client, server)["state"],
+                         "REAL_QWEN_PRIVATE_NETWORK_INSPECT_PASS")
+        server["Config"]["Labels"]["unexpected.label"] = "unsafe"
+        with self.assertRaises(ValueError):
+            adm.audit_pair(net, client, server)
+
     def test_detects_no_privilege_increase_or_model_swap(self):
         cases = [
             (1, ("Config", "Image"), "busybox:latest"),

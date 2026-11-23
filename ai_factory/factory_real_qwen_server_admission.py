@@ -63,7 +63,18 @@ def _server_check(x, network_name, network_id):
     image = cfg.get("Image")
     _check(isinstance(image, str) and SERVER.fullmatch(image),
            "unapproved local image name")
-    _check(cfg.get("Labels") == LABELS, "unverified model/runtime provenance")
+    # Inherited Ubuntu Official OCI identity labels are harmless and pinned;
+    # no arbitrary additional labels or provenance swaps are accepted.
+    labels = cfg.get("Labels")
+    _check(isinstance(labels, dict), "missing model image labels")
+    official = {
+        "org.opencontainers.image.ref.name": "ubuntu",
+        "org.opencontainers.image.version": "22.04",
+    }
+    allowed = {**LABELS, **official}
+    _check(all(labels.get(k) == v for k, v in LABELS.items())
+           and all(k in allowed and allowed[k] == val for k, val in labels.items()),
+           "unverified model/runtime provenance")
     _check(cfg.get("User") == "65534:65534", "model root execution forbidden")
     env = cfg.get("Env")
     _check(isinstance(env, list) and 1 <= len(env) <= 3
@@ -241,7 +252,11 @@ def main(argv=None):
         with output.open("x", encoding="utf-8") as handle:
             json.dump(evidence, handle, sort_keys=True, indent=2)
             handle.write("\n")
-    except (OSError, TypeError, ValueError, KeyError, UnicodeError, json.JSONDecodeError):
+    except ValueError as exc:
+        # Fail closed; these errors are static policy names, not raw model data.
+        parser.exit(2, "REAL Qwen model/network evidence BLOCKED: "
+                    + str(exc)[:180] + "\\n")
+    except (OSError, TypeError, KeyError, UnicodeError, json.JSONDecodeError):
         parser.exit(2, "REAL Qwen model/network evidence BLOCKED\n")
     print(json.dumps({
         "real_model_completion_verified": True,
