@@ -109,6 +109,43 @@ jobs:
           assert record["status"] == "awaiting_human_review"
           print("PASS: new genuine Qwen admission metric, 3 visible + 3 withheld, no paid calls/release.")
           PY
+      - name: Sandbox stress-test ACTUAL generated zipapp against 84 synthetic sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from ai_factory import project
+          folder = Path(os.environ["RUNNER_TEMP"]) / "coden-reviewed-artifact"
+          summary = json.loads((folder / "model_receipt.json").read_text(encoding="utf-8"))
+          candidate = folder / "candidate.pyz"
+          assert project.digest(candidate) == summary["artifact_sha256"]
+          synthetic_flags = []
+          for _ in range(84):
+              synthetic_flags.extend((
+                  "license_pending", "security_pending", "source_pinned", "runtime_disabled",
+              ))
+          expected_blockers = 168
+          got = project.execute(candidate, synthetic_flags)
+          assert type(got) is int and got == expected_blockers, "sandboxed 84-source metric failed"
+          evidence = {
+              "kind": "synthetic_84_source_scale_test",
+              "source_entries_simulated": 84,
+              "flags_tested": len(synthetic_flags),
+              "expected_blockers": expected_blockers,
+              "actual_blockers": got,
+              "candidate_sha256": summary["artifact_sha256"],
+              "status": "passed",
+              "release_authorized": False,
+              "real_source_catalog_modified": False,
+          }
+          (folder / "synthetic-scale.json").write_text(
+              json.dumps(evidence, sort_keys=True, indent=2) + "\\n", encoding="utf-8"
+          )
+          print(json.dumps(evidence, sort_keys=True))
+          PY
       - name: Retain checked synthetic source package for HUMAN review
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
