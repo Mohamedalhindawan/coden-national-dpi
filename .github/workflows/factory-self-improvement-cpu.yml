@@ -71,11 +71,20 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/coden-model-run"
-          python -m ai_factory.project \
+          if python -m ai_factory.project \
             --task ai_factory/examples/factory-review-queue-metric.json \
             --local-model "$RUNNER_TEMP/llama-b12600-bin-ubuntu-x64.tar.gz" "$RUNNER_TEMP/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf" \
             --output "$RUNNER_TEMP/coden-model-run" \
-            > "$RUNNER_TEMP/coden-result.json"
+            > "$RUNNER_TEMP/coden-result.json"; then
+            echo "Candidate passed initial model and sandbox gates; human review remains mandatory."
+          else
+            # Print ONLY allowlisted stage and exception class; no prompts or generated source.
+            python -m ai_factory.factory_failure_diagnostic \
+              --result "$RUNNER_TEMP/coden-result.json" \
+              --root "$RUNNER_TEMP/coden-model-run"
+            echo "Model candidate failed; no reviewed package or release is authorized." >&2
+            exit 1
+          fi
       - name: Validate held-out cases and sanitized, unapproved evidence
         shell: bash
         run: |
