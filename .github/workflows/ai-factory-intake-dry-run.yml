@@ -56,6 +56,19 @@ jobs:
           assert all(not x["approved"] and not x["enabled"] and not x["installed"] for x in data["extra_sources"])
           print("PASS: R29 47 scoped requirements, 12 proposed source gaps, no new installations, no spending.")
           PY
+      - name: Verify 11 immutable critical source snapshots (no install)
+        shell: bash
+        run: |
+          python -m ai_factory.factory_source_locks
+          python - <<'PY'
+          from ai_factory.factory_source_locks import load
+          rows = load()
+          assert len(rows) == 11
+          assert len({x["repo"] for x in rows}) == 6
+          assert all(not x["approved_for_install"] and not x["runtime_enabled"] for x in rows)
+          assert all(x["license_review"] == "pending" and x["security_review"] == "pending" for x in rows)
+          print("PASS: 11 immutable GitHub source snapshots only; no admission, installation or spending.")
+          PY
       - name: Demonstrate approval-gated plan (no execution)
         shell: bash
         run: |
