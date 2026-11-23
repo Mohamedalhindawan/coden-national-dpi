@@ -15,7 +15,7 @@ import time
 import unittest
 from unittest.mock import MagicMock, patch
 
-from ai_factory import checkpoint, worker_supervisor
+from ai_factory import checkpoint, worker_supervisor, reconcile
 from ai_factory.durable_queue import DurableQueue
 
 SHA = "c" * 40
@@ -270,6 +270,29 @@ class MonitoredSupervisorCancellationTests(unittest.TestCase):
         self.assertEqual(self.q.read("target")["status"], "cancel_requested")
         self.assertEqual(checkpoint.read(self.journal, "target")["status"], "prepared")
         self.assertIsNone(self.q.claim("new_worker"))
+
+    def test_reconciliation_classifies_cancelled_queued_without_execution(self):
+        self.create("target")
+        self.q.request_cancel("target", now=100)
+        report = reconcile.scan(self.db, self.journal)
+        self.assertEqual(report["conditions"], {"consistent_cancelled_before_start": 1})
+        self.assertFalse(report["needs_attention"])
+        self.assertFalse(report["safe_to_auto_retry"])
+        self.assertEqual(report["tasks"][0]["queue_status"], "cancelled")
+
+    def test_reconciliation_of_stopped_child_requires_manual_attention(self):
+        self.create("target")
+        self.q.claim("worker", task_id="target", lease_seconds=120)
+        self.q.request_cancel("target")
+        checkpoint.record(
+            self.journal, "target", event="blocked",
+            next_action="inspect_cancel_stop", event_key="supervisor_cancel_stop"
+        )
+        report = reconcile.scan(self.db, self.journal)
+        self.assertEqual(report["conditions"], {"cancel_stop_reconciliation_required": 1})
+        self.assertTrue(report["needs_attention"])
+        self.assertFalse(report["safe_to_auto_retry"])
+        self.assertFalse(report["execution_authorized"])
 
     def test_no_automatic_recovery_or_approval_even_after_leader_exit(self):
         self.create()
