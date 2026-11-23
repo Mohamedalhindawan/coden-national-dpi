@@ -1,0 +1,59 @@
+{
+  "schema_version": "0.1.0",
+  "plan_version": "v1.0",
+  "plan_git_blob_sha1": "3476b956555db136dbc4bc41b78d93ac881b10f1",
+  "plan_source_commit": "377d8756f0d62156def5de5f4c7bb64caac9bca8",
+  "plan_path": "docs/CODEN_AI_FACTORY_MASTER_PLAN_v1.0_APPROVED.md",
+  "plan_section_ids": [
+    19,
+    22,
+    49,
+    51,
+    63,
+    66,
+    72,
+    80
+  ],
+  "task_id": "CODEN-V1-WORKER-RECOVERY-03",
+  "task_file": "ai_factory/examples/factory-worker-recovery-v1.json",
+  "task_description": "Given value, a list of synthetic CODEN Worker task-state strings, produce one integer counting all entries exactly equal to 'lease_expired' or 'cancel_requested', counting duplicates separately. Ignore 'active', 'completed', 'cancelled', 'blocked', 'recovered', empty and other values. Start count = 0. Use a simple for status in value loop and TWO INDEPENDENT if statements: one status == 'lease_expired' and a different if status == 'cancel_requested'; increment count for each exact match and return count. Do not use boolean or/and, membership checks, comprehensions, imports, helper functions, filesystem, network, approvals, retries or external services. Create only def transform(value):. This is a read-only recovery-workload metric for founder-approved CODEN Factory v1 section 51, NOT permission to cancel, retry or run workers.",
+  "stage": "CANDIDATE_CODE_REVIEW_ONLY",
+  "factory_production_authorized": false,
+  "model_candidate_promoted": false,
+  "open_hands_live_runtime_verified": false,
+  "automatic_merge": false,
+  "paid_calls": 0,
+  "references": {
+    "worker_draft_pr": 140,
+    "runtime_isolation_issue": 162,
+    "supabase_draft_pr": 150,
+    "founder_plan_draft_pr": 168,
+    "real_model_precedent_draft_pr": 164
+  },
+  "next_steps": [
+    {
+      "id": "ISOLATE_OPENHANDS",
+      "status": "BLOCKED",
+      "owner": "Human operator + security reviewer",
+      "action": "Prove image provenance, CPU/RAM/PID/egress limits for a real OpenHands SDK multi-file run; do not start before issue #162 is closed by evidence."
+    },
+    {
+      "id": "REVIEW_WORKER",
+      "status": "REVIEW_REQUIRED",
+      "owner": "Backend/QA reviewer",
+      "action": "Review PR #140 lease, cancellation, idempotency and crash tests. Test and merge only after approval."
+    },
+    {
+      "id": "REVIEW_SUPABASE",
+      "status": "REVIEW_REQUIRED",
+      "owner": "Security/QA reviewer",
+      "action": "Validate PR #150 trusted worker auth, RLS and replay protection before real remote control-plane linking."
+    },
+    {
+      "id": "EVALUATE_MODEL_CANDIDATE",
+      "status": "REVIEW_REQUIRED",
+      "owner": "Independent code reviewer",
+      "action": "Inspect SHA-pinned generated candidate, validate held-out and stress tests, then consider separate tiny integration PR; do not automatically promote."
+    }
+  ]
+}
