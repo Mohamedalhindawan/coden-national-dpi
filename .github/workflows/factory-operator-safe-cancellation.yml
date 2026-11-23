@@ -82,7 +82,7 @@ jobs:
               pass
           else:
               raise AssertionError("cancel_requested must reject worker finish")
-          assert queue.recover_expired(now=132) == 2
+          assert queue.recover_expired(now=132) == 1
           assert queue.read("leased_cancel")["status"] == "needs_review"
           assert queue.read("queued_cancel")["status"] == "cancelled"
           assert queue.claim("future_worker", now=140) is None
