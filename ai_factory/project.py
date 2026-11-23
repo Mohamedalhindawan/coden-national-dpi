@@ -165,6 +165,14 @@ def inspect_source(source):
             raise ValueError("unsupported call")
 
 
+def _contains_boolop(source):
+    """Recognize only the blocked BoolOp grammar; never execute generated code."""
+    try:
+        return any(isinstance(node, ast.BoolOp) for node in ast.walk(ast.parse(source)))
+    except (SyntaxError, RecursionError, ValueError):
+        return False
+
+
 def lint(source):
     if version("ruff") != "0.17.6":
         raise RuntimeError("unsupported Ruff version")
@@ -314,7 +322,7 @@ def run(task, root, source_path=None, *, local_assets=None):
             "planned",
             task_id=task["id"],
             stages=ROLES,
-            attempts=1,
+            attempts=2 if local_assets is not None else 1,
             paid_calls=0,
             budget_usd=0,
         )
@@ -332,9 +340,23 @@ def run(task, root, source_path=None, *, local_assets=None):
         if local_assets is not None:
             from . import local_coder
 
+            sandbox = sandbox_args()
             source = local_coder.generate(
-                *local_assets, task["description"], task["cases"], sandbox_args()
+                *local_assets, task["description"], task["cases"], sandbox
             )
+            # A specific, previously observed model failure may be regenerated ONCE.
+            # No generated code is executed, repaired, or trusted before a fresh
+            # full AST/Ruff/sandbox/held-out gate. No handwritten fallback.
+            try:
+                inspect_source(source)
+            except ValueError as exc:
+                if str(exc) != "unsupported syntax" or not _contains_boolop(source):
+                    raise
+                record("candidate_rejected", attempt=1, reason="BoolOp")
+                source = local_coder.generate(
+                    *local_assets, task["description"], task["cases"], sandbox,
+                    feedback="BoolOp",
+                )
             origin = "local Qwen2.5-Coder / llama.cpp b12600"
         elif source_path is not None:
             source = read_text(source_path, LIMIT)
