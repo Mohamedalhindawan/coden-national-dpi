@@ -73,6 +73,7 @@ jobs:
               runs-on: ubuntu-latest
               steps:
                 - name: expected invalid workflow to fail
+                  run: echo "synthetic negative only"
                   invalid_custom_key: true
           YAML
           if actionlint -oneline "$RUNNER_TEMP/bad-workflow.yml" >"$RUNNER_TEMP/actionlint-negative.txt" 2>&1; then
@@ -81,7 +82,7 @@ jobs:
           fi
           echo "Observed synthetic-negative actionlint diagnostic:"
           cat "$RUNNER_TEMP/actionlint-negative.txt"
-          grep -E "invalid_custom_key|unexpected|unknown" "$RUNNER_TEMP/actionlint-negative.txt" >/dev/null
+          grep -F "invalid_custom_key" "$RUNNER_TEMP/actionlint-negative.txt" >/dev/null
           echo "PASS: official actionlint rejected invalid_custom_key, no fake scanner."
 
       - name: Create sanitized no-approval lint evidence (no source mutation)
