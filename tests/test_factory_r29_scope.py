@@ -84,11 +84,11 @@ class R29FactoryScopeTests(unittest.TestCase):
             bad = json.loads(json.dumps(self.r29))
             bad[field] = True
             with self.assertRaises(ValueError):
-                r29_factory_scope.validate(bad)
+                r29_factory_scope.validate(bad, baseline=self.old)
         bad = json.loads(json.dumps(self.r29))
         bad["requirements"][0]["implemented_by_import"] = True
         with self.assertRaises(ValueError):
-            r29_factory_scope.validate(bad)
+            r29_factory_scope.validate(bad, baseline=self.old)
 
 
 if __name__ == "__main__":
