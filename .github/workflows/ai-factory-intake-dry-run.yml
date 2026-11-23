@@ -6,6 +6,9 @@ on:
     paths:
       - 'ai_factory/**'
       - 'tests/test_ai_factory_*.py'
+      - 'tests/test_factory_acceleration_skills.py'
+      - 'configs/factory_execution_skills_v0_1.json'
+      - '.github/skills/factory-*/SKILL.md'
       - '.github/workflows/ai-factory-intake-dry-run.yml'
 
 permissions:
@@ -121,6 +124,28 @@ jobs:
           path: ${{ runner.temp }}/coden-84-review-backlog.json
           if-no-files-found: error
           retention-days: 2
+      - name: Prove all six DRAFT Agent Skills are present and cannot grant runtime execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tests -p 'test_factory_acceleration_skills.py' -v
+          python -m ai_factory.factory_skill_catalog
+          python - <<'PY'
+          from ai_factory.factory_skill_catalog import SKILLS, choose, load
+          rows = load()
+          assert len(rows) == 6
+          assert set(SKILLS.values()) == {r["name"] for r in rows}
+          for task in SKILLS:
+              result = choose(task)
+              assert result["execute_now"] is False
+              assert result["release_authorized"] is False
+              assert result["paid_calls_authorized"] is False
+          assert all(r["status"] == "DRAFT_NOT_AUTO_ACTIVATED"
+                     and r["installed_by_catalog"] is False
+                     and r["runtime_invoked"] is False
+                     and r["release_authorized"] is False for r in rows)
+          print("PASS: 6 CODEN factory skills discovered; zero installs, model sessions, spending or releases.")
+          PY
       - name: Demonstrate approval-gated plan (no execution)
         shell: bash
         run: |
