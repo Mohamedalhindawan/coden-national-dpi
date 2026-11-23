@@ -58,12 +58,15 @@ def _fixture():
         }
     client = base(client_id, adm.CLIENT_IMAGE, 1, 268435456)
     server = base(server_id, "coden-qwen-private:22222-1", 2, 1610612736)
-    server["Config"]["Env"].append("LD_LIBRARY_PATH=/opt/llama")
+    server["Config"]["Env"].append("LD_LIBRARY_PATH=/opt/llama:/opt/runtime-libs")
     server["Config"]["Labels"] = {
         "org.coden.llama_archive_sha256": adm.LLAMA_SHA,
         "org.coden.qwen_weights_sha256": adm.MODEL_SHA,
         "org.coden.ubuntu_base": adm.UBUNTU_BASE,
         "org.coden.pilot_scope": "read-only-synthetic-internal-llama-server",
+        "org.coden.libgomp_archive_sha256": adm.LIBGOMP_SHA,
+        "org.coden.libcurl_archive_sha256": adm.LIBCURL_SHA,
+        "org.coden.libstdcxx_archive_sha256": adm.LIBSTDCXX_SHA,
     }
     server["HostConfig"]["Tmpfs"] = {
         "/tmp": "rw,noexec,nosuid,nodev,size=32m,mode=1777"
@@ -162,6 +165,7 @@ class RealQwenPrivateServerAdmissionTests(unittest.TestCase):
         d = DOCKERFILE.read_text(encoding="utf-8")
         for s in (
             adm.UBUNTU_BASE, adm.MODEL_SHA, adm.LLAMA_SHA,
+            adm.LIBGOMP_SHA, adm.LIBCURL_SHA, adm.LIBSTDCXX_SHA,
             "USER 65534:65534", "LD_LIBRARY_PATH=/opt/llama",
             "COPY --chown=65534:65534", "ENTRYPOINT",
             "llama-server",
@@ -175,11 +179,13 @@ class RealQwenPrivateServerAdmissionTests(unittest.TestCase):
         flow = WORKFLOW.read_text(encoding="utf-8")
         for word in (
             adm.MODEL_SHA, adm.LLAMA_SHA, adm.UBUNTU_BASE,
+            adm.LIBGOMP_SHA, adm.LIBCURL_SHA, adm.LIBSTDCXX_SHA,
             adm.CLIENT_IMAGE, "sha256sum --check",
             "llama-b12600-bin-ubuntu-x64.tar.gz",
             "qwen2.5-coder-0.5b-instruct-q4_k_m.gguf",
             "docker network create --internal",
             "docker build", "docker inspect", "docker exec",
+            "dpkg-deb -x", "ldd /opt/llama/llama-server", "docker logs",
             "http://ollama:11434/health", "http://ollama:11434/completion",
             "tokens_predicted", "actual_real_qwen_completion_verified",
             "http://1.1.1.1/", "http://example.com/",

@@ -19,6 +19,9 @@ from .factory_internal_model_network_probe import _limited_container as _limited
 
 LLAMA_SHA = "da524c71f9dd09913df29264bb7229b99a2de82d8a26e6902e6921d413560d6d"
 MODEL_SHA = "1d9614638d18024d0fbb36575a15f1302a3adf044df10345688ec4f6e1c4ff32"
+LIBGOMP_SHA = "870c27299185a5dd4accad3b15bf82a7409fd7073cccaa8025875307da4d0ce2"
+LIBCURL_SHA = "2fc35b8056aebaa6cfe9a5672a8e06339c3e690657fbebc6c5d6b50d9f9626fb"
+LIBSTDCXX_SHA = "29ef3d289b272704b75141906c8f683db0f2bdb0942061366691333bfb289bdc"
 UBUNTU_BASE = (
     "docker.io/library/ubuntu@sha256:"
     "f64b2ffc2f10ab8f8505aa56b2664bd846cbb9df87c7e2532e30f7667021c0e6"
@@ -32,6 +35,9 @@ LABELS = {
     "org.coden.qwen_weights_sha256": MODEL_SHA,
     "org.coden.ubuntu_base": UBUNTU_BASE,
     "org.coden.pilot_scope": "read-only-synthetic-internal-llama-server",
+    "org.coden.libgomp_archive_sha256": LIBGOMP_SHA,
+    "org.coden.libcurl_archive_sha256": LIBCURL_SHA,
+    "org.coden.libstdcxx_archive_sha256": LIBSTDCXX_SHA,
 }
 MAX_BYTES = 180_000
 
@@ -63,7 +69,7 @@ def _server_check(x, network_name, network_id):
     _check(isinstance(env, list) and 1 <= len(env) <= 3
            and set(env) == {
                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-               "LD_LIBRARY_PATH=/opt/llama",
+               "LD_LIBRARY_PATH=/opt/llama:/opt/runtime-libs",
            }, "untrusted model environment/credentials")
     limits = {
         "NanoCpus": 2_000_000_000,
@@ -217,7 +223,6 @@ def main(argv=None):
             _load_one(args.client),
             _load_one(args.server),
         )
-        completion = _load_one(args.completion) if False else None
         # llama-server returns a single JSON object rather than Docker's list.
         p = args.completion
         _check(not p.is_symlink() and p.is_file()

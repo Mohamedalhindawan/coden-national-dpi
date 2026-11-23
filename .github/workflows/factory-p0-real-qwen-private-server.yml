@@ -99,7 +99,24 @@ jobs:
           echo "1d9614638d18024d0fbb36575a15f1302a3adf044df10345688ec4f6e1c4ff32  qwen-model.gguf" | sha256sum --check
           tar -xf llama-b12600-bin-ubuntu-x64.tar.gz
           test -x llama-b12600/llama-server
-          # Only the exact pinned archive is extracted. No install script.
+          # Exact immutable Ubuntu security package archives, verified BEFORE extraction.
+          curl --fail --silent --show-error --location --retry 2 --connect-timeout 10 --max-time 70 \
+            -o libgomp1.deb \
+            "https://security.ubuntu.com/ubuntu/pool/main/g/gcc-12/libgomp1_12.3.0-1ubuntu1~22.04.3_amd64.deb"
+          echo "870c27299185a5dd4accad3b15bf82a7409fd7073cccaa8025875307da4d0ce2  libgomp1.deb" | sha256sum --check
+          curl --fail --silent --show-error --location --retry 2 --connect-timeout 10 --max-time 70 \
+            -o libcurl4.deb \
+            "https://security.ubuntu.com/ubuntu/pool/main/c/curl/libcurl4_7.81.0-1ubuntu1.30_amd64.deb"
+          echo "2fc35b8056aebaa6cfe9a5672a8e06339c3e690657fbebc6c5d6b50d9f9626fb  libcurl4.deb" | sha256sum --check
+          curl --fail --silent --show-error --location --retry 2 --connect-timeout 10 --max-time 70 \
+            -o libstdcxx6.deb \
+            "https://security.ubuntu.com/ubuntu/pool/main/g/gcc-12/libstdc++6_12.3.0-1ubuntu1~22.04.3_amd64.deb"
+          echo "29ef3d289b272704b75141906c8f683db0f2bdb0942061366691333bfb289bdc  libstdcxx6.deb" | sha256sum --check
+          mkdir -p runtime-libs
+          for package in libgomp1.deb libcurl4.deb libstdcxx6.deb; do
+            dpkg-deb -x "$package" runtime-libs
+          done
+          # Only the exact pinned archives are extracted. No install script.
           echo 'PASS: official llama.cpp and genuine Qwen weights pinned and extracted.'
 
       - name: Build bounded local inference image without build-time network access
@@ -113,6 +130,23 @@ jobs:
           docker image inspect "$name" > "$RUNNER_TEMP/coden-built-model-image.json"
           echo 'PASS: self-contained local CPU image built offline from pinned inputs.'
 
+      - name: Preflight image dynamic loader inside an equally constrained offline container
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="coden-qwen-private:${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          dependencies=$(docker run --rm --network=none --cpus=1 \
+            --memory=256m --memory-swap=256m --pids-limit=64 \
+            --cap-drop=ALL --security-opt=no-new-privileges \
+            --read-only --user=65534:65534 --entrypoint=/usr/bin/ldd \
+            "$name" /opt/llama/llama-server)
+          printf '%s\\n' "$dependencies"
+          if printf '%s\\n' "$dependencies" | grep -F 'not found'; then
+            echo 'BLOCKED: runtime dependency missing, never start model server' >&2
+            exit 1
+          fi
+          echo 'PASS: exact pinned llama-server dependency preflight inside isolated Ubuntu image.'
+
       - name: Run REAL Qwen server and client on private internal bridge, deny external egress
         shell: bash
         run: |
@@ -122,6 +156,12 @@ jobs:
           server="coden-qwen-server-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           model_image="coden-qwen-private:${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           cleanup() {
+            result=$?
+            if [ "$result" -ne 0 ]; then
+              echo 'Startup diagnostics (synthetic model only; no secrets or customer data):'
+              docker inspect "$server" --format 'container_exit={{.State.ExitCode}} status={{.State.Status}}' 2>/dev/null || true
+              docker logs --tail=22 "$server" 2>&1 || true
+            fi
             docker rm -f "$client" "$server" >/dev/null 2>&1 || true
             docker network rm "$network" >/dev/null 2>&1 || true
             docker image rm -f "$model_image" >/dev/null 2>&1 || true
@@ -129,7 +169,7 @@ jobs:
           trap cleanup EXIT
           docker network create --internal --driver bridge "$network"
 
-          docker run --detach --rm --pull=never --name "$server" \
+          docker run --detach --pull=never --name "$server" \
             --network="$network" --network-alias ollama \
             --cpus=2 --memory=1536m --memory-swap=1536m --pids-limit=64 \
             --cap-drop=ALL --security-opt=no-new-privileges --read-only \
@@ -190,17 +230,22 @@ jobs:
             -O - http://ollama:11434/completion \
             > "$RUNNER_TEMP/coden-qwen-private-completion.json"
 
-          docker exec "$server" /bin/sh -c '
-            set -eu
-            [ "$(id -u)" = "65534" ]
-            [ "$(cat /sys/fs/cgroup/memory.max)" = "1610612736" ]
-            [ "$(cat /sys/fs/cgroup/pids.max)" = "64" ]
-            set -- $(cat /sys/fs/cgroup/cpu.max)
-            [ "$1" -eq $((2*$2)) ]
-            [ "$(awk "/^CapEff:/{print \\$2}" /proc/self/status)" = "0000000000000000" ]
-            [ "$(awk "/^NoNewPrivs:/{print \\$2}" /proc/self/status)" = "1" ]
-            [ ! -e /var/run/docker.sock ]
-          '
+          # Prevent confusing shell expansion of awk "$2" with a real guest value.
+          cat > "$RUNNER_TEMP/coden-real-qwen-guest-check.sh" <<'GUEST'
+          set -eu
+          [ "$(id -u)" = "65534" ]
+          [ "$(cat /sys/fs/cgroup/memory.max)" = "1610612736" ]
+          [ "$(cat /sys/fs/cgroup/pids.max)" = "64" ]
+          set -- $(cat /sys/fs/cgroup/cpu.max)
+          [ "$1" -eq $((2*$2)) ]
+          [ "$(awk '/^CapEff:/ {print $2}' /proc/self/status)" = "0000000000000000" ]
+          [ "$(awk '/^NoNewPrivs:/ {print $2}' /proc/self/status)" = "1" ]
+          [ ! -e /var/run/docker.sock ]
+          rootflags=$(awk '$2 == "/" {print $4;exit}' /proc/mounts)
+          case ",$rootflags," in *,ro,*) ;; *) exit 1 ;; esac
+          if touch /bin/unsafe-write >/dev/null 2>&1; then exit 1; fi
+          GUEST
+          docker exec -i "$server" /bin/sh < "$RUNNER_TEMP/coden-real-qwen-guest-check.sh"
 
           python -m ai_factory.factory_real_qwen_server_admission \
             --network "$RUNNER_TEMP/qwen-private-network.json" \
