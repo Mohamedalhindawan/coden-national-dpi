@@ -1,0 +1,94 @@
+name: CODEN Factory REAL SQLite Worker Recovery Visibility
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'ai_factory/factory_worker_recovery_status.py'
+      - 'tests/test_factory_worker_recovery_status.py'
+      - 'docs/FACTORY_WORKER_REAL_QUEUE_RECOVERY_VISIBILITY.md'
+      - '.github/workflows/factory-worker-recovery-sqlite.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  real-local-sqlite-queue:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'feat/factory-worker-queue-readonly-recovery-20261123' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout synthetic pilot without persisted GitHub credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Configure Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Verify real SQLite state transition and fail-closed contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tests -p 'test_factory_worker_recovery_status.py' -v
+
+      - name: Exercise genuine DurableQueue SQLite leases and read-only status report
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from ai_factory.durable_queue import DurableQueue
+          from ai_factory.factory_worker_recovery_status import snapshot
+
+          root = Path(os.environ["RUNNER_TEMP"]) / "coden-actual-sqlite-operator"
+          root.mkdir(mode=0o700)
+          db = root / "queue.sqlite3"
+          queue = DurableQueue(db)
+          for task_id in ("synthetic_a", "synthetic_b", "synthetic_c"):
+              queue.enqueue(task_id, "feat/synthetic", "c" * 40, "f" * 64)
+          first = queue.claim("worker_a", now=1000, lease_seconds=20)
+          assert first["task_id"] == "synthetic_a"
+          assert queue.recover_expired(now=1021) == 1
+          second = queue.claim("worker_b", now=1030, lease_seconds=20)
+          assert second["task_id"] == "synthetic_b"
+
+          before = db.read_bytes()
+          stamp_before = db.stat().st_mtime_ns
+          report = snapshot(db, now=1060)
+          assert report["source"] == "real_durable_queue_sqlite_metadata"
+          assert report["total_tasks"] == 3
+          assert report["queued"] == 1
+          assert report["leased_expired_pending_review"] == 1
+          assert report["needs_review_quarantined"] == 1
+          assert report["manual_attention_total"] == 2
+          assert report["cancellation_support"] == "NOT_IMPLEMENTED"
+          assert report["model_code_executed"] is False
+          assert report["qwen_candidate_status"] == "QUARANTINED_NOT_EXECUTED"
+          assert report["queue_modified"] is False
+          assert report["worker_executed"] is False
+          assert report["automatic_retry_authorized"] is False
+          assert report["release_authorized"] is False
+          assert report["paid_calls"] == 0
+          assert db.read_bytes() == before
+          assert db.stat().st_mtime_ns == stamp_before
+          assert queue.read("synthetic_a")["status"] == "needs_review"
+          assert queue.read("synthetic_b")["status"] == "leased"
+          assert queue.read("synthetic_c")["status"] == "queued"
+          evidence = Path(os.environ["RUNNER_TEMP"]) / "coden-real-sqlite-worker-recovery.json"
+          evidence.write_text(json.dumps(report, sort_keys=True, indent=2) + chr(10),
+                              encoding="utf-8")
+          print("PASS: real SQLite lease state; 1 expired + 1 quarantined; 0 auto-retries/writes.")
+          PY
+      - name: Retain sanitized real SQLite metadata receipt (not DB)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coden-real-worker-sqlite-recovery-metadata
+          path: ${{ runner.temp }}/coden-real-sqlite-worker-recovery.json
+          retention-days: 2
+          if-no-files-found: error
