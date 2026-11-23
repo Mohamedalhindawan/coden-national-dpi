@@ -91,6 +91,43 @@ jobs:
                      and x["enabled"] is False for x in rows)
           print("PASS: 84 indexed and linked, 0 admitted/installed/enabled by registry.")
           PY
+      - name: Stage REAL hash-verified MIT Spec Kit templates for human review only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m ai_factory.spec_kit_pilot --output "$RUNNER_TEMP/coden-speckit-review"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from ai_factory.factory_source_locks import load, verify_staged_blob
+          folder = Path(os.environ["RUNNER_TEMP"]) / "coden-speckit-review"
+          receipt = json.loads((folder / "evidence.json").read_text(encoding="utf-8"))
+          locks = {x["source_id"]: x for x in load()}
+          expected = {
+              "source-011": "spec.md",
+              "source-012": "plan.md",
+              "source-013": "tasks.md",
+          }
+          assert sorted(x.name for x in folder.iterdir()) == [
+              "LICENSE", "evidence.json", "plan.md", "spec.md", "tasks.md"
+          ]
+          for ident, name in expected.items():
+              evidence = verify_staged_blob(folder / name, locks[ident]["blob_sha"])
+              assert evidence["sha256"] == receipt["sources"][ident]["sha256"]
+          assert receipt["status"] == "awaiting_human_review"
+          assert receipt["release_authorized"] is False
+          assert receipt["runtime_enabled"] is False
+          assert receipt["paid_calls"] == 0
+          print("PASS: 3 actual immutable MIT source files staged; no code execution or release.")
+          PY
+      - name: Retain read-only original Spec Kit sources for human review (1 day)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coden-speckit-immutable-source-review
+          path: ${{ runner.temp }}/coden-speckit-review/
+          if-no-files-found: error
+          retention-days: 1
       - name: Demonstrate approval-gated plan (no execution)
         shell: bash
         run: |
