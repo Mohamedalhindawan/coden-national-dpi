@@ -20,7 +20,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir empty-context
-          docker build --network=none --platform linux/amd64 --iidfile image.id -t coden-review:offline -f .github/docker/OpenHands-review.Dockerfile empty-context
+          build=(docker build --network=none --platform linux/amd64 --build-arg SOURCE_DATE_EPOCH=0 -f .github/docker/OpenHands-review.Dockerfile)
+          "${build[@]}" --iidfile image.id -t coden-review:offline empty-context
+          "${build[@]}" --no-cache --iidfile rebuilt.id -t coden-review:rebuilt empty-context
+          cmp image.id rebuilt.id
           id=$(docker create --network none coden-review:offline)
           trap 'docker rm "$id" >/dev/null' EXIT
           test "$(docker inspect -f '{{.State.Status}}' "$id")" = created
@@ -64,6 +67,7 @@ jobs:
           name: openhands-offline-rebase
           path: |
             image.id
+            rebuilt.id
             layers.json
             frozen.json
             scan.json
