@@ -59,3 +59,20 @@ CI does not fetch code from GitHub to install it. This is a **low-cost machine-c
 Use the *pinned OpenHands SDK revision* only after verifying its actual SDK/API compatibility, its sandbox boundaries and real model integration. Then execute **one synthetic multi-file task** (three files minimum) with an independent hidden test set, keep `PR Draft`, and record runtime evidence. Integrate the already tested free CPU model and existing CODEN worker only if capability is verified; otherwise mark the trial BLOCKED rather than replacing it with mocks.
 
 After a successful agent trial, implement a separately secured worker↔Supabase bridge without exposing `service_role` credentials to public PR workflows. **Do not automatically approve, install, or merge all 84 sources.**
+
+## Additional safety gate — staged-file integrity (no execution)
+
+`ai_factory.factory_source_locks.verify_staged_blob(path, expected_blob_sha)` now checks the bytes of a **local quarantined regular file** against the original pinned Git blob object ID with no symlink following. It enforces a 2MB default maximum input, rejects changed/missing/symlink files, and calculates an additional local SHA-256 digest for a future independent review. It **does not** download a GitHub source, follow links, execute commands, install packages or grant deployment rights.
+
+Example after an operator separately stages a verified public sample:
+
+```bash
+python -m ai_factory.factory_source_locks \
+  --source-id source-001 \
+  --verify-file /path/to/quarantined/01_hello_world.py
+```
+
+The path must point to the **exact bytes** from the commit pinned in `configs/factory_critical_source_pins_v0_1.json`. The check will fail if these bytes differ; Git SHA-1 object identity is not a replacement for independently verified signed source releases or package/binary SHA-256 digests. A passing result is **integrity-matching only**, not an acceptance decision.
+
+The new regression tests cover exact Git object format, byte tampering, symlinks, directories, and oversized staged files. No real upstream source file has been newly installed by this gate.
+
