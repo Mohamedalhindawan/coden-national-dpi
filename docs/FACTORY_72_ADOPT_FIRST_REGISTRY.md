@@ -88,3 +88,10 @@ python -m ai_factory.r29_factory_scope --missing-sources
 ```
 
 A component appearing in the new R29 list **does not demonstrate installation, licensing approval, a verified executable, a test result, operational readiness or permission to spend.** The source Playbook and both candidate lists remain UNAPPROVED/proposed until independent verification.
+
+
+## 84-source availability and development gap audit — 2026-11-23
+
+See `docs/FACTORY_84_SOURCE_AUDIT_AND_DEVELOPMENT_GAPS_2026-11-23.md` for actual GitHub metadata/path checks, corrected gVisor and Renovate links, license caveats and prioritized factory development blockers.
+
+The per-entry, **dated reachability-only evidence** is in `configs/factory_84_source_availability_audit_2026-11-23.json` and is protected by `tests/test_factory_84_audit_snapshot.py`. Results: 84 source/file entries, 76 distinct GitHub repos, 48 checked case-sensitive file links, 36 repo-root links, **0 newly installed/approved/enabled tools**, **0 pinned commits**, and no independent safety/license certifications. Revalidate against immutable commits before actual adoption.
