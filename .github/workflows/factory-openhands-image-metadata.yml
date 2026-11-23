@@ -1,0 +1,31 @@
+name: OpenHands pinned source image metadata
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/factory-openhands-image-metadata.yml'
+permissions: {}
+jobs:
+  inspect:
+    if: github.event.repository.private == false && github.head_ref == 'audit/openhands-175-source-lock' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Inspect public manifest without starting or downloading image layers
+        shell: bash
+        env:
+          IMAGE: ghcr.io/openhands/agent-server
+          SOURCE_TAG: 077f3fa-python
+        run: |
+          set -euo pipefail
+          echo 'Rootless daemon advertised by this runner:'
+          docker info --format '{{json .SecurityOptions}}' | jq 'any(.[]; contains("rootless"))'
+          docker buildx imagetools inspect --raw "$IMAGE:$SOURCE_TAG" > index.json
+          index="sha256:$(sha256sum index.json | cut -d' ' -f1)"
+          docker buildx imagetools inspect --raw "$IMAGE@$index" | cmp - index.json
+          amd64=$(jq -er '[.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64") | .digest] | select(length == 1) | first | select(test("^sha256:[a-f0-9]{64}$"))' index.json)
+          docker buildx imagetools inspect --raw "$IMAGE@$amd64" > manifest.json
+          echo "${amd64#sha256:}  manifest.json" | sha256sum -c -
+          printf 'Candidate index %s\nCandidate linux/amd64 manifest %s\n' "$index" "$amd64"
+          # Only report attestation descriptors; authenticity and subjects require a separate review.
+          jq -c '[.manifests[] | select(.annotations["vnd.docker.reference.digest"] == $subject) | .digest]' --arg subject "$amd64" index.json
