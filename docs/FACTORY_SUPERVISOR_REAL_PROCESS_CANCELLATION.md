@@ -20,6 +20,8 @@ For **explicit task IDs only**, the supervisor checks the task's real SQLite sta
 
 On an observed stop, the supervisor attempts a hash-chained journal entry `blocked` with `next_action=inspect_cancel_stop` and fixed idempotency key. It returns `cancel_stop_review_required`, not `cancelled` or `completed`. **The original queue is left `cancel_requested`/quarantined; no automatic retry and no automatic reconciliation.** An operator must inspect the full queue/journal/artifact state and only use the separate explicit `recover_expired` quarantine procedure when applicable.
 
+The existing read-only reconciler now distinguishes `consistent_cancelled_before_start` (queued task cancelled with untouched prepared journal) from `cancel_stop_reconciliation_required` (leased task whose cancellation was requested, regardless of whether its child leader was reaped). The latter remains `needs_attention=true` and `safe_to_auto_retry=false`; a generic `state_mismatch` is no longer the only operational signal.
+
 If the group stop cannot be verified or journal append fails, the supervisor fails closed with no success receipt. This code has **no API endpoint** for untrusted clients, no extra credentials, and never imports the generated Qwen candidate from Draft PR #169.
 
 ## How to run the monitored operator-only pilot
