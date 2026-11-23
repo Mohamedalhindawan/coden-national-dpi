@@ -29,3 +29,46 @@ jobs:
           printf 'Candidate index %s\nCandidate linux/amd64 manifest %s\n' "$index" "$amd64"
           # Only report attestation descriptors; authenticity and subjects require a separate review.
           jq -c '[.manifests[] | select(.annotations["vnd.docker.reference.digest"] == $subject) | .digest]' --arg subject "$amd64" index.json
+  inventory:
+    if: github.event.repository.private == false && github.head_ref == 'audit/openhands-175-source-lock' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Inventory pinned image layers without executing the target
+        uses: anchore/sbom-action@fbfd9c6c189226748411491745178e0c2017392d
+        with:
+          image: registry:ghcr.io/openhands/agent-server@sha256:2674cd2659e626452ac46a76fe71aded046311210c7e0cc6ffcb194668037506
+          syft-version: v1.38.0
+          format: spdx-json
+          output-file: agent-server.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Verify inventory and count missing declared licenses
+        run: |
+          jq -e '(.packages | length) > 0' agent-server.spdx.json
+          jq '{packages:(.packages|length),unresolved_declared_licenses:([.packages[]|select((.licenseDeclared // "NOASSERTION")| IN("NOASSERTION","NONE"))]|length)}' agent-server.spdx.json
+      - name: Compare installed inventory with vulnerability database
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        with:
+          version: v0.69.3
+          scan-type: sbom
+          scan-ref: agent-server.spdx.json
+          format: json
+          output: vulnerabilities.json
+          cache: false
+          timeout: 10m
+      - name: Preserve available image evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: openhands-amd64-2674cd26-review
+          path: |
+            agent-server.spdx.json
+            vulnerabilities.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Report findings and block on unresolved high or critical findings
+        run: |
+          jq -e '.SchemaVersion and (.Results | type == "array" and length > 0)' vulnerabilities.json
+          jq '[.Results[] | .Vulnerabilities[]? | .Severity] | group_by(.) | map({severity:first,count:length})' vulnerabilities.json
+          jq -e '[.Results[] | .Vulnerabilities[]? | select(.Severity == "HIGH" or .Severity == "CRITICAL")] | length == 0' vulnerabilities.json
