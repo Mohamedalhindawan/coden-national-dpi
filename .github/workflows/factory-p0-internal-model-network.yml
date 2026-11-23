@@ -1,0 +1,184 @@
+name: CODEN Factory P0 Real Internal Local Model Network
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'ai_factory/factory_internal_model_network_probe.py'
+      - 'tests/test_factory_internal_model_network.py'
+      - 'docs/FACTORY_P0_PRIVATE_MODEL_NETWORK.md'
+      - '.github/workflows/factory-p0-internal-model-network.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-model-route-with-denied-internet:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'feat/factory-p0-private-local-model-network-20261124' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-22.04
+    timeout-minutes: 8
+    env:
+      PINNED_IMAGE: docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+    steps:
+      - name: Checkout synthetic read-only security proof
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Test strict internal network and two-container fail-closed contracts
+        run: python -m unittest discover -s tests -p 'test_factory_internal_model_network.py' -v
+      - name: Check immutable image and local Docker daemon without credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in DOCKER_HOST DOCKER_CONTEXT DOCKER_TLS_VERIFY DOCKER_CERT_PATH; do
+            if [ -n "${!key:-}" ]; then
+              echo "BLOCKED: Docker daemon override environment" >&2
+              exit 1
+            fi
+          done
+          docker context inspect > "$RUNNER_TEMP/coden-context.json"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          data = json.loads((Path(os.environ["RUNNER_TEMP"]) / "coden-context.json").read_text())
+          assert len(data) == 1
+          endpoint = data[0]["Endpoints"]["docker"]["Host"]
+          assert endpoint in ("unix:///var/run/docker.sock", "unix:///run/docker.sock",
+                              f"unix:///run/user/{os.getuid()}/docker.sock")
+          print("PASS: local Docker Unix endpoint only; host rootless remains UNVERIFIED.")
+          PY
+          docker pull "$PINNED_IMAGE"
+          docker image inspect "$PINNED_IMAGE" > "$RUNNER_TEMP/coden-pulled-image.json"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          data = json.loads((Path(os.environ["RUNNER_TEMP"]) / "coden-pulled-image.json").read_text())
+          assert len(data) == 1
+          digest = os.environ["PINNED_IMAGE"].split("@",1)[1]
+          permitted = {"busybox@" + digest, "library/busybox@" + digest,
+                       "docker.io/library/busybox@" + digest}
+          assert any(x in permitted for x in data[0]["RepoDigests"])
+          assert data[0]["Architecture"] == "amd64"
+          assert data[0]["Os"] == "linux"
+          print("PASS: official Linux amd64 Docker image SHA pinned; full SBOM not reviewed.")
+          PY
+
+      - name: Real Docker --internal bridge with mock local HTTP model endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          network="coden-factory-ollama-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          server="coden-model-synthetic-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          client="coden-client-synthetic-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          cleanup() {
+            docker rm -f "$client" "$server" >/dev/null 2>&1 || true
+            docker network rm "$network" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker network create --internal --driver bridge "$network"
+
+          # ONLY a fixed mock endpoint. No real Ollama, weights or paid calls.
+          docker run --detach --rm --pull=never --name "$server" \
+            --network="$network" --network-alias ollama \
+            --cpus=1 --memory=256m --memory-swap=256m --pids-limit=64 \
+            --cap-drop=ALL --security-opt=no-new-privileges \
+            --read-only --ipc=private --user=65534:65534 \
+            --tmpfs=/tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777 \
+            --ulimit nofile=128:128 --entrypoint=/bin/sh \
+            "$PINNED_IMAGE" -c 'printf "CODEN_SYNTHETIC_MODEL_ENDPOINT_ONLY\n" > /tmp/health; exec httpd -f -p 11434 -h /tmp'
+
+          docker run --detach --rm --pull=never --name "$client" \
+            --network="$network" \
+            --cpus=1 --memory=256m --memory-swap=256m --pids-limit=64 \
+            --cap-drop=ALL --security-opt=no-new-privileges \
+            --read-only --ipc=private --user=65534:65534 \
+            --tmpfs=/tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777 \
+            --ulimit nofile=128:128 --entrypoint=/bin/sh \
+            "$PINNED_IMAGE" -c 'sleep 180'
+
+          docker network inspect "$network" > "$RUNNER_TEMP/coden-model-network-inspect.json"
+          docker inspect "$client" > "$RUNNER_TEMP/coden-model-client-inspect.json"
+          docker inspect "$server" > "$RUNNER_TEMP/coden-model-server-inspect.json"
+          python -m ai_factory.factory_internal_model_network_probe \
+            --network-json "$RUNNER_TEMP/coden-model-network-inspect.json" \
+            --client-json "$RUNNER_TEMP/coden-model-client-inspect.json" \
+            --server-json "$RUNNER_TEMP/coden-model-server-inspect.json" \
+            --receipt "$RUNNER_TEMP/coden-model-network-review.json"
+
+          # Execute an independent positive/negative test INSIDE real client.
+          cat > "$RUNNER_TEMP/coden-model-network-guest.sh" <<'GUEST'
+          set -eu
+          [ "$(id -u)" = "65534" ]
+          [ "$(cat /sys/fs/cgroup/memory.max)" = "268435456" ]
+          [ "$(cat /sys/fs/cgroup/pids.max)" = "64" ]
+          set -- $(cat /sys/fs/cgroup/cpu.max)
+          [ "$1" -gt 0 ] && [ "$1" = "$2" ]
+          cap=$(awk '/^CapEff:/ {print $2}' /proc/self/status)
+          [ "$cap" = "0000000000000000" ]
+          nnp=$(awk '/^NoNewPrivs:/ {print $2}' /proc/self/status)
+          [ "$nnp" = "1" ]
+          [ ! -e /var/run/docker.sock ]
+          rootflags=$(awk '$2 == "/" {print $4; exit}' /proc/mounts)
+          case ",$rootflags," in *,ro,*) ;; *) exit 1 ;; esac
+          if touch /bin/unsafe-write >/dev/null 2>&1; then
+            echo "ERROR: root filesystem writable" >&2; exit 1
+          fi
+          i=0
+          until wget -q -T 2 -t 1 -O /tmp/model-response http://ollama:11434/health; do
+            i=$((i+1))
+            [ "$i" -le 8 ] || exit 1
+            sleep 1
+          done
+          [ "$(cat /tmp/model-response)" = "CODEN_SYNTHETIC_MODEL_ENDPOINT_ONLY" ]
+          echo "PASS: synthetic local-only model HTTP endpoint reachable."
+          if wget -q -T 2 -t 1 -O /tmp/external-ip http://1.1.1.1/ >/dev/null 2>&1; then
+            echo "ERROR: external IP egress unexpectedly allowed" >&2; exit 1
+          fi
+          echo "PASS: expected external IP egress DENIED."
+          if wget -q -T 2 -t 1 -O /tmp/external-dns http://example.com/ >/dev/null 2>&1; then
+            echo "ERROR: external DNS egress unexpectedly allowed" >&2; exit 1
+          fi
+          echo "PASS: expected external DNS egress DENIED."
+          GUEST
+          docker exec -i "$client" /bin/sh < "$RUNNER_TEMP/coden-model-network-guest.sh"
+
+          # Only report proven synthetic network properties, never agent approval.
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          p = Path(os.environ["RUNNER_TEMP"]) / "coden-model-network-review.json"
+          data = json.loads(p.read_text(encoding="utf-8"))
+          assert data["openhands_live_execution_authorized"] is False
+          assert data["release_authorized"] is False
+          data["actual_mock_http_reachable"] = True
+          data["actual_external_ip_egress_denied"] = True
+          data["actual_external_dns_egress_denied"] = True
+          data["real_ollama_endpoint_tested"] = False
+          data["real_model_invoked"] = False
+          data["rootless_docker_host_verified"] = False
+          data["actual_OCI_guest_cgroup_and_fs_checked"] = True
+          data["agent_only_access_to_ollama_is_enforced_in_production"] = False
+          data["openhands_live_execution_authorized"] = False
+          data["factory_production_authorized"] = False
+          data["release_authorized"] = False
+          data["paid_calls"] = 0
+          p.write_text(json.dumps(data, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+          print("PASS: real internal network synthetic endpoint + internet negative tests; OpenHands blocked.")
+          PY
+      - name: Upload sanitized only review evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coden-private-model-network-synthetic-proof
+          path: ${{ runner.temp }}/coden-model-network-review.json
+          retention-days: 2
+          if-no-files-found: error
