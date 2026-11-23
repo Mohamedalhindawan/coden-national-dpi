@@ -133,6 +133,36 @@ class ProjectTests(unittest.TestCase):
         self.assertEqual(self.events(run)[-1]["role"], "coding")
         self.assertFalse((run / "program.py").exists())
 
+    def test_real_model_boolop_reprompt_is_bounded_and_never_falls_back(self):
+        from ai_factory import local_coder
+
+        self.task.update(
+            recipe="python-transform",
+            description="Count statuses for a synthetic review queue",
+            cases=[{"input": [], "expected": 0}],
+            review_cases=[{"input": ["pending_review"], "expected": 1}],
+        )
+        rejected = (
+            "def transform(value):\n"
+            "    count = 0\n"
+            "    for status in value:\n"
+            "        if status == 'pending_review' or status == 'needs_review':\n"
+            "            count += 1\n"
+            "    return count\n"
+        )
+        with (
+            patch.object(project, "sandbox_args", return_value=[]),
+            patch.object(local_coder, "generate", side_effect=[rejected, rejected]) as model,
+        ):
+            run, status = project.run(
+                self.task, self.root, local_assets=("binary", "weights")
+            )
+        self.assertEqual(status, "failed")
+        self.assertEqual(model.call_count, 2)
+        self.assertEqual(model.call_args_list[1].kwargs["feedback"], "BoolOp")
+        self.assertFalse((run / "candidate.pyz").exists())
+        self.assertEqual(self.events(run)[-1]["role"], "security")
+
     def test_offline_prompt_withholds_review_examples(self):
         import tarfile
         from types import SimpleNamespace
