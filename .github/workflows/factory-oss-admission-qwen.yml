@@ -142,7 +142,7 @@ jobs:
               "real_source_catalog_modified": False,
           }
           (folder / "synthetic-scale.json").write_text(
-              json.dumps(evidence, sort_keys=True, indent=2) + "\\n", encoding="utf-8"
+              json.dumps(evidence, sort_keys=True, indent=2) + chr(10), encoding="utf-8"
           )
           print(json.dumps(evidence, sort_keys=True))
           PY
