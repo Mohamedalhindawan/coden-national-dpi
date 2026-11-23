@@ -1,0 +1,32 @@
+{
+  "decision_id": "ADR-FACTORY-001",
+  "title": "CODEN AI Factory v1.0 — Founder Approval of Internal Implementation Master Plan",
+  "version": "v1.0",
+  "date": "2026-11-23",
+  "decision_type": "founder_approval_of_internal_plan_only",
+  "status": "FOUNDER_APPROVED_FROZEN",
+  "authority": "CODEN founder's explicit user instruction in the conversation",
+  "plan_path": "docs/CODEN_AI_FACTORY_MASTER_PLAN_v1.0_APPROVED.md",
+  "sections": 80,
+  "parts": 26,
+  "seven_enterprise_engines_preserved": true,
+  "eight_technical_layers_preserved": true,
+  "scope": "CODEN AI FACTORY ONLY — strategic, engineering, operational internal execution baseline",
+  "methodology": "Open Source First · Adopt Before Build · AI-Native · Human-Governed · Secure by Design",
+  "changes_to_code_or_runtime": false,
+  "github_main_merge_authorized": false,
+  "factory_production_authorized": false,
+  "externally_approved_by_sfd_or_government": false,
+  "paid_spend_authorized": false,
+  "automatic_security_policy_change_authorized": false,
+  "approved_openhands_execution": false,
+  "technical_component_approval": "requires independent technical security, license, reproducibility and operator review",
+  "revision_policy": "Keep approved v1.0 frozen. Material changes must be proposed in an explicit separately reviewed v1.1 or subsequent version with changed sections, justification, test evidence and founder approval; no silent edits to v1.0.",
+  "constraints": [
+    "No claim that CODEN AI Factory or CODEN company has regulatory/legal/production approval",
+    "No automatic merge, deployment, access to government or private citizen data, or expenses",
+    "Existing Draft PRs and approval gates remain in force",
+    "Keep 80 numbered sections and 26 parts; enterprise engine count stays seven",
+    "Only verified real agent execution, not mocked SDK tests, may substantiate runtime readiness"
+  ]
+}
