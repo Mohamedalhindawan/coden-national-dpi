@@ -184,6 +184,70 @@ class MonitoredSupervisorCancellationTests(unittest.TestCase):
                 except ProcessLookupError:
                     pass
 
+    def test_bound_child_cannot_claim_success_with_another_task_id(self):
+        self.create("target")
+        self.create("other")
+        proc = MagicMock()
+        proc.returncode = 0
+        proc.wait.return_value = 0
+
+        def forged(_cmd, **kwargs):
+            self.q.claim("worker", task_id="target", lease_seconds=30)
+            kwargs["stdout"].write(
+                b'{"task_id":"other","status":"awaiting_human_review",'
+                b'"execution_authorized":false}'
+            )
+            return proc
+
+        with patch.object(worker_supervisor.subprocess, "Popen", side_effect=forged):
+            result = self.run_target()
+        self.assertEqual(result["status"], "untrusted_worker_result")
+        self.assertFalse(result["execution_authorized"])
+        self.assertEqual(self.q.read("other")["status"], "queued")
+
+    def test_bound_child_without_claim_does_not_report_normal_completion(self):
+        self.create()
+        proc = MagicMock()
+        proc.returncode = 0
+        proc.wait.return_value = 0
+
+        def unclaimed(_cmd, **kwargs):
+            kwargs["stdout"].write(
+                b'{"task_id":"target","status":"awaiting_human_review",'
+                b'"execution_authorized":false}'
+            )
+            return proc
+
+        with patch.object(worker_supervisor.subprocess, "Popen", side_effect=unclaimed):
+            result = self.run_target()
+        self.assertEqual(result["status"], "target_not_claimed_review_required")
+        self.assertFalse(result["execution_authorized"])
+        self.assertEqual(self.q.read("target")["status"], "queued")
+
+    def test_external_quarantine_during_selected_child_requires_stop(self):
+        self.create()
+        proc = MagicMock()
+        proc.returncode = None
+        proc.pid = 42000
+        def begin(_cmd, **kwargs):
+            self.q.claim("worker", task_id="target", now=100, lease_seconds=10)
+            self.q.recover_expired(now=111)
+            return proc
+
+        def stop(child):
+            self.assertIs(child, proc)
+            child.returncode = -signal.SIGKILL
+
+        with patch.object(worker_supervisor.subprocess, "Popen", side_effect=begin):
+            with patch.object(worker_supervisor, "_terminate_process_group", side_effect=stop) as kill:
+                result = self.run_target()
+        kill.assert_called_once_with(proc)
+        self.assertEqual(result["status"], "cancel_stop_review_required")
+        self.assertEqual(result["queue_state"], "needs_review")
+        self.assertFalse(result["process_tree_absence_verified"])
+        self.assertEqual(self.q.read("target")["status"], "needs_review")
+        self.assertEqual(checkpoint.read(self.journal, "target")["next_action"], "inspect_cancel_stop")
+
     def test_unverifiable_kill_fails_closed_with_lease_still_pending(self):
         self.create()
         process = MagicMock()
