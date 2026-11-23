@@ -68,6 +68,7 @@ class FailureDiagnosticTests(unittest.TestCase):
             result.write_text(json.dumps({"directory": str(work), "status": "failed"}), encoding="utf-8")
             receipt = summarize(result, root)
             self.assertEqual(receipt["security_hint"], "unsupported_syntax")
+            self.assertEqual(receipt["security_node"], "GeneratorExp")
             self.assertNotIn("pending_review", json.dumps(receipt))
 
     def test_missing_or_invalid_receipt_is_redacted(self):
