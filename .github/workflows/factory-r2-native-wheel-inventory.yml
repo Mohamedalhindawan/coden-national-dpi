@@ -141,6 +141,7 @@ jobs:
           python - <<'PY'
           import hashlib,io,json,re,tarfile
           from ai_factory.factory_python_archive import inventory
+          from ai_factory.factory_python_elf import collect_elf
           from pathlib import Path,PurePosixPath
           from urllib.request import urlopen,Request
           base="https://github.com/astral-sh/python-build-standalone/releases/download/20260814/"
@@ -198,8 +199,12 @@ jobs:
           report=inventory(raw,digest)
           assert report["member_count"]==len(seen) and report["expanded_regular_bytes"]==expanded
           Path("evidence/python-inventory.json").write_text(json.dumps(report,indent=2))
+          elf=collect_elf(raw,report["native"])
+          assert len(elf)==9
+          Path("evidence/python-elf.json").write_text(json.dumps({"records":elf,"executed":False,"os_resolution_verified":False,"compiled_membership_verified":False,"license_approved":False,"release_authorized":False},indent=2))
+          print("ELF candidates:",len(elf))
           print("Native candidates:",len(report["native"]),"Text evidence:",len(report["text_evidence"]))
-          print("Static Python archive digest verified; no extraction or execution")
+          print("Static Python archive digest verified; selected ELF bytes copied only to temporary analysis files; no execution or installation")
           PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
