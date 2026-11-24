@@ -60,23 +60,64 @@ jobs:
           version: '0.13.7'
           python-version: '3.13.15'
           enable-cache: false
-      - name: Resolve medium vulnerability repair candidates without installing
+      - name: Isolate candidate lock upgrades without installing
         working-directory: upstream
         shell: bash
         run: |
           set -euo pipefail
-          # Archived fix candidates only; do not claim the database is current.
-          # No sdist builds, no uv sync, no running upstream code.
-          uv lock --no-build --upgrade-package 'mako>=1.4.2' \
-            --upgrade-package 'multidict>=6.9.1' \
-            --upgrade-package 'opentelemetry-api>=1.45.2' \
-            --upgrade-package 'pyjwt>=2.15.0' \
-            --upgrade-package 'setuptools>=83.0.0'
-          cp uv.lock ../evidence/candidate.lock
-          sha256sum uv.lock > ../evidence/candidate.sha256
-          git diff --no-index ../evidence/baseline.lock uv.lock > ../evidence/candidate.patch || test "$?" -eq 1
-          # Keep review state explicit. A resolved lock is not a tested repair.
-          printf '%s\n' '{"status":"candidate_resolved_review_required","installed":false,"binary_built":false,"runtime_scanned":false,"license_approved":false,"sdk_conversation_ran":false,"release_authorized":false}' > ../evidence/status.json
+          # Original combined attempt was unsatisfiable. Keep every outcome.
+          # Never override dependency requirements, install packages or build code.
+          mkdir -p ../evidence/attempts
+          for group in four_without_otel mako multidict pyjwt setuptools; do
+            cp ../evidence/baseline.lock uv.lock
+            case "$group" in
+              four_without_otel) args=(--upgrade-package 'mako>=1.4.2' --upgrade-package 'multidict>=6.9.1' --upgrade-package 'pyjwt>=2.15.0' --upgrade-package 'setuptools>=83.0.0');;
+              mako) args=(--upgrade-package 'mako>=1.4.2');;
+              multidict) args=(--upgrade-package 'multidict>=6.9.1');;
+              pyjwt) args=(--upgrade-package 'pyjwt>=2.15.0');;
+              setuptools) args=(--upgrade-package 'setuptools>=83.0.0');;
+            esac
+            if timeout 90 uv lock --no-build "${args[@]}" > "../evidence/attempts/$group.log" 2>&1; then
+              cp uv.lock "../evidence/attempts/$group.lock"
+              printf '%s\n' resolved > "../evidence/attempts/$group.status"
+            else
+              printf '%s\n' unresolved > "../evidence/attempts/$group.status"
+            fi
+          done
+          cp ../evidence/baseline.lock uv.lock
+          python3 - <<'PY'
+          import hashlib, json, tomllib
+          from pathlib import Path
+          root = Path("../evidence")
+          old = tomllib.loads((root/"baseline.lock").read_text())
+          def versions(lock):
+              result = {}
+              for package in lock["package"]:
+                  result.setdefault(package["name"], set()).add(package["version"])
+              return {k: sorted(v) for k,v in result.items()}
+          base = versions(old)
+          results = {}
+          for status in sorted((root/"attempts").glob("*.status")):
+              name = status.stem
+              record = {"status":status.read_text().strip()}
+              candidate = status.with_suffix(".lock")
+              if record["status"] == "resolved":
+                  raw = candidate.read_bytes()
+                  current = versions(tomllib.loads(raw.decode()))
+                  record["sha256"] = hashlib.sha256(raw).hexdigest()
+                  record["version_changes"] = {k:{"before":base.get(k,[]),"after":current.get(k,[])}
+                                              for k in sorted(set(base)|set(current)) if base.get(k)!=current.get(k)}
+              results[name] = record
+              print(name, record["status"])
+          (root/"status.json").write_text(json.dumps({
+              "status":"partial_resolution_review_required",
+              "attempts":results,"opentelemetry_conflict_unresolved":True,
+              "installed":False,"binary_built":False,"runtime_scanned":False,
+              "license_approved":False,"sdk_conversation_ran":False,"release_authorized":False
+          },indent=2))
+          if not any(x["status"]=="resolved" for x in results.values()):
+              raise SystemExit(1)
+          PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
