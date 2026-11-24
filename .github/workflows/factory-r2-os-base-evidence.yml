@@ -1,0 +1,50 @@
+name: CODEN P0 exact OS base dependency evidence
+on:
+  pull_request:
+    paths: ['.github/workflows/factory-r2-os-base-evidence.yml']
+permissions: {}
+jobs:
+  base-review:
+    if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      BASE: docker.io/library/ubuntu@sha256:9a04f13b3f80ef056361e30868593b1cfd2279fe19e4081cb93a90bf56819d6a
+    steps:
+      - name: Collect fixed base library and package evidence
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          test "$(id -u)" -ne 0
+          podman info --format json | jq -e '.host.security.rootless == true and .host.cgroupVersion == "v2"' >/dev/null
+          podman pull --platform linux/amd64 "$BASE"
+          podman image inspect "$BASE" > evidence/base-image.json
+          jq -e '.[0].Architecture=="amd64"' evidence/base-image.json >/dev/null
+          podman run --rm --pull=never --network none --http-proxy=false --read-only --read-only-tmpfs=false --cap-drop=all --security-opt=no-new-privileges --user 65534:65534 --cpus=2 --memory=512m --memory-swap=512m --pids-limit=64 --timeout=60 "$BASE" /bin/sh -eu -c '
+            test "$(id -u)" = 65534
+            test "$(ls /sys/class/net | tr "\n" " ")" = "lo "
+            /sbin/ldconfig -p
+            dpkg-query -W -f="\${binary:Package}\t\${Version}\t\${Architecture}\n"
+          ' > evidence/base-cache-and-packages.txt
+          podman run --rm --pull=never --network none --http-proxy=false --read-only --read-only-tmpfs=false --cap-drop=all --security-opt=no-new-privileges --user 65534:65534 --cpus=2 --memory=512m --memory-swap=512m --pids-limit=64 --timeout=60 "$BASE" /bin/sh -eu -c '
+            missing=0
+            for name in ld-linux-x86-64.so.2 libc.so.6 libdl.so.2 libgcc_s.so.1 libm.so.6 libpthread.so.0 librt.so.1 libstdc++.so.6 libutil.so.1 libz.so.1; do
+              p=$(/sbin/ldconfig -p | awk -v n="$name" "\$1==n && /x86-64/ {print \$NF; exit}")
+              if [ "$name" = ld-linux-x86-64.so.2 ] && [ -z "$p" ]; then p=/lib64/ld-linux-x86-64.so.2; fi
+              if [ -z "$p" ] || [ ! -f "$p" ]; then printf "MISSING\t%s\n" "$name"; missing=1; continue; fi
+              actual=$(readlink -f "$p")
+              printf "FOUND\t%s\t%s\t%s\n" "$name" "$p" "$actual"
+              sha256sum "$actual"
+              dpkg-query -S "$p" "$actual" 2>&1 || true
+            done
+            test "$missing" -eq 0
+          ' | tee evidence/required-library-files.txt
+          test "$(grep -c '^FOUND' evidence/required-library-files.txt)" -eq 10
+          printf '%s\n' '{"base_name_presence_verified":true,"recursive_resolution_verified":false,"symbol_compatibility_verified":false,"license_approved":false,"actual_build":false,"release_authorized":false}' > evidence/review.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-os-base-evidence
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
