@@ -35,6 +35,16 @@ def choose_wheel(wheels, rank):
     return selected
 
 
+def primary_metadata(entries):
+    # The wheel's own metadata is at archive root. Vendored packages may
+    # carry independent metadata and notices; preserve those as evidence.
+    roots = [entry for path,entry in entries.items()
+             if path.count("/") == 1 and path.endswith(".dist-info/METADATA")]
+    if len(roots) != 1:
+        raise ValueError("ambiguous root distribution metadata")
+    return roots[0]
+
+
 def metadata_fields(m):
     # Header objects from malformed/non-ASCII legacy metadata are not JSON-native.
     # The exact original metadata bytes and hash remain in evidence.
@@ -90,10 +100,7 @@ def main():
             if len(raw)!=w["size"]:
                 raise ValueError("wheel length mismatch")
             entries=inspect_wheel(raw,w["hash"][7:])
-            meta=[e for path,e in entries.items() if path.endswith(".dist-info/METADATA")]
-            if len(meta)!=1:
-                raise ValueError("ambiguous metadata")
-            m=BytesParser().parsebytes(base64.b64decode(meta[0]["base64"]))
+            m=BytesParser().parsebytes(base64.b64decode(primary_metadata(entries)["base64"]))
             if canonicalize_name(m["Name"])!=canonicalize_name(name) or Version(m["Version"])!=Version(version):
                 raise ValueError("embedded metadata identity mismatch")
             notices={path:e for path,e in entries.items() if not path.endswith(".dist-info/METADATA")}
