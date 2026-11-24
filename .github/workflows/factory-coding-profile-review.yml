@@ -1,0 +1,123 @@
+name: CODEN P0 coding-only dependency profile review
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/factory-coding-profile-review.yml'
+permissions: {}
+jobs:
+  dependency-review:
+    if: github.event.repository.private == false && github.head_ref == 'audit/factory-p0-linux-metadata-resolution-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: OpenHands/software-agent-sdk
+          ref: 077f3fad6d31cd852be5c87176e0a93c3b446126
+          persist-credentials: false
+          path: upstream
+      - name: Verify original source and exact repaired lock
+        run: |
+          set -euo pipefail
+          test "$(git -C upstream rev-parse HEAD)" = 077f3fad6d31cd852be5c87176e0a93c3b446126
+          echo '71c5479cb609b60872a7cbd34da764a0804c2e50c2658dba1bb5255e180d3603  upstream/uv.lock' | sha256sum -c -
+          mkdir -m 0700 evidence
+          archive=docs/evidence/openhands-077f3fad/fixed-source-provenance.zip
+          echo "a86bac8c435a835697d8cfe3cee1f8c38ab4a99591b5af1fba6698686bfb7fd8  $archive" | sha256sum -c -
+          unzip -p "$archive" resolved.lock > evidence/baseline.lock
+          echo '6d8348da6768ae32bb7665bdc7ca2525d53e576e13729fcc41f0a28df7c25b69  evidence/baseline.lock' | sha256sum -c -
+          cp evidence/baseline.lock upstream/uv.lock
+      - name: Map feature imports and create a temporary candidate manifest patch
+        run: |
+          set -euo pipefail
+          # Upstream checked-out sources remain unexecuted.
+          git -C upstream grep -nE 'func_timeout|run_with_timeout|from lmnr|import lmnr|register_default_tools\(|register_builtins_agents\(|enable_browser|should_enable_observability\(' -- \
+            'openhands-sdk/**/*.py' 'openhands-tools/**/*.py' 'openhands-agent-server/**/*.py' 'openhands-workspace/**/*.py' > evidence/feature-references.txt
+          python3 - <<'PY'
+          import ast, json, tomllib
+          from pathlib import Path
+          root=Path("upstream")
+          paths=["openhands-sdk","openhands-tools","openhands-agent-server","openhands-workspace"]
+          features={"func_timeout","lmnr","browser_use","browser_use_sdk"}
+          imports=[]
+          for pkg in paths:
+              for file in sorted((root/pkg/"openhands").rglob("*.py")):
+                  for n in ast.walk(ast.parse(file.read_text(),filename=str(file))):
+                      modules=[x.name for x in n.names] if isinstance(n,ast.Import) else [n.module or ""] if isinstance(n,ast.ImportFrom) else []
+                      for mod in modules:
+                          if mod.split(".")[0] in features:
+                              imports.append({"path":str(file.relative_to(root)),"line":n.lineno,"module":mod})
+          assert any(x["module"]=="func_timeout" for x in imports)
+          assert any(x["module"].split(".")[0]=="lmnr" for x in imports)
+          Path("evidence/feature-imports.json").write_text(json.dumps(imports,indent=2))
+          # Dependency-only experiment. NOT a functional source patch or approval
+          # to remove browser/telemetry/timeout support from the shipped binary.
+          changes={
+              "openhands-sdk/pyproject.toml": ["lmnr>=0.7.60,<0.8.0"],
+              "openhands-tools/pyproject.toml":["browser-use>=0.8.0","func-timeout>=4.3.5"],
+          }
+          for name, remove in changes.items():
+              p=root/name
+              text=p.read_text()
+              before=tomllib.loads(text)["project"]["dependencies"]
+              for req in remove:
+                  assert req in before
+                  line='    "'+req+'",\n'
+                  assert text.count(line)==1
+                  text=text.replace(line,"",1)
+              assert tomllib.loads(text)["project"]["dependencies"]==[x for x in before if x not in remove]
+              p.write_text(text)
+          p=root/"pyproject.toml"
+          text=p.read_text()
+          assert "[tool.uv]\n" in text and "environments =" not in text
+          text=text.replace("[tool.uv]\n","[tool.uv]\nenvironments = [\"sys_platform == 'linux' and platform_machine == 'x86_64' and python_version == '3.13'\"]\n",1)
+          tomllib.loads(text)
+          p.write_text(text)
+          print("Static feature imports:",len(imports))
+          PY
+          git -C upstream diff -- '*pyproject.toml' > evidence/candidate-manifests.patch
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+        with:
+          version: '0.13.7'
+          python-version: '3.13.15'
+          enable-cache: false
+      - name: Test reduced dependency graph without building or installing
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          if timeout 120 uv lock --no-build --upgrade-package 'opentelemetry-api>=1.45.2' --upgrade-package 'mako>=1.4.2' --upgrade-package 'multidict>=6.9.1' --upgrade-package 'pyjwt>=2.15.0' --upgrade-package 'setuptools>=83.0.0' > ../evidence/candidate.log 2>&1; then
+            cp uv.lock ../evidence/candidate.lock
+          else
+            tail -30 ../evidence/candidate.log
+            exit 1
+          fi
+          python3 - <<'PY'
+          import hashlib,json,tomllib
+          from pathlib import Path
+          root=Path("../evidence")
+          raw=(root/"candidate.lock").read_bytes()
+          packages=tomllib.loads(raw.decode())["package"]
+          names={p["name"] for p in packages}
+          excluded={"func-timeout","browser-use","browser-use-sdk","lmnr","lmnr-claude-code-proxy"}
+          remaining=sorted(excluded & names)
+          result={"status":"candidate_graph_resolved" if not remaining else "excluded_dependencies_remain",
+                  "sha256":hashlib.sha256(raw).hexdigest(),"remaining_excluded_packages":remaining,
+                  "package_count":len(packages),"source_patch_applied_to_product":False,
+                  "runtime_compatibility_verified":False,"installed":False,"built":False,
+                  "license_approved":False,"sdk_conversation_ran":False,"release_authorized":False}
+          (root/"candidate-review.json").write_text(json.dumps(result,indent=2))
+          print("Reduced graph:",result["status"],"packages:",len(packages),"excluded packages remaining:",len(remaining))
+          if remaining: raise SystemExit(1)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: coding-profile-review
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
