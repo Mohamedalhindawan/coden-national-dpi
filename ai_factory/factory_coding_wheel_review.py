@@ -21,7 +21,7 @@ def choose_wheel(wheels, rank):
         if (u.scheme != "https" or u.netloc != "files.pythonhosted.org"
                 or u.query or u.fragment or not u.path.endswith(".whl")
                 or not re.fullmatch("sha256:[a-f0-9]{64}", w["hash"])
-                or not 0 < w["size"] <= CAP):
+                or not 0 < w["size"]):
             raise ValueError("unapproved wheel locator or size")
         name = u.path.rsplit("/",1)[-1]
         priority = rank(name)
@@ -29,7 +29,19 @@ def choose_wheel(wheels, rank):
             candidates.append((priority, name, w))
     if not candidates:
         raise ValueError("no compatible locked wheel")
-    return min(candidates,key=lambda x:(x[0],x[1]))[2]
+    selected = min(candidates,key=lambda x:(x[0],x[1]))[2]
+    if selected["size"] > CAP:
+        raise ValueError("selected wheel exceeds size limit")
+    return selected
+
+
+def metadata_fields(m):
+    # Header objects from malformed/non-ASCII legacy metadata are not JSON-native.
+    # The exact original metadata bytes and hash remain in evidence.
+    return {"license":str(m["License"]) if m["License"] is not None else None,
+            "license_expression":str(m["License-Expression"]) if m["License-Expression"] is not None else None,
+            "license_classifiers":[str(s) for s in m.get_all("Classifier",[]) if str(s).startswith("License ::")],
+            "license_files":[str(s) for s in m.get_all("License-File",[])]}
 
 
 def summarize(records, expected):
@@ -85,11 +97,11 @@ def main():
             if canonicalize_name(m["Name"])!=canonicalize_name(name) or Version(m["Version"])!=Version(version):
                 raise ValueError("embedded metadata identity mismatch")
             notices={path:e for path,e in entries.items() if not path.endswith(".dist-info/METADATA")}
-            rec.update(status="collected",sha256=w["hash"][7:],url=w["url"],license=m["License"],
-                       license_expression=m["License-Expression"],license_classifiers=[s for s in m.get_all("Classifier",[]) if s.startswith("License ::")],
-                       license_files=m.get_all("License-File",[]),notice_count=len(notices))
-            (out/(name+".json")).write_text(json.dumps({"record":rec,"evidence":entries}))
+            candidate=dict(rec,status="collected",sha256=w["hash"][7:],url=w["url"],notice_count=len(notices),**metadata_fields(m))
+            (out/(name+".json")).write_text(json.dumps({"record":candidate,"evidence":entries}))
+            rec=candidate
         except Exception as exc:
+            rec["status"]="blocked"
             rec["error_type"]=type(exc).__name__
             rec["error"]=str(exc)[:160]
         records.append(rec)
