@@ -1,0 +1,295 @@
+name: CODEN P0 authenticated Qwen3 OpenHands link
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/factory-authenticated-qwen3-link.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  rootless-model-link:
+    if: >-
+      github.event.repository.private == false &&
+      github.head_ref == 'feat/factory-p0-authenticated-qwen3-link-20261124' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      OPENHANDS_BINARY_SHA: 5ad5fa2bb86256b510df3bfbbd9653fbc60a243ea744a579d3ca4c6fd9e91cf3
+      OPENHANDS_BASE: docker.io/library/ubuntu@sha256:9a04f13b3f80ef056361e30868593b1cfd2279fe19e4081cb93a90bf56819d6a
+      LLAMA_SHA: da524c71f9dd09913df29264bb7229b99a2de82d8a26e6902e6921d413560d6d
+      MODEL_SHA: 9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031
+      PYTHONDONTWRITEBYTECODE: '1'
+      PYTHONPATH: ${{ github.workspace }}
+    steps:
+      - name: Checkout only trusted first-party audit code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Python 3.12 admission tests
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Run local model-link evidence RED GREEN negative cases
+        run: python -m unittest discover -s tests -p 'test_factory_qwen_tool*.py' -v
+      - name: Download existing signed repaired OpenHands source product (no rebuild)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45431783950
+          name: openhands-source-product
+          path: product
+
+      - name: Reverify signed agent-server binary and independently archived scans
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          audit=docs/evidence/openhands-077f3fad
+          echo "a86bac8c435a835697d8cfe3cee1f8c38ab4a99591b5af1fba6698686bfb7fd8  $audit/fixed-source-provenance.zip" | sha256sum -c -
+          echo "684eba3009dc8885f9a3199220996083b32b139cab7d0a13fb63f6e2ac034760  $audit/fixed-source-audit.zip" | sha256sum -c -
+          unzip -p "$audit/fixed-source-provenance.zip" bundle.jsonl > "$RUNNER_TEMP/source-bundle.jsonl"
+          gh attestation verify product/openhands-agent-server \
+            --bundle "$RUNNER_TEMP/source-bundle.jsonl" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/openhands-source-build.yml" \
+            --source-digest d2c1cd0c41695205f868ff89faa318a80bb754de \
+            --deny-self-hosted-runners >/dev/null
+          echo "$OPENHANDS_BINARY_SHA  product/openhands-agent-server" | sha256sum -c -
+          for name in image-scan.json environment-scan.json; do
+            unzip -p "$audit/fixed-source-audit.zip" "$name" | \
+              jq -e '(.Results|length>0) and ([.Results[] | .Vulnerabilities[]? | select(.Severity=="HIGH" or .Severity=="CRITICAL")] | length==0)' >/dev/null
+          done
+          echo 'PASS: signed verified OpenHands source agent-server binary; archived scan HIGH/CRITICAL gate.'
+      - name: Verify actual rootless Podman cgroups before any sandbox execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          podman info --format json | jq -e '
+            .host.security.rootless == true and
+            .host.cgroupVersion == "v2" and
+            (.host.cgroupControllers | contains(["cpu","memory","pids"]))
+          ' >/dev/null
+          echo 'PASS: operator rootless Podman host with CPU, memory and PID cgroup v2 controllers.'
+
+      - name: Download only previously SHA-verified Qwen and llama.cpp inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage="$RUNNER_TEMP/qwen-rootless-build"
+          mkdir -p "$stage"
+          cd "$stage"
+          curl --fail --silent --show-error --location --retry 2 --connect-timeout 15 --max-time 150 \
+            -o llama-b12600-bin-ubuntu-x64.tar.gz \
+            https://github.com/ggml-org/llama.cpp/releases/download/b12600/llama-b12600-bin-ubuntu-x64.tar.gz
+          echo "$LLAMA_SHA  llama-b12600-bin-ubuntu-x64.tar.gz" | sha256sum -c -
+          curl --fail --silent --show-error --location --retry 2 --connect-timeout 20 --max-time 270 \
+            -o qwen-model.gguf \
+            "https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/23749fefcc72300e3a2ad315e1317431b06b590a/Qwen3-0.6B-Q8_0.gguf?download=true"
+          echo "$MODEL_SHA  qwen-model.gguf" | sha256sum -c -
+          tar -xf llama-b12600-bin-ubuntu-x64.tar.gz
+          test -x llama-b12600/llama-server
+          curl --fail --silent --show-error --location --retry 2 --connect-timeout 12 --max-time 70 \
+            -o libgomp1.deb \
+            "https://security.ubuntu.com/ubuntu/pool/main/g/gcc-12/libgomp1_12.3.0-1ubuntu1~22.04.3_amd64.deb"
+          echo "870c27299185a5dd4accad3b15bf82a7409fd7073cccaa8025875307da4d0ce2  libgomp1.deb" | sha256sum -c -
+          curl --fail --silent --show-error --location --retry 2 --connect-timeout 12 --max-time 70 \
+            -o libcurl4.deb \
+            "https://security.ubuntu.com/ubuntu/pool/main/c/curl/libcurl4_7.81.0-1ubuntu1.30_amd64.deb"
+          echo "2fc35b8056aebaa6cfe9a5672a8e06339c3e690657fbebc6c5d6b50d9f9626fb  libcurl4.deb" | sha256sum -c -
+          curl --fail --silent --show-error --location --retry 2 --connect-timeout 12 --max-time 70 \
+            -o libstdcxx6.deb \
+            "https://security.ubuntu.com/ubuntu/pool/main/g/gcc-12/libstdc++6_12.3.0-1ubuntu1~22.04.3_amd64.deb"
+          echo "29ef3d289b272704b75141906c8f683db0f2bdb0942061366691333bfb289bdc  libstdcxx6.deb" | sha256sum -c -
+          mkdir runtime-libs
+          for pkg in libgomp1.deb libcurl4.deb libstdcxx6.deb; do
+            dpkg-deb -x "$pkg" runtime-libs
+          done
+          echo 'PASS: exact Qwen model, llama.cpp and Ubuntu runtime libraries before image build.'
+
+      - name: Run source-built OpenHands server and actual Qwen in one private Rootless network
+        shell: bash
+        run: |
+          set -euo pipefail
+          net="coden-factory-rootless-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          agent="coden-rootless-openhands-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          model="coden-rootless-qwen-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          model_image="localhost/coden-rootless-qwen:${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          agent_image="localhost/coden-rootless-openhands:${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$RUNNER_TEMP/openhands-model-proof"
+          cd "$RUNNER_TEMP/openhands-model-proof"
+          cleanup() {
+            result=$?
+            trap - EXIT
+            podman rm -f --ignore "$agent" "$model" >/dev/null 2>&1 || result=1
+            podman volume rm -f "coden-tmp-$GITHUB_RUN_ID" "coden-work-$GITHUB_RUN_ID" >/dev/null 2>&1 || result=1
+            podman network rm "$net" >/dev/null 2>&1 || result=1
+            podman image rm -f "$model_image" "$agent_image" >/dev/null 2>&1 || result=1
+            if podman container exists "$agent" || podman container exists "$model" || podman network exists "$net" || podman volume exists "coden-tmp-$GITHUB_RUN_ID" || podman volume exists "coden-work-$GITHUB_RUN_ID"; then result=1; fi
+            rm -f model-response.json
+            if [ "$result" -eq 0 ]; then printf '%s\n' 'resources_removed' > "$RUNNER_TEMP/qwen3-link-cleanup.txt"; fi
+            exit "$result"
+          }
+          trap cleanup EXIT
+
+          # Build only from previously signed and exact hash-verified artifacts.
+          mkdir -p agent-context
+          install -m 0555 "$GITHUB_WORKSPACE/product/openhands-agent-server" agent-context/openhands-agent-server
+          printf 'FROM %s\nCOPY openhands-agent-server /usr/local/bin/openhands-agent-server\nUSER 65534:65534\nENTRYPOINT ["/usr/local/bin/openhands-agent-server"]\nCMD []\n' "$OPENHANDS_BASE" > agent-context/Dockerfile
+          podman pull --platform linux/amd64 "$OPENHANDS_BASE"
+          podman build --network none --pull=never -t "$agent_image" agent-context
+          podman pull --platform linux/amd64 docker.io/library/ubuntu@sha256:f64b2ffc2f10ab8f8505aa56b2664bd846cbb9df87c7e2532e30f7667021c0e6
+          sed 's/1d9614638d18024d0fbb36575a15f1302a3adf044df10345688ec4f6e1c4ff32/9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031/' "$GITHUB_WORKSPACE/.github/docker/Factory-Qwen-CPU.Dockerfile" > "$RUNNER_TEMP/Qwen3.Dockerfile"
+          grep -F "$MODEL_SHA" "$RUNNER_TEMP/Qwen3.Dockerfile" >/dev/null
+          podman build --network none --pull=never \
+            -f "$RUNNER_TEMP/Qwen3.Dockerfile" \
+            -t "$model_image" "$RUNNER_TEMP/qwen-rootless-build"
+
+          podman network create --internal --driver bridge "$net"
+          podman network inspect "$net" | jq -e '.[0].internal == true and .[0].driver == "bridge"' >/dev/null
+
+          podman volume create --opt type=tmpfs --opt device=tmpfs \
+            --opt o=rw,exec,nosuid,nodev,size=768m,nr_inodes=32768,mode=1777 \
+            "coden-tmp-${GITHUB_RUN_ID}"
+          podman volume create --opt type=tmpfs --opt device=tmpfs \
+            --opt o=rw,noexec,nosuid,nodev,size=32m,nr_inodes=2048,uid=65534,gid=65534,mode=0700 \
+            "coden-work-${GITHUB_RUN_ID}"
+
+          model_key="$(openssl rand -hex 24)"
+          echo "::add-mask::$model_key"
+          podman create --name "$model" --network "$net" --network-alias qwen3 \
+            --http-proxy=false --read-only --read-only-tmpfs=false \
+            --cap-drop=all --security-opt=no-new-privileges --user 65534:65534 \
+            --cpus=2 --memory=1536m --memory-swap=1536m --pids-limit=64 \
+            --cgroupns=private --pid=private --ipc=private --timeout=120 \
+            --ulimit core=0:0 --tmpfs /tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777 \
+            "$model_image" --model /opt/model.gguf --host 0.0.0.0 --port 11434 \
+            --alias local-qwen --ctx-size 2048 --threads 2 --n-gpu-layers 0 --no-warmup --jinja --chat-template-kwargs '{"enable_thinking":false}' --api-key "$model_key"
+          session_key="$(openssl rand -hex 24)"
+          encryption_key="$(openssl rand -hex 32)"
+          test "${#session_key}" -eq 48
+          test "${#encryption_key}" -eq 64
+          echo "::add-mask::$session_key"
+          echo "::add-mask::$encryption_key"
+          podman create --name "$agent" --network "$net" --network-alias openhands \
+            --http-proxy=false --read-only --read-only-tmpfs=false \
+            --cap-drop=all --security-opt=no-new-privileges --user 65534:65534 \
+            --cpus=1 --memory=1536m --memory-swap=1536m --pids-limit=96 \
+            --cgroupns=private --pid=private --ipc=private --timeout=120 \
+            --ulimit core=0:0 \
+            --volume "coden-tmp-${GITHUB_RUN_ID}:/tmp:rw,nocopy" \
+            --volume "coden-work-${GITHUB_RUN_ID}:/workspace:rw,nocopy" \
+            --workdir /workspace --env OH_SESSION_API_KEYS_0="$session_key" --env OH_SECRET_KEY="$encryption_key" \
+            --env HOME=/workspace \
+            --env XDG_CACHE_HOME=/workspace/cache --env OPENHANDS_SUPPRESS_BANNER=1 \
+            "$agent_image" --host 0.0.0.0 --port 8002
+
+          podman inspect "$agent" "$model" | jq -e 'length==2 and all(.[]; .HostConfig.Privileged==false and .HostConfig.ReadonlyRootfs==true and ((.HostConfig.PortBindings // {})|length==0) and .HostConfig.NetworkMode!="host")' >/dev/null
+          podman start "$model"
+          podman start "$agent"
+
+          # The real agent-server health is verified INSIDE its container; no
+          # port is exposed to the runner or the public Internet.
+          health=false
+          for _ in $(seq 1 45); do
+            if [[ "$(podman inspect -f '{{.State.Running}}' "$agent")" != true ]]; then break; fi
+            if podman exec "$agent" bash -ec 'exec 3<>/dev/tcp/127.0.0.1/8002; printf "GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n" >&3; read -rt 3 line <&3; [[ "$line" == *" 200 "* ]]' 2>/dev/null; then
+              health=true
+              break
+            fi
+            sleep 1
+          done
+          test "$health" = true
+          echo 'PASS: source-built OpenHands server /health HTTP 200 from its actual rootless container.'
+
+          # Model is a REAL pinned Qwen3-0.6B Q8_0 GGUF, not a mock HTTP endpoint.
+          ready=false
+          for _ in $(seq 1 35); do
+            if [[ "$(podman inspect -f '{{.State.Running}}' "$model")" != true ]]; then break; fi
+            if podman exec "$agent" bash -ec 'exec 3<>/dev/tcp/qwen3/11434; printf "GET /health HTTP/1.0\r\nHost: qwen3\r\n\r\n" >&3; read -rt 3 line <&3; [[ "$line" == *" 200 "* ]]' 2>/dev/null; then
+              ready=true
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" = true
+          echo 'PASS: actual OpenHands container reached real local Qwen llama-server /health.'
+
+          # Egress must fail from the REAL OpenHands process network namespace.
+          if timeout 5 podman exec "$agent" bash -ec 'exec 3<>/dev/tcp/1.1.1.1/80' >/dev/null 2>&1; then
+            echo 'BLOCKED: public IP reachable from OpenHands' >&2; exit 1
+          fi
+          if timeout 5 podman exec "$agent" bash -ec 'exec 3<>/dev/tcp/example.com/80' >/dev/null 2>&1; then
+            echo 'BLOCKED: public domain reachable from OpenHands' >&2; exit 1
+          fi
+          echo 'PASS: tested public IP and domain TCP egress denied from real OpenHands container.'
+
+          # Fixed operator probe only; no model output is ever dispatched.
+          cat > link-query.sh <<'QUERY'
+          set -euo pipefail
+          status_only() {
+            local host="$1" port="$2" path="$3" header="$4" value="$5"
+            exec 3<>/dev/tcp/$host/$port
+            printf 'GET %s HTTP/1.0\r\nHost: %s\r\n%s: %s\r\nConnection: close\r\n\r\n' "$path" "$host" "$header" "$value" >&3
+            IFS= read -r status <&3
+            exec 3<&- 3>&-
+            printf '%s' "$status"
+          }
+          [[ "$(status_only qwen3 11434 /v1/models Authorization 'Bearer ')" == *" 401 "* ]]
+          [[ "$(status_only qwen3 11434 /v1/models Authorization 'Bearer invalid')" == *" 401 "* ]]
+          [[ "$(status_only qwen3 11434 /v1/models Authorization "Bearer $PROBE_KEY")" == *" 200 "* ]]
+          [[ "$(status_only 127.0.0.1 8002 /api/conversations/count X-Session-API-Key '')" == *" 401 "* ]]
+          [[ "$(status_only 127.0.0.1 8002 /api/conversations/count X-Session-API-Key invalid)" == *" 401 "* ]]
+          [[ "$(status_only 127.0.0.1 8002 /api/conversations/count X-Session-API-Key "$OH_SESSION_API_KEYS_0")" == *" 200 "* ]]
+          exec 3<>/dev/tcp/qwen3/11434
+          printf 'POST /v1/chat/completions HTTP/1.0\r\nHost: qwen3\r\nAuthorization: Bearer %s\r\nContent-Type: application/json\r\nContent-Length: %s\r\nConnection: close\r\n\r\n%s' "$PROBE_KEY" "$(printf '%s' "$PROBE_BODY" | wc -c)" "$PROBE_BODY" >&3
+          IFS= read -r status <&3
+          [[ "$status" == *" 200 "* ]]
+          while IFS= read -r header <&3; do
+            [[ "$header" == "$(printf '\r')" || -z "$header" ]] && break
+          done
+          cat <&3
+          QUERY
+          body="$(python -m ai_factory.factory_qwen_tool_benchmark request count)"
+          (ulimit -f 1024; timeout 35 podman exec -i --env PROBE_KEY="$model_key" --env PROBE_BODY="$body" "$agent" bash -s < link-query.sh > model-response.json)
+          echo 'PASS: both services authenticated; actual model response obtained from OpenHands container.'
+          for item in "$agent:96:100000" "$model:64:200000"; do
+            IFS=: read -r name pids cpu <<< "$item"
+            podman exec "$name" sh -ec 'test "$(id -u)" -eq 65534; grep -Eq "^CapEff:[[:space:]]+0+$" /proc/self/status; grep -Eq "^NoNewPrivs:[[:space:]]+1$" /proc/self/status; test "$(cat /sys/fs/cgroup/memory.max)" -eq 1610612736; test "$(cat /sys/fs/cgroup/pids.max)" -eq "$1"; test "$(cat /sys/fs/cgroup/cpu.max)" = "$2 100000"; test ! -S /var/run/docker.sock' sh "$pids" "$cpu"
+            if timeout 4 podman exec "$name" bash -ec 'exec 3<>/dev/tcp/169.254.169.254/80' >/dev/null 2>&1; then
+              echo 'BLOCKED: tested metadata endpoint reachable'; exit 1
+            fi
+          done
+          test "$(podman ps --filter "network=$net" --format '{{.ID}}' | wc -l)" -eq 2
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from ai_factory.factory_qwen_tool_benchmark import audit_case
+          from ai_factory.factory_qwen_tool_schema import MAX_RESPONSE_BYTES
+          with Path("model-response.json").open("rb") as stream:
+              verdict = audit_case("count", stream.read(MAX_RESPONSE_BYTES + 1))
+          receipt = {**verdict, "scope": "operator_http_probe_from_openhands_container",
+                     "model_sha256": os.environ["MODEL_SHA"],
+                     "openhands_binary_sha256": os.environ["OPENHANDS_BINARY_SHA"],
+                     "both_auth_gates_passed": True, "internal_bridge_only": True,
+                     "tested_metadata_tcp_denied": True, "paid_api_calls": 0}
+          (Path(os.environ["RUNNER_TEMP"]) / "qwen3-link-review.json").write_text(json.dumps(receipt, indent=2))
+          print("Authenticated link tool schema:", verdict["status"], verdict.get("reason_code", "accepted"))
+          if verdict["status"] != "schema_match":
+              raise SystemExit(1)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: authenticated-qwen3-openhands-link-review
+          path: |
+            ${{ runner.temp }}/qwen3-link-review.json
+            ${{ runner.temp }}/qwen3-link-cleanup.txt
+          if-no-files-found: error
+          retention-days: 7
