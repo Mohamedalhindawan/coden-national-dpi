@@ -6,6 +6,8 @@ import tarfile
 from pathlib import PurePosixPath
 
 CAP = 128 * 1024 * 1024
+EXPANDED_CAP = 1024 * 1024 * 1024
+CHUNK = 1024 * 1024
 
 
 def inventory(raw, expected_sha):
@@ -27,11 +29,11 @@ def inventory(raw, expected_sha):
                 continue
             if m.isdir():
                 continue
-            if not m.isfile() or not 0 <= m.size <= CAP:
+            if not m.isfile() or not 0 <= m.size <= EXPANDED_CAP:
                 raise ValueError('unsupported member or size')
             files += 1
             expanded += m.size
-            if expanded > 1024 * 1024 * 1024:
+            if expanded > EXPANDED_CAP:
                 raise ValueError('expanded size limit')
             name = p.name.lower()
             text = ('license' in name or 'licence' in name or 'notice' in name or
@@ -45,9 +47,19 @@ def inventory(raw, expected_sha):
                     continue
                 if text and (m.size > 2 * 1024 * 1024 or text_bytes + m.size > 16 * 1024 * 1024):
                     raise ValueError('text evidence limit')
-                data = prefix + stream.read()
-            record = {'path': m.name, 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()}
-            if len(data) != m.size:
+                digest = hashlib.sha256(prefix)
+                count = len(prefix)
+                data = bytearray(prefix) if text else None
+                while count < m.size:
+                    block = stream.read(min(CHUNK, m.size - count))
+                    if not block:
+                        break
+                    digest.update(block)
+                    count += len(block)
+                    if data is not None:
+                        data.extend(block)
+            record = {'path': m.name, 'bytes': count, 'sha256': digest.hexdigest()}
+            if count != m.size:
                 raise ValueError('member size mismatch')
             if kind:
                 native.append(dict(record, kind=kind))
