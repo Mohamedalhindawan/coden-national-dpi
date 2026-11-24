@@ -5,7 +5,7 @@ on:
 permissions: {}
 jobs:
   static-inventory:
-    if: github.event.repository.private == false && github.head_ref == 'audit/factory-p0-coding-wheel-notices-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -75,6 +75,7 @@ jobs:
                   out=result.stdout
                   return {"machine":re.findall(r"^\s*Machine:\s*(.+)$",out,re.M),"needed":re.findall(r"\(NEEDED\).*\[([^\]]+)\]",out),"soname":re.findall(r"\(SONAME\).*\[([^\]]+)\]",out),"search_paths":re.findall(r"\((?:RPATH|RUNPATH)\).*\[([^\]]+)\]",out)}
           reports=[]
+          compressed_total=expanded_total=members_total=0
           for n,v,url,digest in selected:
               assert required[n]==v
               match=[w for w in packages[n,v]["wheels"] if w["url"]==url and w["hash"]=="sha256:"+digest]
@@ -88,6 +89,12 @@ jobs:
               notices=inspect_wheel(b,digest)
               native=[]
               with zipfile.ZipFile(io.BytesIO(b)) as z:
+                  assert z.testzip() is None
+                  expanded=sum(i.file_size for i in z.infolist())
+                  members=len(z.infolist())
+                  compressed_total+=size
+                  expanded_total+=expanded
+                  members_total+=members
                   for info in z.infolist():
                       if info.is_dir(): continue
                       with z.open(info) as f: magic=f.read(8)
@@ -103,16 +110,73 @@ jobs:
                           record={"path":info.filename,"size":len(data),"sha256":sha(data),"kind":kind}
                           if kind=="ELF": record.update(inspect_native(data))
                           native.append(record)
-              reports.append({"name":n,"version":v,"wheel_sha256":digest,"runtime_candidate":n in runtime,"build_candidate":n in build,"native":native,"notice_paths":sorted(k for k in notices if not k.endswith("/METADATA"))})
+              reports.append({"name":n,"version":v,"wheel_sha256":digest,"runtime_candidate":n in runtime,"build_candidate":n in build,"compressed_bytes":size,"expanded_member_bytes":expanded,"archive_member_count":members,"native":native,"notice_paths":sorted(k for k in notices if not k.endswith("/METADATA"))})
               print(n,v,len(native),flush=True)
               Path("evidence/inventory.json").write_text(json.dumps({"records":reports,"complete":len(reports)==131,"installed":False,"compiled_membership_verified":False,"license_approved":False,"release_authorized":False},indent=2))
-          assert len(reports)==131
+          assert len(reports)==131 and compressed_total==105369096
+          Path("evidence/capacity.json").write_text(json.dumps({"wheel_count":len(reports),"compressed_bytes":compressed_total,"expanded_member_bytes":expanded_total,"archive_member_count":members_total,"crc_verified":True,"installed":False,"installed_size_measured":False,"build_authorized":False,"release_authorized":False},indent=2))
           print("PASS: 131 exact R2 wheels statically inventoried. No execution/installation.")
+          PY
+      - name: Review upstream Python standalone archive identity without extraction or execution
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,io,json,re,tarfile
+          from pathlib import Path,PurePosixPath
+          from urllib.request import urlopen,Request
+          base="https://api.github.com/repos/astral-sh/python-build-standalone/releases/tags/20260814"
+          name="cpython-3.13.15+20260814-x86_64-unknown-linux-gnu-install_only.tar.gz"
+          def read(url,limit):
+              with urlopen(Request(url,headers={"User-Agent":"CODEN-static-review"}),timeout=60) as response:
+                  data=response.read(limit+1)
+              assert len(data)<=limit
+              return data
+          release=json.loads(read(base,16*1024*1024))
+          assert release["tag_name"]=="20260814" and not release["draft"]
+          assets=[a for a in release["assets"] if a["name"]==name]
+          assert len(assets)==1,"exact Python candidate missing"
+          a=assets[0]
+          digest=a.get("digest","")
+          assert re.fullmatch(r"sha256:[0-9a-f]{64}",digest)
+          prefix="https://github.com/astral-sh/python-build-standalone/releases/download/20260814/"
+          url=a["browser_download_url"]
+          assert url.startswith(prefix)
+          assert 0<a["size"]<=128*1024*1024
+          raw=read(url,128*1024*1024)
+          assert len(raw)==a["size"] and hashlib.sha256(raw).hexdigest()==digest[7:]
+          files=0
+          links=[]
+          notices=[]
+          expanded=0
+          seen=set()
+          with tarfile.open(fileobj=io.BytesIO(raw),mode="r:gz") as t:
+              for m in t:
+                  p=PurePosixPath(m.name)
+                  assert not p.is_absolute() and ".." not in p.parts and p.parts[0]=="python"
+                  assert m.name not in seen
+                  seen.add(m.name)
+                  assert len(seen)<=100000
+                  if m.isfile():
+                      files+=1
+                      expanded+=m.size
+                      assert expanded<=1024*1024*1024
+                      if "license" in p.name.lower() or "notice" in p.name.lower() or p.name.lower().startswith("copying"):
+                          assert m.size<=2*1024*1024
+                          stream=t.extractfile(m)
+                          data=stream.read()
+                          notices.append({"path":m.name,"sha256":hashlib.sha256(data).hexdigest(),"bytes":len(data)})
+                  elif m.issym() or m.islnk():
+                      links.append({"path":m.name,"target":m.linkname,"kind":"symlink" if m.issym() else "hardlink"})
+                  else:
+                      assert m.isdir(),"unexpected archive member type"
+          receipt={"source":base,"release_id":release["id"],"asset_id":a["id"],"url":url,"sha256":digest[7:],"compressed_bytes":len(raw),"expanded_regular_bytes":expanded,"regular_files":files,"archive_member_count":len(seen),"links":links,"notice_candidates":notices,"producer_digest_verified":True,"independent_attestation_verified":False,"extracted":False,"executed":False,"license_approved":False,"build_authorized":False,"release_authorized":False}
+          Path("evidence/python-candidate.json").write_text(json.dumps(receipt,indent=2))
+          print("Static Python archive digest verified; no extraction or execution")
           PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: r2-native-wheel-inventory
+          name: r2-native-wheel-capacity-python-review
           path: evidence/
           if-no-files-found: error
           retention-days: 7
