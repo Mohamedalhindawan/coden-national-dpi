@@ -297,3 +297,64 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+  glibc-artifact-review:
+    if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    permissions: {}
+    steps:
+      - name: Review exact signed-index-bound Debian artifacts without installing
+        run: |
+          set -euo pipefail
+          export LC_ALL=C
+          mkdir -m 0700 evidence
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          printf '%s\n' '{"source_plan_artifact":14974697509,"source_plan_zip_sha256":"0241d45e47c8ad063c79c5f20e5d58bb99f971d8663141383a3536460a889257","package_installation":false,"base_replaced":false,"security_approved":false,"build_authorized":false,"release_authorized":false}' > evidence/scope.json
+          cat > "$work/expected.tsv" <<'EOF'
+          libc6 3264258 d821b41fc59cb4978ecd53bc83e5c964ac15d305c8d2ac4c8a35aebe55010fb9
+          libc-bin 681714 22f0393621e72ed1b53d228ee332180269182b5445761c7d7b74f5cba75a1dd6
+          EOF
+          version=2.39-0ubuntu8.12
+          while read -r package size digest; do
+            file="${package}_${version}_amd64.deb"
+            url="https://security.ubuntu.com/ubuntu/pool/main/g/glibc/$file"
+            curl --fail --silent --show-error --proto '=https' --connect-timeout 15 --max-time 90 --max-filesize "$size" --output "$work/$file" "$url"
+            test "$(stat -c %s "$work/$file")" -eq "$size"
+            (cd "$work"; printf '%s  %s\n' "$digest" "$file" | sha256sum -c -)
+            test "$(dpkg-deb -f "$work/$file" Package)" = "$package"
+            test "$(dpkg-deb -f "$work/$file" Version)" = "$version"
+            test "$(dpkg-deb -f "$work/$file" Architecture)" = amd64
+            dpkg-deb -f "$work/$file" > "evidence/$package.control.txt"
+            timeout 60s dpkg-deb -c "$work/$file" > "evidence/$package.members.txt"
+            (ulimit -f 65536; timeout 60s dpkg-deb --fsys-tarfile "$work/$file" > "$work/$package.tar")
+            (ulimit -f 4096; timeout 30s dpkg-deb --ctrl-tarfile "$work/$file" > "$work/$package-control.tar")
+            tar -tvf "$work/$package-control.tar" > "evidence/$package.control-members.txt"
+            for script in preinst postinst prerm postrm triggers; do
+              if tar -tf "$work/$package-control.tar" | grep -Fxq "./$script"; then
+                tar -xOf "$work/$package-control.tar" "./$script" > "evidence/$package.$script.txt"
+              fi
+            done
+            printf '%s\t%s\t%s\t%s\n' "$package" "$size" "$digest" "$url" >> evidence/artifact-identities.tsv
+          done < "$work/expected.tsv"
+          mkdir -m 0700 evidence/provider-elf evidence/provider-dynsym
+          for file in ld-linux-x86-64.so.2 libc.so.6 libdl.so.2 libm.so.6 libpthread.so.0 librt.so.1 libutil.so.1; do
+            member="./usr/lib/x86_64-linux-gnu/$file"
+            test "$(tar -tf "$work/libc6.tar" | grep -Fxc "$member")" -eq 1
+            tar -xOf "$work/libc6.tar" "$member" > "$work/object"
+            test -s "$work/object"
+            printf '%s  %s\n' "$(sha256sum "$work/object" | cut -d ' ' -f1)" "$file" >> evidence/provider-files.sha256
+            timeout 30s readelf -W -h -d -V -l "$work/object" > "evidence/provider-elf/$file.txt"
+            timeout 30s readelf -W --dyn-syms "$work/object" > "evidence/provider-dynsym/$file.txt"
+            test "$(stat -c %s "evidence/provider-dynsym/$file.txt")" -le 8388608
+          done
+          readelf --version > evidence/readelf-version.txt
+          printf '%s\n' '{"status":"static_artifact_review_collected","exact_packages":2,"updated_provider_records":7,"package_installation":false,"maintainer_scripts_executed":false,"abi_approved":false,"security_approved":false,"build_authorized":false,"release_authorized":false}' > evidence/result.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-glibc-artifact-review
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
