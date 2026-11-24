@@ -398,6 +398,33 @@ jobs:
           test "$(wc -l < evidence/source.sha256)" -eq 4
           grep -Fxq 'Version: 2.39-0ubuntu8.12' evidence/source/glibc_2.39-0ubuntu8.12.dsc
           printf '%s\n' '{"source_files_verified":4,"source_executed":false,"detached_signature_verified":false,"binary_reproduction_verified":false,"legal_approved":false,"release_authorized":false}' > evidence/result.json
+      - name: Verify source signatures against independently published signer fingerprints
+        run: |
+          set -euo pipefail
+          export LC_ALL=C
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          export GNUPGHOME="$work/gnupg"
+          mkdir -m 0700 "$GNUPGHOME" evidence/signatures
+          printf '%s\n' 'https://sourceware.org/glibc/security.html' 'https://wiki.ubuntu.com/Security/GPG_key_table' > evidence/signatures/fingerprint-sources.txt
+          upstream=7273542B39962DF7B299931416792B4EA25340F8
+          ubuntu=50C4A0DDCF31E452CEB19B516569D855A744BE93
+          for fp in "$upstream" "$ubuntu"; do
+            curl --fail --silent --show-error --proto '=https' --connect-timeout 15 --max-time 45 --max-filesize 1048576 --get --data-urlencode 'op=get' --data-urlencode "search=0x$fp" --output "evidence/signatures/$fp.asc" https://keyserver.ubuntu.com/pks/lookup
+            gpg --batch --no-options --with-colons --show-keys "evidence/signatures/$fp.asc" > "evidence/signatures/$fp.keys"
+            actual=$(awk -F: '$1=="pub"{p=1;next} p&&$1=="fpr"{print $10;p=0}' "evidence/signatures/$fp.keys")
+            test "$actual" = "$fp"
+            gpg --batch --no-options --import "evidence/signatures/$fp.asc" 2> "evidence/signatures/$fp.import.log"
+          done
+          gpg --batch --no-options --no-auto-key-retrieve --status-fd 1 --verify evidence/source/glibc_2.39.orig.tar.xz.asc evidence/source/glibc_2.39.orig.tar.xz > evidence/signatures/upstream.status 2> evidence/signatures/upstream.log
+          gpg --batch --no-options --no-auto-key-retrieve --status-fd 1 --verify evidence/source/glibc_2.39-0ubuntu8.12.dsc > evidence/signatures/ubuntu.status 2> evidence/signatures/ubuntu.log
+          for entry in "upstream:$upstream" "ubuntu:$ubuntu"; do
+            name="$entry"; name="${name%%:*}"
+            fp="$entry"; fp="${fp#*:}"
+            awk -v expected="$fp" '$1=="[GNUPG:]" && $2=="VALIDSIG" {n++; if ($3!=expected || $NF!=expected) bad=1} END{exit !(n==1 && !bad)}' "evidence/signatures/$name.status"
+            if grep -Eq '^\[GNUPG:\] (BADSIG|ERRSIG|EXPSIG|EXPKEYSIG|REVKEYSIG|KEYREVOKED|KEYEXPIRED|SIGEXPIRED|NO_PUBKEY|NODATA|FAILURE)( |$)' "evidence/signatures/$name.status"; then exit 1; fi
+          done
+          printf '%s\n' '{"source_files_verified":4,"source_executed":false,"detached_signature_verified":true,"dsc_signature_verified":true,"signer_fingerprints_matched":true,"binary_reproduction_verified":false,"legal_approved":false,"release_authorized":false}' > evidence/result.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
