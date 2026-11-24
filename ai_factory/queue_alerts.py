@@ -7,7 +7,8 @@ review findings; the underlying snapshot is not an atomic admission gate.
 from . import queue_health, reconcile
 
 DEFAULT_BACKLOG_THRESHOLD = 20
-CONSISTENT = frozenset({"consistent_queued", "consistent_review", "consistent_blocked"})
+CONSISTENT = frozenset({"consistent_queued", "consistent_review", "consistent_blocked",
+                        "consistent_cancelled_before_start"})
 
 
 def evaluate(queue_db, journal_dir, task_dir, *, now=None,
@@ -29,6 +30,7 @@ def evaluate(queue_db, journal_dir, task_dir, *, now=None,
             if condition not in CONSISTENT))
     add("blocked_tasks", "warning", health["blocked"])
     add("failed_tasks", "warning", health["failed"])
+    add("cancel_requested", "warning", health["cancel_requested"])
     if health["queue_depth"] >= backlog_threshold:
         add("queue_backlog", "warning", health["queue_depth"])
     return {
