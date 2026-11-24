@@ -5,7 +5,7 @@ on:
 permissions: {}
 jobs:
   static-inventory:
-    if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event.repository.private == false && github.head_ref == 'audit/factory-p0-coding-wheel-notices-20261124' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -117,6 +117,21 @@ jobs:
           Path("evidence/capacity.json").write_text(json.dumps({"wheel_count":len(reports),"compressed_bytes":compressed_total,"expanded_member_bytes":expanded_total,"archive_member_count":members_total,"crc_verified":True,"installed":False,"installed_size_measured":False,"build_authorized":False,"release_authorized":False},indent=2))
           print("PASS: 131 exact R2 wheels statically inventoried. No execution/installation.")
           PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-native-wheel-inventory
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+  python-static-review:
+    if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Initialize bounded evidence directory
+        run: mkdir -m 0700 evidence
       - name: Review upstream Python standalone archive identity without extraction or execution
         run: |
           set -euo pipefail
@@ -124,26 +139,25 @@ jobs:
           import hashlib,io,json,re,tarfile
           from pathlib import Path,PurePosixPath
           from urllib.request import urlopen,Request
-          base="https://api.github.com/repos/astral-sh/python-build-standalone/releases/tags/20260814"
+          base="https://github.com/astral-sh/python-build-standalone/releases/download/20260814/"
           name="cpython-3.13.15+20260814-x86_64-unknown-linux-gnu-install_only.tar.gz"
           def read(url,limit):
               with urlopen(Request(url,headers={"User-Agent":"CODEN-static-review"}),timeout=60) as response:
                   data=response.read(limit+1)
               assert len(data)<=limit
               return data
-          release=json.loads(read(base,16*1024*1024))
-          assert release["tag_name"]=="20260814" and not release["draft"]
-          assets=[a for a in release["assets"] if a["name"]==name]
-          assert len(assets)==1,"exact Python candidate missing"
-          a=assets[0]
-          digest=a.get("digest","")
-          assert re.fullmatch(r"sha256:[0-9a-f]{64}",digest)
-          prefix="https://github.com/astral-sh/python-build-standalone/releases/download/20260814/"
-          url=a["browser_download_url"]
-          assert url.startswith(prefix)
-          assert 0<a["size"]<=128*1024*1024
+          sums=read(base+"SHA256SUMS",2*1024*1024)
+          matches=[]
+          for line in sums.decode("utf-8").splitlines():
+              parts=line.split(maxsplit=1)
+              if len(parts)==2 and parts[1].lstrip("* ")==name:
+                  matches.append(parts[0])
+          assert len(matches)==1 and re.fullmatch(r"[0-9a-f]{64}",matches[0]),"exact release checksum missing"
+          digest=matches[0]
+          url=base+name.replace("+","%2B")
           raw=read(url,128*1024*1024)
-          assert len(raw)==a["size"] and hashlib.sha256(raw).hexdigest()==digest[7:]
+          assert hashlib.sha256(raw).hexdigest()==digest
+          Path("evidence/SHA256SUMS").write_bytes(sums)
           files=0
           links=[]
           notices=[]
@@ -169,14 +183,14 @@ jobs:
                       links.append({"path":m.name,"target":m.linkname,"kind":"symlink" if m.issym() else "hardlink"})
                   else:
                       assert m.isdir(),"unexpected archive member type"
-          receipt={"source":base,"release_id":release["id"],"asset_id":a["id"],"url":url,"sha256":digest[7:],"compressed_bytes":len(raw),"expanded_regular_bytes":expanded,"regular_files":files,"archive_member_count":len(seen),"links":links,"notice_candidates":notices,"producer_digest_verified":True,"independent_attestation_verified":False,"extracted":False,"executed":False,"license_approved":False,"build_authorized":False,"release_authorized":False}
+          receipt={"source":base+"SHA256SUMS","checksum_manifest_sha256":hashlib.sha256(sums).hexdigest(),"url":url,"sha256":digest,"compressed_bytes":len(raw),"expanded_regular_bytes":expanded,"regular_files":files,"archive_member_count":len(seen),"links":links,"notice_candidates":notices,"producer_digest_verified":True,"independent_attestation_verified":False,"extracted":False,"executed":False,"license_approved":False,"build_authorized":False,"release_authorized":False}
           Path("evidence/python-candidate.json").write_text(json.dumps(receipt,indent=2))
           print("Static Python archive digest verified; no extraction or execution")
           PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: r2-native-wheel-capacity-python-review
+          name: r2-python-standalone-static-review
           path: evidence/
           if-no-files-found: error
           retention-days: 7
