@@ -52,11 +52,18 @@ jobs:
           cleanup() {
             podman rm -f --ignore "$name" >/dev/null
             if podman container exists "$name"; then exit 1; fi
+            podman volume rm -f probe-work probe-tmp >/dev/null 2>&1 || true
+            for volume in probe-work probe-tmp; do
+              if podman volume exists "$volume"; then exit 1; fi
+            done
             echo removed > evidence/cleanup.txt
           }
           trap cleanup EXIT
-          podman create --name "$name" --network none --http-proxy=false --read-only --read-only-tmpfs=false --cap-drop=all --security-opt=no-new-privileges --user 65534:65534 --cpus=1 --memory=1536m --memory-swap=1536m --pids-limit=96 --cgroupns=private --pid=private --ipc=private --timeout=120 --ulimit core=0:0 --tmpfs /tmp:rw,exec,nosuid,nodev,size=768m,nr_inodes=32768,mode=1777 --tmpfs /workspace:rw,noexec,nosuid,nodev,size=32m,nr_inodes=2048,uid=65534,gid=65534,mode=0700 --workdir /workspace --env HOME=/workspace --env XDG_CACHE_HOME=/workspace/cache --env OPENHANDS_SUPPRESS_BANNER=1 localhost/coden-source-probe --host 127.0.0.1 --port 8002
-          podman inspect "$name" | jq -e '.[0].HostConfig | .NetworkMode=="none" and .ReadonlyRootfs==true and .Privileged==false and ((.Binds // [])|length==0) and ((.PortBindings // {})|length==0)'
+          podman volume create --opt type=tmpfs --opt device=tmpfs --opt o=rw,exec,nosuid,nodev,size=768m,nr_inodes=32768,mode=1777 probe-tmp
+          podman volume create --opt type=tmpfs --opt device=tmpfs --opt o=rw,noexec,nosuid,nodev,size=32m,nr_inodes=2048,uid=65534,gid=65534,mode=0700 probe-work
+          podman create --name "$name" --network none --http-proxy=false --read-only --read-only-tmpfs=false --cap-drop=all --security-opt=no-new-privileges --user 65534:65534 --cpus=1 --memory=1536m --memory-swap=1536m --pids-limit=96 --cgroupns=private --pid=private --ipc=private --timeout=120 --ulimit core=0:0 --volume probe-tmp:/tmp:rw,nocopy --volume probe-work:/workspace:rw,nocopy --workdir /workspace --env HOME=/workspace --env XDG_CACHE_HOME=/workspace/cache --env OPENHANDS_SUPPRESS_BANNER=1 localhost/coden-source-probe --host 127.0.0.1 --port 8002
+          podman inspect "$name" | jq -e '.[0].HostConfig | .NetworkMode=="none" and .ReadonlyRootfs==true and .Privileged==false and ([.Binds[]? | split(":")[0]] | all(.=="probe-tmp" or .=="probe-work")) and ((.PortBindings // {})|length==0)'
+          podman inspect "$name" | jq -e '.[0].Mounts | length==2 and all(.[]; .Type=="volume")'
           podman start "$name"
           healthy=false
           for _ in $(seq 1 45); do
@@ -70,6 +77,10 @@ jobs:
           fi
           podman exec "$name" bash -euc '
             set -o pipefail
+            test "$(df -Pi /tmp | awk "NR==2 {print \$2}")" = 32768
+            test "$(df -Pi /workspace | awk "NR==2 {print \$2}")" = 2048
+            test "$(df -Pk /tmp | awk "NR==2 {print \$2}")" = 786432
+            test "$(df -Pk /workspace | awk "NR==2 {print \$2}")" = 32768
             test "$(id -u)" = 65534
             test "$(ls /sys/class/net)" = lo
             test ! -S /var/run/docker.sock
