@@ -168,6 +168,7 @@ class RootlessOpenHandsQwenLinkTests(unittest.TestCase):
         self.assertIn('test "$(df -Pk /tmp', content)
         self.assertNotIn(r'print \\$2', content)
         self.assertIn('podman network inspect "$net"', content)
+        self.assertIn("if printf '%s\\\\n' \"$keys\" | grep -Eiq", content)
 
     def test_docs_explicitly_block_real_agent_session(self):
         content = DOC.read_text(encoding="utf-8")
