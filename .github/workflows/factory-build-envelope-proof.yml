@@ -123,6 +123,8 @@ jobs:
           mkdir -m 0700 evidence
           name="coden-os-preflight-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           scratch="$name-scratch"
+          logpath="$PWD/evidence/container.raw.log"
+          test ! -e "$logpath" && test ! -L "$logpath"
           printf '%s\n' '{"operator_receipt":7147469552,"synthetic_only":true,"real_deb_installation":false,"os_attempt_consumed":false,"build_authorized":false,"release_authorized":false}' > evidence/scope.json
           cleanup() {
             rc=$?
@@ -145,7 +147,7 @@ jobs:
             --cpus=2 --memory=4096m --memory-swap=4096m --pids-limit=128 \
             --cgroupns=private --pid=private --ipc=private --timeout=180 \
             --ulimit core=0:0 --ulimit nofile=256:256 --ulimit msgqueue=65536:65536 --ulimit memlock=0:0 \
-            --log-driver=k8s-file --log-opt max-size=1mb \
+            --log-driver=k8s-file --log-opt max-size=1mb --log-opt "path=$logpath" \
             --volume "$scratch:/scratch:rw,nocopy" \
             --workdir /scratch --env HOME=/scratch \
             "$BASE" /bin/sh -eu -c '
@@ -248,7 +250,7 @@ jobs:
             test -n "$host_ns" && test -n "$container_ns" && test "$host_ns" != "$container_ns"
           done
           # Record actual log file bytes before cleanup; no synthetic flooding.
-          logpath=$(podman inspect "$name" --format '{{.LogPath}}')
+          # Explicit configured path avoids version-dependent inspect template fields.
           test -n "$logpath" && test -f "$logpath" && test ! -L "$logpath"
           bytes=$(stat -c %s "$logpath")
           test "$bytes" -le 1048576
