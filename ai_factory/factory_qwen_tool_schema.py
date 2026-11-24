@@ -20,7 +20,9 @@ def _unique_pairs(pairs):
     return obj
 
 
-def audit_response(body):
+def audit_response(body, *, expected_tool='count_flags', expected_args=None):
+    if expected_args is None:
+        expected_args = {'flags': ['pending', 'approved']}
     try:
         choices = body["choices"]
         count = body["usage"]["completion_tokens"]
@@ -42,13 +44,13 @@ def audit_response(body):
                 or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", call["id"])):
             raise ValueError("invalid tool call envelope")
         fn = call["function"]
-        if fn["name"] != "count_flags":
+        if fn["name"] != expected_tool:
             raise ValueError("unexpected tool choice")
         raw = fn["arguments"]
         if not isinstance(raw, str) or len(raw) > 4096:
             raise ValueError("invalid argument representation")
         args = json.loads(raw, object_pairs_hook=_unique_pairs)
-        if args != {"flags": ["pending", "approved"]}:
+        if json.dumps(args, sort_keys=True) != json.dumps(expected_args, sort_keys=True):
             raise ValueError("unexpected arguments")
     except (KeyError, TypeError, IndexError, AttributeError, OverflowError) as exc:
         raise ValueError("invalid response schema") from exc
@@ -74,7 +76,7 @@ _REJECTION_CODES = {
 }
 
 
-def evaluate_response(raw):
+def evaluate_response(raw, **expectations):
     result = {"status": "schema_rejected", "tool_executed": False,
               "sdk_conversation_ran": False, "release_authorized": False,
               "production_authorized": False}
@@ -87,7 +89,7 @@ def evaluate_response(raw):
     except ValueError as exc:
         return {**result, "reason_code": _REJECTION_CODES.get(str(exc), "invalid_json")}
     try:
-        return {**audit_response(body),
+        return {**audit_response(body, **expectations),
                 "response_sha256": hashlib.sha256(raw).hexdigest()}
     except json.JSONDecodeError:
         return {**result, "reason_code": "invalid_arguments_json"}
