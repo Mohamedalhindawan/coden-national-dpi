@@ -1,0 +1,173 @@
+name: CODEN P0 upgraded Python and Rust artifact review
+on:
+  pull_request:
+    paths: ['.github/workflows/factory-coding-pyo3-rescan.yml']
+permissions: {}
+jobs:
+  review:
+    if: github.event.repository.private == false && github.head_ref == 'audit/factory-p0-coding-wheel-notices-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13.15'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45461338865
+          name: pyo3-remediation-candidate
+          path: input
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45459131439
+          name: coding-lock-plus-vendor-security-review
+          path: prior-python
+      - name: Review exact upgraded wheels and source archives
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          python - <<'PY'
+          import base64,hashlib,io,json,tarfile,tomllib
+          from pathlib import Path,PurePosixPath
+          from urllib.parse import urlsplit
+          from urllib.request import build_opener
+          from pip._vendor.packaging.tags import sys_tags
+          from pip._vendor.packaging.utils import parse_wheel_filename
+          from ai_factory.factory_wheel_notice_audit import NoRedirect,inspect_wheel,CAP
+          from ai_factory.factory_coding_wheel_review import choose_wheel,primary_metadata,metadata_fields
+          from email.parser import BytesParser
+          raw=Path("input/pyo3-candidate.lock").read_bytes()
+          receipt=json.loads(Path("input/candidate-review.json").read_text())
+          assert hashlib.sha256(raw).hexdigest()==receipt["sha256"]=="93447ba7c43d7c8bffe1bb66d99abad1eaffcbd0d11fe1ef5bb776c7155998a3"
+          assert receipt["added"]==[["jiter","0.16.0"],["tokenizers","0.23.2"]]
+          assert receipt["removed"]==[["jiter","0.11.0"],["tokenizers","0.23.1"]]
+          packages=tomllib.loads(raw.decode())["package"]
+          assert len(packages)==202
+          selected={"jiter":"0.16.0","tokenizers":"0.23.2"}
+          tags={t:i for i,t in enumerate(sys_tags())}
+          root=Path("evidence")
+          crates={}
+          reports=[]
+          def fetch(entry,ext):
+              u=urlsplit(entry["url"])
+              assert u.scheme=="https" and u.netloc=="files.pythonhosted.org" and u.path.endswith(ext) and not u.query and not u.fragment
+              assert 0<entry["size"]<=CAP
+              with build_opener(NoRedirect()).open(entry["url"],timeout=30) as response:
+                  b=response.read(CAP+1)
+              assert len(b)==entry["size"] and "sha256:"+hashlib.sha256(b).hexdigest()==entry["hash"]
+              return b
+          def evidence(data):
+              return {"sha256":hashlib.sha256(data).hexdigest(),"base64":base64.b64encode(data).decode()}
+          for p in packages:
+              n,v=p["name"],p["version"]
+              if n not in selected: continue
+              assert v==selected[n]
+              def rank(filename):
+                  name,version,_,supported=parse_wheel_filename(filename)
+                  assert name==n and str(version)==v
+                  return min((tags[t] for t in supported if t in tags),default=None)
+              w=choose_wheel(p["wheels"],rank)
+              entries=inspect_wheel(fetch(w,".whl"),w["hash"][7:])
+              m=BytesParser().parsebytes(base64.b64decode(primary_metadata(entries)["base64"]))
+              assert m["Name"].lower()==n and m["Version"]==v
+              s=p["sdist"]
+              source=fetch(s,".tar.gz")
+              files={}
+              seen=set()
+              total=0
+              with tarfile.open(fileobj=io.BytesIO(source),mode="r:gz") as tar:
+                  for member in tar:
+                      path=PurePosixPath(member.name)
+                      assert not path.is_absolute() and ".." not in path.parts and "\\" not in member.name and member.name not in seen
+                      assert member.isfile() or member.isdir()
+                      seen.add(member.name)
+                      total+=member.size
+                      assert len(seen)<=50000 and total<=256*1024*1024
+                      if not member.isfile(): continue
+                      k=path.name.lower()
+                      if k in ("cargo.lock","cargo.toml","pyproject.toml","pkg-info") or k.startswith(("license","licence","notice","copying","copyright")):
+                          assert member.size<=2*1024*1024
+                          files[member.name]=evidence(tar.extractfile(member).read())
+              locks=[k for k in files if k.endswith("/Cargo.lock") and (k.count("/")==1 if n=="jiter" else k.endswith("/bindings/python/Cargo.lock"))]
+              assert len(locks)==1,locks
+              lock=tomllib.loads(base64.b64decode(files[locks[0]]["base64"]).decode())
+              pyo3=[x["version"] for x in lock["package"] if x["name"]=="pyo3"]
+              assert len(pyo3)==1 and tuple(map(int,pyo3[0].split(".")))>=(0,29,0)
+              for x in lock["package"]:
+                  if "source" not in x: continue
+                  assert x["source"]=="registry+https://github.com/rust-lang/crates.io-index"
+                  key=(x["name"],x["version"])
+                  if key in crates: assert crates[key]==x["checksum"]
+                  crates[key]=x["checksum"]
+              rec={"name":n,"version":v,"wheel":w,"sdist":s,"cargo_lock":locks[0],"pyo3":pyo3[0],"metadata":metadata_fields(m)}
+              (root/(n+".json")).write_text(json.dumps({"record":rec,"wheel_evidence":entries,"source_evidence":files},indent=2))
+              reports.append(rec)
+              print(n,v,"source PyO3",pyo3[0])
+          assert {x["name"] for x in reports}==set(selected)
+          components=[{"type":"library","name":n,"version":v,"purl":f"pkg:cargo/{n}@{v}","bom-ref":f"pkg:cargo/{n}@{v}","hashes":[{"alg":"SHA-256","content":h}]} for (n,v),h in sorted(crates.items())]
+          (root/"rust.cdx.json").write_text(json.dumps({"bomFormat":"CycloneDX","specVersion":"1.5","version":1,"components":components},indent=2))
+          prior=json.loads(Path("prior-python/candidate-lock.cdx.json").read_text())
+          components=prior["components"]
+          assert len(components)==210
+          for c in components:
+              if c["name"] in selected:
+                  c["version"]=selected[c["name"]]
+                  c["purl"]=c["bom-ref"]=f"pkg:pypi/{c['name']}@{c['version']}"
+          expected={(p["name"],p["version"]) for p in packages}
+          assert expected<={(p["name"],p["version"]) for p in components}
+          (root/"python.cdx.json").write_text(json.dumps(prior,indent=2))
+          (root/"artifact-review.json").write_text(json.dumps({"records":reports,"rust_identities":len(crates),"python_identities":len(components),"compiled_membership_verified":False,"source_to_wheel_equivalence_verified":False,"license_approved":False,"release_authorized":False},indent=2))
+          PY
+      - uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        with:
+          version: v0.69.3
+          scan-type: sbom
+          scan-ref: evidence/rust.cdx.json
+          format: json
+          list-all-pkgs: true
+          output: evidence/rust-scan.json
+          cache: false
+      - uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        with:
+          version: v0.69.3
+          scan-type: sbom
+          scan-ref: evidence/python.cdx.json
+          format: json
+          list-all-pkgs: true
+          output: evidence/python-scan.json
+          cache: false
+      - name: Verify both coverages and report all findings
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,collections
+          from pathlib import Path
+          from urllib.parse import unquote
+          root=Path("evidence")
+          reports={}
+          for kind in ("python","rust"):
+              expected={unquote(p["purl"]) for p in json.loads((root/(kind+".cdx.json")).read_text())["components"]}
+              results=json.loads((root/(kind+"-scan.json")).read_text()).get("Results",[])
+              observed={unquote(p["Identifier"]["PURL"]) for r in results for p in r.get("Packages",[])}
+              findings=[{"id":v.get("VulnerabilityID"),"package":v.get("PkgName"),"version":v.get("InstalledVersion"),"fixed_version":v.get("FixedVersion"),"severity":v.get("Severity","UNKNOWN")} for r in results for v in r.get("Vulnerabilities",[])]
+              counts=dict(collections.Counter(x["severity"] for x in findings))
+              reports[kind]={"expected":len(expected),"observed":len(observed),"missing":sorted(expected-observed),"extra":sorted(observed-expected),"severity_counts":counts,"findings":findings,"blocked":bool(not results or expected!=observed or counts.get("HIGH") or counts.get("CRITICAL"))}
+              print(kind,reports[kind]["expected"],reports[kind]["observed"],counts)
+          (root/"scan-review.json").write_text(json.dumps({"reports":reports,"runtime_scanned":False,"license_approved":False,"release_authorized":False},indent=2))
+          if any(r["blocked"] for r in reports.values()): raise SystemExit(1)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: pyo3-upgraded-artifact-review
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7

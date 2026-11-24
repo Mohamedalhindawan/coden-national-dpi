@@ -1,0 +1,40 @@
+name: CODEN P0 candidate wheel license evidence
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/factory-coding-wheel-review.yml'
+      - 'ai_factory/factory_coding_wheel_review.py'
+      - 'tests/test_factory_coding_wheel_review.py'
+permissions: {}
+jobs:
+  static-review:
+    if: github.event.repository.private == false && github.head_ref == 'audit/factory-p0-coding-wheel-notices-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13.15'
+      - name: Focused evidence collection tests
+        run: python -m unittest discover -s tests -p test_factory_coding_wheel_review.py -v
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45449754612
+          name: coding-profile-review
+          path: input
+      - name: Collect static license and notice evidence from exact compatible wheels
+        run: python -m ai_factory.factory_coding_wheel_review input/candidate.lock evidence
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: candidate-wheel-license-evidence
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7

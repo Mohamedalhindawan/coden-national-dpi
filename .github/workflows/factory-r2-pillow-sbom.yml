@@ -1,0 +1,81 @@
+name: CODEN P0 Pillow embedded native SBOM evidence
+on:
+  pull_request:
+    paths: ['.github/workflows/factory-r2-pillow-sbom.yml']
+permissions: {}
+jobs:
+  inspect:
+    if: github.event.repository.private == false && github.head_ref == 'audit/factory-p0-coding-wheel-notices-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Extract exact wheel embedded SBOM, verify RECORD, never install
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          python3 - <<'PY'
+          import base64,csv,hashlib,io,json,zipfile
+          from pathlib import Path
+          from urllib.request import build_opener
+          from ai_factory.factory_wheel_notice_audit import NoRedirect,inspect_wheel,CAP
+          url="https://files.pythonhosted.org/packages/ef/fe/f5cdaa2d1c4086e757430f368c271a58ee29cfe7378e7ae7b9d964015c25/pillow-13.0.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
+          digest="5f56499c1a74d2b862beb0c33b8016f99d095858455df9d21583bbbc1c15b582"
+          with build_opener(NoRedirect()).open(url,timeout=30) as response:
+              raw=response.read(CAP+1)
+          inspect_wheel(raw,digest)
+          out=Path("evidence")
+          def sha(b): return hashlib.sha256(b).hexdigest()
+          with zipfile.ZipFile(io.BytesIO(raw)) as z:
+              paths=[i.filename for i in z.infolist() if not i.is_dir()]
+              records=[p for p in paths if p.count("/")==1 and p.endswith(".dist-info/RECORD")]
+              assert len(records)==1
+              record=records[0]
+              prefix=record.rsplit("/",1)[0]+"/"
+              entries=list(csv.reader(io.StringIO(z.read(record).decode("utf-8"))))
+              assert all(len(row)==3 for row in entries)
+              assert len(entries)==len({row[0] for row in entries})
+              assert {row[0] for row in entries}==set(paths)
+              for p,h,size in entries:
+                  if p==record:
+                      assert not h and not size
+                      continue
+                  data=z.read(p)
+                  assert h=="sha256="+base64.urlsafe_b64encode(hashlib.sha256(data).digest()).decode().rstrip("=") and size==str(len(data)),p
+              candidates=[p for p in paths if p.startswith(prefix+"sboms/") and p.endswith(".cdx.json")]
+              receipt={"wheel_sha256":digest,"record_members_verified":len(entries)-1,"embedded_sbom_count":len(candidates),"installed":False,"compiled_membership_verified":False,"license_approved":False,"release_authorized":False}
+              (out/"receipt.json").write_text(json.dumps(receipt,indent=2))
+              # The first exact-wheel audit found two BOMs, not one. Preserve both.
+              assert len(candidates)==2,"unexpected BOM count for immutable wheel"
+              summaries=[]
+              roots=[]
+              for index,p in enumerate(sorted(candidates),1):
+                  b=z.read(p)
+                  assert len(b)<=2*1024*1024
+                  bom=json.loads(b)
+                  assert bom["bomFormat"]=="CycloneDX" and isinstance(bom["components"],list)
+                  component=bom.get("metadata",{}).get("component",{})
+                  roots.append((str(component.get("name","")).lower(),component.get("version")))
+                  target=f"embedded-{index}.cdx.json"
+                  (out/target).write_bytes(b)
+                  summary=[{k:c[k] for k in ("name","version","scope","licenses","purl","bom-ref","hashes") if k in c} for c in bom["components"]]
+                  summaries.append({"archive_path":p,"artifact_path":target,"sha256":sha(b),"root":component,"spec_version":bom.get("specVersion"),"component_count":len(summary),"components":summary})
+              assert ("pillow","13.0.0") in roots,"missing Pillow root identity"
+              (out/"wheel-RECORD.csv").write_bytes(z.read(record))
+              (out/"wheel-LICENSE.txt").write_bytes(z.read(prefix+"licenses/LICENSE"))
+              (out/"components.json").write_text(json.dumps(summaries,indent=2))
+              receipt.update(sboms=[{k:v for k,v in row.items() if k!="components"} for row in summaries],scope="producer declarations; independent binary attribution and legal review pending")
+              (out/"receipt.json").write_text(json.dumps(receipt,indent=2))
+              print(json.dumps(receipt))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-pillow-embedded-sbom
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7

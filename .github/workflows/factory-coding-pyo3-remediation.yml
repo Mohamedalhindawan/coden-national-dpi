@@ -1,0 +1,97 @@
+name: CODEN P0 PyO3 remediation candidate resolution
+on:
+  pull_request:
+    paths: ['.github/workflows/factory-coding-pyo3-remediation.yml']
+permissions: {}
+jobs:
+  review:
+    if: github.event.repository.private == false && github.head_ref == 'audit/factory-p0-coding-wheel-notices-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: OpenHands/software-agent-sdk
+          ref: 077f3fad6d31cd852be5c87176e0a93c3b446126
+          path: upstream
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45459482500
+          name: optional-tom-runtime-scope
+          path: input
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45460981678
+          name: coding-rust-source-security-review
+          path: old-rust
+      - name: Verify previous evidence and reconcile PURL encoding only
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          test "$(git -C upstream rev-parse HEAD)" = 077f3fad6d31cd852be5c87176e0a93c3b446126
+          echo '03975e58f3606f67a9458eae3a28a4076d58296805ab20a537986f03fbe8cf50  input/optional-tom-manifest.patch' | sha256sum -c -
+          echo '6bcb3f75c6a1803e3c47cad87c4881c5e250431b876d79e1deec2f82bd1a4301  input/optional-tom.lock' | sha256sum -c -
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          from urllib.parse import unquote
+          root=Path("old-rust")
+          expected={p["purl"] for p in json.loads((root/"rust-source.cdx.json").read_text())["components"]}
+          results=json.loads((root/"rust-source-scan.json").read_text())["Results"]
+          observed={p["Identifier"]["PURL"] for r in results for p in r.get("Packages",[])}
+          assert len(expected)==len(observed)==266
+          assert len(expected-observed)==5
+          assert len({unquote(x) for x in observed})==266
+          assert expected=={unquote(x) for x in observed}
+          prior=json.loads((root/"scan-review.json").read_text())
+          assert prior["severity_counts"]=={"HIGH":2,"MEDIUM":2}
+          report={"coverage_after_purl_decoding":266,"expected":266,"findings":prior["findings"],"status":"blocked","release_authorized":False}
+          Path("evidence/previous-scan-reconciliation.json").write_text(json.dumps(report,indent=2))
+          print("Coverage reconciled: 266/266; all four findings retained.")
+          PY
+          git -C upstream apply --check ../input/optional-tom-manifest.patch
+          git -C upstream apply ../input/optional-tom-manifest.patch
+          cp input/optional-tom.lock upstream/uv.lock
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+        with:
+          version: '0.13.7'
+          python-version: '3.13.15'
+          enable-cache: false
+      - name: Resolve explicit upstream upgrade candidates with no build or installation
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          if ! timeout 120 uv lock --no-build --upgrade-package 'jiter==0.16.0' --upgrade-package 'tokenizers==0.23.2' > ../evidence/resolver.log 2>&1; then
+            tail -40 ../evidence/resolver.log
+            exit 1
+          fi
+          cp uv.lock ../evidence/pyo3-candidate.lock
+          uv export --frozen --all-packages --no-dev --no-emit-workspace --format requirements-txt --output-file ../evidence/pyo3-candidate-non-dev.txt
+          python3 - <<'PY'
+          import hashlib,json,tomllib
+          from pathlib import Path
+          root=Path("../evidence")
+          raw=(root/"pyo3-candidate.lock").read_bytes()
+          before=tomllib.loads(Path("../input/optional-tom.lock").read_text())["package"]
+          after=tomllib.loads(raw.decode())["package"]
+          old={(p["name"],p["version"]) for p in before}
+          new={(p["name"],p["version"]) for p in after}
+          assert ("jiter","0.16.0") in new and ("tokenizers","0.23.2") in new
+          assert not {"browser-use","browser-use-sdk","func-timeout","lmnr","lmnr-claude-code-proxy"} & {p["name"] for p in after}
+          report={"status":"upgrade_candidates_resolved","sha256":hashlib.sha256(raw).hexdigest(),"removed":sorted(old-new),"added":sorted(new-old),"native_wheel_provenance_verified":False,"fresh_security_scan":False,"installed":False,"built":False,"license_approved":False,"release_authorized":False}
+          (root/"candidate-review.json").write_text(json.dumps(report,indent=2))
+          print("Resolved candidate upgrades:",report["added"])
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: pyo3-remediation-candidate
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7

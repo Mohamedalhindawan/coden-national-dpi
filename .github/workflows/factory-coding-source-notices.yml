@@ -1,0 +1,86 @@
+name: CODEN P0 residual source notice review
+on:
+  pull_request:
+    paths: ['.github/workflows/factory-coding-source-notices.yml']
+permissions: {}
+jobs:
+  review:
+    if: github.event.repository.private == false && github.head_ref == 'audit/factory-p0-coding-wheel-notices-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45449754612
+          name: coding-profile-review
+          path: input
+      - name: Collect exact sdist license files, without extracting or executing
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          python3 - <<'PY'
+          import base64,hashlib,io,json,tarfile,tomllib
+          from pathlib import Path,PurePosixPath
+          from urllib.parse import urlsplit
+          from urllib.request import build_opener
+          from ai_factory.factory_wheel_notice_audit import NoRedirect
+          raw=Path("input/candidate.lock").read_bytes()
+          assert hashlib.sha256(raw).hexdigest()=="ed07829fc67bf0da94b493e9488e8798a9e067c200e8ccbdc1e2a1b8c35ebd1a"
+          targets={"fastmcp-slim","jiter","k8s-agent-sandbox","streamlit","tokenizers","tom-swe"}
+          cap=32*1024*1024
+          records=[]
+          for p in tomllib.loads(raw.decode())["package"]:
+              name=p["name"]
+              if name not in targets: continue
+              rec={"name":name,"version":p["version"],"status":"blocked"}
+              try:
+                  s=p["sdist"]
+                  u=urlsplit(s["url"])
+                  assert u.scheme=="https" and u.netloc=="files.pythonhosted.org" and u.path.endswith(".tar.gz") and not u.query and not u.fragment
+                  assert 0<s["size"]<=cap
+                  with build_opener(NoRedirect()).open(s["url"],timeout=30) as response:
+                      data=response.read(cap+1)
+                  assert len(data)==s["size"] and "sha256:"+hashlib.sha256(data).hexdigest()==s["hash"]
+                  files={}
+                  total=0
+                  seen=set()
+                  with tarfile.open(fileobj=io.BytesIO(data),mode="r:gz") as tar:
+                      for m in tar:
+                          q=PurePosixPath(m.name)
+                          assert not q.is_absolute() and ".." not in q.parts and "\\" not in m.name and m.name not in seen
+                          assert m.isfile() or m.isdir()
+                          seen.add(m.name)
+                          total+=m.size
+                          assert len(seen)<=50000 and total<=256*1024*1024
+                          k=q.name.lower()
+                          if not m.isfile(): continue
+                          if k.startswith(("license","licence","copying","notice","copyright")) or k in ("pkg-info","pyproject.toml","cargo.toml","cargo.lock"):
+                              assert m.size<=2*1024*1024
+                              data_member=tar.extractfile(m).read()
+                              files[m.name]={"sha256":hashlib.sha256(data_member).hexdigest(),"base64":base64.b64encode(data_member).decode()}
+                  root_notices=[k for k in files if len(PurePosixPath(k).parts)==2 and PurePosixPath(k).name.lower().startswith(("license","licence","copying","notice","copyright"))]
+                  rec.update(status="collected",source_hash=s["hash"],source_url=s["url"],root_notices=root_notices,files=len(files))
+                  Path("evidence",name+".json").write_text(json.dumps({"record":rec,"evidence":files},indent=2))
+              except Exception as exc:
+                  rec.update(status="blocked",error_type=type(exc).__name__)
+              records.append(rec)
+              print(name,rec["status"],"root notice count",len(rec.get("root_notices",[])))
+          assert {r["name"] for r in records}==targets
+          report={"records":records,"source_review_only":True,"wheel_source_equivalence_verified":False,"license_approved":False,"release_authorized":False}
+          Path("evidence/review.json").write_text(json.dumps(report,indent=2))
+          if any(r["status"]!="collected" for r in records): raise SystemExit(1)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: residual-source-notice-evidence
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7

@@ -1,0 +1,118 @@
+name: CODEN P0 R2 static native wheel inventory
+on:
+  pull_request:
+    paths: ['.github/workflows/factory-r2-native-wheel-inventory.yml']
+permissions: {}
+jobs:
+  static-inventory:
+    if: github.event.repository.private == false && github.head_ref == 'audit/factory-p0-coding-wheel-notices-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13.15'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45458414336
+          name: candidate-wheel-license-evidence
+          path: old
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45461645493
+          name: pyo3-upgraded-artifact-review
+          path: upgraded
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45461338865
+          name: pyo3-remediation-candidate
+          path: input
+      - name: Reconstruct exact R2 selection and inventory binaries without executing them
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          readelf --version | head -n 1 > evidence/readelf-version.txt
+          python - <<'PY'
+          import hashlib,io,json,re,subprocess,tempfile,tomllib,zipfile
+          from pathlib import Path
+          from urllib.parse import urlsplit
+          from urllib.request import build_opener
+          from ai_factory.factory_wheel_notice_audit import NoRedirect,inspect_wheel,CAP
+          def sha(b): return hashlib.sha256(b).hexdigest()
+          raw=Path("input/pyo3-candidate.lock").read_bytes()
+          assert sha(raw)=="93447ba7c43d7c8bffe1bb66d99abad1eaffcbd0d11fe1ef5bb776c7155998a3"
+          export=Path("input/pyo3-candidate-non-dev.txt").read_bytes()
+          assert sha(export)=="0663c7b1e0336440b948d5dd7b297d83da2025107524fbe2f3891de606da4a7c"
+          runtime=dict(re.findall(r"^([a-z0-9_-]+)==([^ ;\\\r\n]+)",export.decode(),re.M))
+          assert len(runtime)==126
+          build={"altgraph":"0.17.4","packaging":"26.3","pyinstaller":"6.22.3","pyinstaller-hooks-contrib":"2026.7","setuptools":"84.2.1","wheel":"0.46.3"}
+          assert all(runtime.get(k,v)==v for k,v in build.items())
+          required=runtime|build
+          assert len(required)==131
+          old=json.loads(Path("old/review.json").read_text())
+          assert old["collected"]==198 and not old["failed"]
+          records={r["name"]:(r["version"],r["url"],r["sha256"]) for r in old["records"]}
+          for r in json.loads(Path("upgraded/artifact-review.json").read_text())["records"]:
+              records[r["name"]]=(r["version"],r["wheel"]["url"],r["wheel"]["hash"][7:])
+          selected=sorted((n,*records[n]) for n in required)
+          assert sha(json.dumps(selected,separators=(",",":")).encode())=="e7a6f749f3ff57c27a3c5e63e2b77fbc7bf984e219920bfbc823cfe7c49ea589"
+          packages={(p["name"],p["version"]):p for p in tomllib.loads(raw.decode())["package"]}
+          def inspect_native(data):
+              with tempfile.TemporaryDirectory() as temp:
+                  p=Path(temp)/"object"
+                  p.write_bytes(data)
+                  result=subprocess.run(["readelf","-W","-h","-d",str(p)],capture_output=True,text=True,timeout=15,env={"PATH":"/usr/bin:/bin","LC_ALL":"C"},check=True)
+                  assert len(result.stdout)<=512*1024
+                  out=result.stdout
+                  return {"machine":re.findall(r"^\s*Machine:\s*(.+)$",out,re.M),"needed":re.findall(r"\(NEEDED\).*\[([^\]]+)\]",out),"soname":re.findall(r"\(SONAME\).*\[([^\]]+)\]",out),"search_paths":re.findall(r"\((?:RPATH|RUNPATH)\).*\[([^\]]+)\]",out)}
+          reports=[]
+          for n,v,url,digest in selected:
+              assert required[n]==v
+              match=[w for w in packages[n,v]["wheels"] if w["url"]==url and w["hash"]=="sha256:"+digest]
+              assert len(match)==1
+              size=match[0]["size"]
+              u=urlsplit(url)
+              assert u.scheme=="https" and u.netloc=="files.pythonhosted.org" and u.path.endswith(".whl") and not u.query and not u.fragment and 0<size<=CAP
+              with build_opener(NoRedirect()).open(url,timeout=30) as response:
+                  b=response.read(CAP+1)
+              assert len(b)==size and sha(b)==digest
+              notices=inspect_wheel(b,digest)
+              native=[]
+              with zipfile.ZipFile(io.BytesIO(b)) as z:
+                  for info in z.infolist():
+                      if info.is_dir(): continue
+                      with z.open(info) as f: magic=f.read(8)
+                      kind=None
+                      if magic.startswith(b"\x7fELF"): kind="ELF"
+                      elif magic.startswith(b"MZ"): kind="PE_candidate"
+                      elif magic[:4] in {bytes.fromhex(x) for x in ("feedface","feedfacf","cefaedfe","cffaedfe","cafebabe","bebafeca","cafebabf","bfbafeca")}: kind="MachO_or_fat_magic"
+                      elif magic.startswith(b"!<arch>\n"): kind="archive"
+                      elif re.search(r"\.(so(?:\.\d+)*|dll|dylib|pyd|a|lib|exe)$",info.filename,re.I): kind="native_suffix_unclassified"
+                      if kind:
+                          assert info.file_size<=4*CAP
+                          data=z.read(info)
+                          record={"path":info.filename,"size":len(data),"sha256":sha(data),"kind":kind}
+                          if kind=="ELF": record.update(inspect_native(data))
+                          native.append(record)
+              reports.append({"name":n,"version":v,"wheel_sha256":digest,"runtime_candidate":n in runtime,"build_candidate":n in build,"native":native,"notice_paths":sorted(k for k in notices if not k.endswith("/METADATA"))})
+              print(n,v,len(native),flush=True)
+              Path("evidence/inventory.json").write_text(json.dumps({"records":reports,"complete":len(reports)==131,"installed":False,"compiled_membership_verified":False,"license_approved":False,"release_authorized":False},indent=2))
+          assert len(reports)==131
+          print("PASS: 131 exact R2 wheels statically inventoried. No execution/installation.")
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-native-wheel-inventory
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7

@@ -1,0 +1,111 @@
+name: CODEN P0 lock plus vendored distribution security review
+on:
+  pull_request:
+    paths: ['.github/workflows/factory-coding-vendor-scan.yml']
+permissions: {}
+jobs:
+  review:
+    if: github.event.repository.private == false && github.head_ref == 'audit/factory-p0-coding-wheel-notices-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45449754612
+          name: coding-profile-review
+          path: input
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45458414336
+          name: candidate-wheel-license-evidence
+          path: wheel-evidence
+      - name: Validate exact candidate lock and generate review-only CycloneDX
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          python3 - <<'PY'
+          import hashlib,json,re,tomllib
+          from pathlib import Path
+          raw=Path("input/candidate.lock").read_bytes()
+          digest=hashlib.sha256(raw).hexdigest()
+          assert digest=="ed07829fc67bf0da94b493e9488e8798a9e067c200e8ccbdc1e2a1b8c35ebd1a"
+          receipt=json.loads(Path("input/candidate-review.json").read_text())
+          assert receipt["sha256"]==digest and receipt["status"]=="candidate_graph_resolved"
+          assert all(receipt[k] is False for k in ("installed","built","license_approved","release_authorized"))
+          packages=tomllib.loads(raw.decode())["package"]
+          assert len(packages)==202
+          assert not {"browser-use","browser-use-sdk","func-timeout","lmnr","lmnr-claude-code-proxy"} & {p["name"] for p in packages}
+          components=[]
+          for p in packages:
+              name=re.sub(r"[-_.]+","-",p["name"]).lower()
+              version=p["version"]
+              assert re.fullmatch(r"[a-z0-9-]+",name) and re.fullmatch(r"[A-Za-z0-9.+!-]+",version)
+              purl=f"pkg:pypi/{name}@{version}"
+              components.append({"type":"library","name":name,"version":version,"purl":purl,"bom-ref":purl})
+          assert len({p["purl"] for p in components})==202
+          # Preserve wheel-level vendor locations and exact metadata hashes.
+          import base64
+          from email.parser import BytesParser
+          vendor=[]
+          for file in sorted(Path("wheel-evidence").glob("*.json")):
+              if file.name=="review.json": continue
+              item=json.loads(file.read_text())
+              for path,entry in item["evidence"].items():
+                  if path.count("/")<=1 or not path.endswith(".dist-info/METADATA"): continue
+                  data=base64.b64decode(entry["base64"],validate=True)
+                  assert hashlib.sha256(data).hexdigest()==entry["sha256"]
+                  m=BytesParser().parsebytes(data)
+                  name=re.sub(r"[-_.]+","-",str(m["Name"])).lower()
+                  version=str(m["Version"])
+                  assert re.fullmatch(r"[a-z0-9-]+",name) and re.fullmatch(r"[A-Za-z0-9.+!-]+",version)
+                  purl=f"pkg:pypi/{name}@{version}"
+                  vendor.append({"owner":item["record"]["name"],"path":path,"purl":purl,"metadata_sha256":entry["sha256"]})
+                  if not any(p["purl"]==purl for p in components):
+                      components.append({"type":"library","name":name,"version":version,"purl":purl,"bom-ref":purl})
+          assert len(vendor)==12 and len(components)==210
+          Path("evidence/vendor-locations.json").write_text(json.dumps(vendor,indent=2))
+          Path("evidence/candidate-lock.cdx.json").write_text(json.dumps({"bomFormat":"CycloneDX","specVersion":"1.5","version":1,"components":components},indent=2))
+          print("Verified 202 lock components plus 8 additional vendor identities; not an installed runtime inventory.")
+          PY
+      - uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        with:
+          version: v0.69.3
+          scan-type: sbom
+          scan-ref: evidence/candidate-lock.cdx.json
+          format: json
+          list-all-pkgs: true
+          output: evidence/candidate-scan.json
+          cache: false
+      - name: Verify scan coverage and report every severity
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,collections
+          from pathlib import Path
+          root=Path("evidence")
+          expected={p["purl"] for p in json.loads((root/"candidate-lock.cdx.json").read_text())["components"]}
+          scan=json.loads((root/"candidate-scan.json").read_text())
+          results=scan.get("Results",[])
+          observed={p.get("Identifier",{}).get("PURL") for r in results for p in r.get("Packages",[])}
+          missing=sorted(expected-observed)
+          extra=sorted(str(x) for x in observed-expected)
+          findings=[{"id":v.get("VulnerabilityID"),"package":v.get("PkgName"),"installed_version":v.get("InstalledVersion"),"fixed_version":v.get("FixedVersion"),"severity":v.get("Severity","UNKNOWN")} for r in results for v in r.get("Vulnerabilities",[])]
+          counts=dict(collections.Counter(x["severity"] for x in findings))
+          blocked=bool(missing or extra or not results or counts.get("HIGH") or counts.get("CRITICAL"))
+          receipt={"status":"blocked" if blocked else "candidate_lock_high_critical_gate_pass","expected":len(expected),"observed":len(observed),"missing":missing,"extra":extra,"severity_counts":counts,"findings":findings,"runtime_scanned":False,"installed":False,"license_approved":False,"sdk_conversation_ran":False,"release_authorized":False}
+          (root/"scan-review.json").write_text(json.dumps(receipt,indent=2))
+          print("Candidate lock scan:",receipt["status"],"coverage:",len(expected)-len(missing),"/",len(expected),"severity:",counts)
+          if blocked: raise SystemExit(1)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: coding-lock-plus-vendor-security-review
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
