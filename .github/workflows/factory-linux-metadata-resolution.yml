@@ -1,0 +1,125 @@
+name: CODEN P0 Linux metadata-only dependency resolution
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/factory-linux-metadata-resolution.yml'
+permissions: {}
+jobs:
+  dependency-review:
+    if: github.event.repository.private == false && github.head_ref == 'audit/factory-p0-linux-metadata-resolution-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: OpenHands/software-agent-sdk
+          ref: 077f3fad6d31cd852be5c87176e0a93c3b446126
+          persist-credentials: false
+          path: upstream
+      - name: Verify original source and exact repaired lock
+        run: |
+          set -euo pipefail
+          test "$(git -C upstream rev-parse HEAD)" = 077f3fad6d31cd852be5c87176e0a93c3b446126
+          echo '71c5479cb609b60872a7cbd34da764a0804c2e50c2658dba1bb5255e180d3603  upstream/uv.lock' | sha256sum -c -
+          mkdir -m 0700 evidence
+          archive=docs/evidence/openhands-077f3fad/fixed-source-provenance.zip
+          echo "a86bac8c435a835697d8cfe3cee1f8c38ab4a99591b5af1fba6698686bfb7fd8  $archive" | sha256sum -c -
+          unzip -p "$archive" resolved.lock > evidence/baseline.lock
+          echo '6d8348da6768ae32bb7665bdc7ca2525d53e576e13729fcc41f0a28df7c25b69  evidence/baseline.lock' | sha256sum -c -
+          cp evidence/baseline.lock upstream/uv.lock
+      - name: Verify source metadata for legacy sdist, no code execution
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, io, json, tarfile, tomllib
+          from pathlib import Path
+          from email.parser import BytesParser
+          from urllib.parse import urlsplit
+          from urllib.request import build_opener
+          from ai_factory.factory_wheel_notice_audit import NoRedirect
+          lock=tomllib.loads(Path("evidence/baseline.lock").read_text())
+          pkgs=[p for p in lock["package"] if p["name"]=="func-timeout"]
+          assert len(pkgs)==1 and pkgs[0]["version"]=="4.3.5"
+          p=pkgs[0]
+          assert not p.get("dependencies") and not p.get("wheels")
+          s=p["sdist"]
+          digest="74cd3c428ec94f4edfba81f9b2f14904846d5ffccc27c92433b8b5939b5575dd"
+          u=urlsplit(s["url"])
+          assert u.scheme=="https" and u.netloc=="files.pythonhosted.org" and not u.query and not u.fragment
+          assert s["hash"]=="sha256:"+digest and s["size"]<=1024*1024
+          with build_opener(NoRedirect()).open(s["url"],timeout=30) as stream:
+              raw=stream.read(1024*1024+1)
+          assert len(raw)==s["size"] and hashlib.sha256(raw).hexdigest()==digest
+          with tarfile.open(fileobj=io.BytesIO(raw),mode="r:gz") as tar:
+              member=tar.getmember("func_timeout-4.3.5/PKG-INFO")
+              assert member.isfile() and member.size<=1024*1024
+              metadata=tar.extractfile(member).read()
+          m=BytesParser().parsebytes(metadata)
+          assert m["Name"].replace("_","-").lower()=="func-timeout" and m["Version"]=="4.3.5"
+          assert not m.get_all("Requires-Dist") and not m.get_all("Requires-Python") and not m.get_all("Requires")
+          root=Path("upstream/pyproject.toml")
+          text=root.read_text()
+          assert "[tool.uv]\n" in text and "dependency-metadata" not in text and "environments =" not in text
+          text=text.replace("[tool.uv]\n","[tool.uv]\nenvironments = [\"sys_platform == 'linux' and platform_machine == 'x86_64' and python_version == '3.13'\"]\n",1)
+          text+='\n[[tool.uv.dependency-metadata]]\nname = "func-timeout"\nversion = "4.3.5"\nrequires-dist = []\n'
+          tomllib.loads(text)
+          root.write_text(text)
+          Path("evidence/metadata-source.json").write_text(json.dumps({"name":"func-timeout","version":"4.3.5","source_sha256":digest,"pkg_info_sha256":hashlib.sha256(metadata).hexdigest(),"requires_dist":[],"scope":"linux x86_64 CPython 3.13 resolution only","license_approved":False},indent=2))
+          PY
+          git -C upstream diff -- pyproject.toml > evidence/resolver-profile.patch
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+        with:
+          version: '0.13.7'
+          python-version: '3.13.15'
+          enable-cache: false
+      - name: Test bounded resolution only; no builds and no installations
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          for group in baseline four_plus_browser telemetry; do
+            cp ../evidence/baseline.lock uv.lock
+            case "$group" in
+              baseline) args=();;
+              four_plus_browser) args=(--upgrade-package 'mako>=1.4.2' --upgrade-package 'multidict>=6.9.1' --upgrade-package 'pyjwt>=2.15.0' --upgrade-package 'setuptools>=83.0.0' --upgrade-package 'browser-use-sdk==3.10.0');;
+              telemetry) args=(--upgrade-package 'opentelemetry-api>=1.45.2');;
+            esac
+            if timeout 110 uv lock --no-build "${args[@]}" > "../evidence/$group.log" 2>&1; then
+              cp uv.lock "../evidence/$group.lock"
+              echo resolved > "../evidence/$group.status"
+            else
+              echo unresolved > "../evidence/$group.status"
+              tail -25 "../evidence/$group.log"
+            fi
+          done
+          cp ../evidence/baseline.lock uv.lock
+          python3 - <<'PY'
+          import hashlib,json,tomllib
+          from pathlib import Path
+          root=Path("../evidence")
+          attempts={}
+          for path in sorted(root.glob("*.status")):
+              status=path.read_text().strip()
+              rec={"status":status}
+              if status=="resolved":
+                  raw=path.with_suffix(".lock").read_bytes()
+                  data=tomllib.loads(raw.decode())
+                  rec["sha256"]=hashlib.sha256(raw).hexdigest()
+                  rec["selected_versions"]={n:sorted({p["version"] for p in data["package"] if p["name"]==n}) for n in ["func-timeout","mako","multidict","pyjwt","setuptools","browser-use-sdk","opentelemetry-api","lmnr"]}
+              attempts[path.stem]=rec
+              print("Resolution:",path.stem,status)
+          (root/"resolution-review.json").write_text(json.dumps({"attempts":attempts,"runtime_compatibility_verified":False,"installed":False,"built":False,"license_approved":False,"release_authorized":False},indent=2))
+          if not any(r["status"]=="resolved" for r in attempts.values()):
+              raise SystemExit(1)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: linux-metadata-resolution-review
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
