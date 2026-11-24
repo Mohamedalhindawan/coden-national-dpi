@@ -291,7 +291,7 @@ jobs:
             test ! -S /var/run/docker.sock
             test "$(df -Pk /tmp | awk "NR==2 {print \$2}")" = 32768
             keys=$(env | cut -d= -f1)
-            if grep -Eiq "(TOKEN|PASSWORD|API.KEY|GITHUB_|DOCKER_HOST|SECRET)" <<< "$keys"; then
+            if printf '%s\\n' "$keys" | grep -Eiq "(TOKEN|PASSWORD|API.KEY|GITHUB_|DOCKER_HOST|SECRET)"; then
               echo "BLOCKED: secret-like key inherited by Qwen process" >&2
               exit 1
             fi
