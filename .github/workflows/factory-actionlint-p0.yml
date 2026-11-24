@@ -117,7 +117,7 @@ jobs:
       - name: Checkout exact Acceleration Batch 01 snapshot for static lint only
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: c7202df70d2385fef3ade67c567591e572d6b2ff
+          ref: 2ee331bf48430c7f3303415b794d04864fc37f96
           path: lint-target
           persist-credentials: false
 
@@ -126,7 +126,7 @@ jobs:
         working-directory: lint-target
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = c7202df70d2385fef3ade67c567591e572d6b2ff
+          test "$(git rev-parse HEAD)" = 2ee331bf48430c7f3303415b794d04864fc37f96
           git ls-files -- .github/workflows/ | tee "$RUNNER_TEMP/batch01-workflows.txt"
           actionlint -oneline 2>&1 | tee "$RUNNER_TEMP/batch01-actionlint.txt"
           echo "PASS: full pinned Batch 01 workflow lint."
