@@ -158,6 +158,16 @@ class RootlessOpenHandsQwenLinkTests(unittest.TestCase):
                        "gh pr merge", "OPENAI_API_KEY"):
             self.assertNotIn(unsafe, content)
 
+    def test_real_guest_env_and_model_privileges_are_verified(self):
+        content = WF.read_text(encoding="utf-8")
+        self.assertIn('podman exec "$model" /bin/sh -ec', content)
+        self.assertIn('grep -Eq "^CapEff:', content)
+        self.assertIn('grep -Eq "^NoNewPrivs:', content)
+        self.assertIn('grep -Eiq "(TOKEN|PASSWORD|API.KEY|GITHUB_|DOCKER_HOST|SECRET)"', content)
+        self.assertIn('test ! -S /var/run/docker.sock', content)
+        self.assertIn('test "$(df -Pk /tmp', content)
+        self.assertIn('podman network inspect "$net"', content)
+
     def test_docs_explicitly_block_real_agent_session(self):
         content = DOC.read_text(encoding="utf-8")
         for required in ("v1.0", "#162", "#180", "Rootless", "Qwen", "OpenHands",
