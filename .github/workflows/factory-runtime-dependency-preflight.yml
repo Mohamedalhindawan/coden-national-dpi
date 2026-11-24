@@ -1,0 +1,86 @@
+name: CODEN P0 OpenHands dependency remediation preflight
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/factory-runtime-dependency-preflight.yml'
+permissions: {}
+jobs:
+  dependency-review:
+    if: github.event.repository.private == false && github.head_ref == 'audit/factory-p0-runtime-dependency-remediation-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: OpenHands/software-agent-sdk
+          ref: 077f3fad6d31cd852be5c87176e0a93c3b446126
+          persist-credentials: false
+          path: upstream
+      - name: Verify original source and exact repaired lock
+        run: |
+          set -euo pipefail
+          test "$(git -C upstream rev-parse HEAD)" = 077f3fad6d31cd852be5c87176e0a93c3b446126
+          echo '71c5479cb609b60872a7cbd34da764a0804c2e50c2658dba1bb5255e180d3603  upstream/uv.lock' | sha256sum -c -
+          mkdir -m 0700 evidence
+          archive=docs/evidence/openhands-077f3fad/fixed-source-provenance.zip
+          echo "a86bac8c435a835697d8cfe3cee1f8c38ab4a99591b5af1fba6698686bfb7fd8  $archive" | sha256sum -c -
+          unzip -p "$archive" resolved.lock > evidence/baseline.lock
+          echo '6d8348da6768ae32bb7665bdc7ca2525d53e576e13729fcc41f0a28df7c25b69  evidence/baseline.lock' | sha256sum -c -
+          cp evidence/baseline.lock upstream/uv.lock
+      - name: Static dependency reverse edges and source references
+        run: |
+          set -euo pipefail
+          # Static text search only; no imports, no execution or package installs.
+          git -C upstream grep -n -E 'browser_use_sdk|lmnr_claude_code_proxy|(^|[^a-z_])browser_use([^a-z_]|$)|(^|[^a-z_])lmnr([^a-z_]|$)' -- \
+            'openhands-sdk/**/*.py' 'openhands-tools/**/*.py' 'openhands-agent-server/**/*.py' \
+            'openhands-workspace/**/*.py' '*/pyproject.toml' '*/**/*.spec' \
+            > evidence/source-references.txt
+          python3 - <<'PY'
+          import tomllib, json
+          from pathlib import Path
+          lock = tomllib.loads(Path("evidence/baseline.lock").read_text())
+          names = {"browser-use-sdk", "lmnr-claude-code-proxy", "browser-use", "lmnr", "mako", "multidict", "opentelemetry-api", "pyjwt", "setuptools"}
+          rows = []
+          for p in lock["package"]:
+              for d in p.get("dependencies", []):
+                  if d["name"] in names:
+                      rows.append({"parent": p["name"], "parent_version": p["version"], "dependency": d})
+          assert any(x["dependency"]["name"] == "browser-use-sdk" for x in rows)
+          assert any(x["dependency"]["name"] == "lmnr-claude-code-proxy" for x in rows)
+          Path("evidence/reverse-edges.json").write_text(json.dumps(rows, indent=2))
+          print("Static reverse dependency edges collected:", len(rows))
+          PY
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+        with:
+          version: '0.13.7'
+          python-version: '3.13.15'
+          enable-cache: false
+      - name: Resolve medium vulnerability repair candidates without installing
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Archived fix candidates only; do not claim the database is current.
+          # No sdist builds, no uv sync, no running upstream code.
+          uv lock --no-build --upgrade-package 'mako>=1.4.2' \
+            --upgrade-package 'multidict>=6.9.1' \
+            --upgrade-package 'opentelemetry-api>=1.45.2' \
+            --upgrade-package 'pyjwt>=2.15.0' \
+            --upgrade-package 'setuptools>=83.0.0'
+          cp uv.lock ../evidence/candidate.lock
+          sha256sum uv.lock > ../evidence/candidate.sha256
+          git diff --no-index ../evidence/baseline.lock uv.lock > ../evidence/candidate.patch || test "$?" -eq 1
+          # Keep review state explicit. A resolved lock is not a tested repair.
+          printf '%s\n' '{"status":"candidate_resolved_review_required","installed":false,"binary_built":false,"runtime_scanned":false,"license_approved":false,"sdk_conversation_ran":false,"release_authorized":false}' > ../evidence/status.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: openhands-runtime-dependency-preflight
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
