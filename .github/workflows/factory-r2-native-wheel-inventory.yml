@@ -236,13 +236,18 @@ jobs:
           test "$(stat -c %s "$work/$name")" -eq 118484282
           (cd "$work"; printf '%s  %s\n' "$digest" "$name" | sha256sum -c -)
           gh --version > evidence/verifier-version.txt
-          # Repository and source tag bound verification; no candidate execution.
+          # Upstream release.yml is workflow_dispatch on main with separate tag/sha inputs.
+          # Pin the reviewed release target independently; signed input reconciliation remains required.
+          git ls-remote https://github.com/astral-sh/python-build-standalone.git 'refs/tags/20260814' 'refs/tags/20260814^{}' > evidence/release-ref.txt
+          target=$(awk '$2=="refs/tags/20260814^{}" {print $1; found=1} $2=="refs/tags/20260814" {tag=$1} END {if (!found) print tag}' evidence/release-ref.txt)
+          test "$target" = '38d35dcf0e212ca02eed8ebc11d0c92906387d56'
+          # Verify exact signer workflow, issuer, repository, main ref and subject digest; no execution.
           # A missing or invalid attestation is BLOCKED, not a fallback checksum PASS.
-          if gh attestation verify "$work/$name" --repo astral-sh/python-build-standalone --source-ref refs/tags/20260814 --cert-oidc-issuer https://token.actions.githubusercontent.com --predicate-type https://slsa.dev/provenance/v1 --format json > evidence/attestation.json 2> evidence/verification.log; then
+          if gh attestation verify "$work/$name" --repo astral-sh/python-build-standalone --source-ref refs/heads/main --signer-workflow astral-sh/python-build-standalone/.github/workflows/release.yml --cert-oidc-issuer https://token.actions.githubusercontent.com --predicate-type https://slsa.dev/provenance/v1 --format json > evidence/attestation.json 2> evidence/verification.log; then
             jq -e 'type=="array" and length>0' evidence/attestation.json >/dev/null
-            jq -n --arg sha "$digest" '{archive_sha256:$sha,repository_and_tag_attestation_verified:true,signer_workflow_independently_reviewed:false,license_approved:false,build_authorized:false,release_authorized:false}' > evidence/provenance-review.json
+            jq -n --arg sha "$digest" '{archive_sha256:$sha,repository_and_signer_attestation_verified:true,release_tag_target_verified:true,signed_release_inputs_verified:false,signer_commit_independently_reviewed:false,license_approved:false,build_authorized:false,release_authorized:false}' > evidence/provenance-review.json
           else
-            jq -n --arg sha "$digest" '{archive_sha256:$sha,status:"BLOCKED",repository_and_tag_attestation_verified:false,license_approved:false,build_authorized:false,release_authorized:false}' > evidence/provenance-review.json
+            jq -n --arg sha "$digest" '{archive_sha256:$sha,status:"BLOCKED",repository_and_signer_attestation_verified:false,signed_release_inputs_verified:false,license_approved:false,build_authorized:false,release_authorized:false}' > evidence/provenance-review.json
             exit 1
           fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
