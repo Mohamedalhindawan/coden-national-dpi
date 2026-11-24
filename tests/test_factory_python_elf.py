@@ -33,3 +33,9 @@ class PythonElfReviewTest(unittest.TestCase):
     def test_missing_member_fails(self):
         with self.assertRaises(ValueError):
             collect_elf(self.raw, [dict(self.record, path='python/missing')])
+
+    def test_preserves_consumer_version_evidence(self):
+        result = collect_elf(self.raw, [self.record])[0]
+        self.assertIn('Version needs section', result['version_info'])
+        self.assertIn('File: libc.so.6', result['version_info'])
+        self.assertIn('Name: GLIBC_', result['version_info'])
