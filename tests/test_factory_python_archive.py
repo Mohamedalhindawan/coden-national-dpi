@@ -38,3 +38,15 @@ class PythonArchiveTest(unittest.TestCase):
         raw = fixture([('python/LICENSE', b'a'), ('python/LICENSE', b'b')])
         with self.assertRaises(ValueError):
             inventory(raw, hashlib.sha256(raw).hexdigest())
+
+    def test_native_member_larger_than_compressed_archive_limit(self):
+        from unittest.mock import patch
+        # Simulate the independent compressed-size ceiling at a small scale.
+        # The compressible ELF payload is larger than the compressed input cap.
+        payload = b'\x7fELF' + b'\0' * 8192
+        raw = fixture([('python/lib/libpython3.13.so.1.0', payload)])
+        self.assertLess(len(raw), 1024)
+        with patch('ai_factory.factory_python_archive.CAP', 1024):
+            out = inventory(raw, hashlib.sha256(raw).hexdigest())
+        self.assertEqual(out['native'][0]['bytes'], len(payload))
+        self.assertEqual(out['native'][0]['sha256'], hashlib.sha256(payload).hexdigest())
