@@ -151,3 +151,61 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+  noble-candidate-discovery:
+    if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - name: Resolve official dated Noble tag to immutable amd64 manifest
+        id: candidate
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          tag='docker.io/library/ubuntu:noble-20261110.1'
+          old='sha256:9a04f13b3f80ef056361e30868593b1cfd2279fe19e4081cb93a90bf56819d6a'
+          timeout 90s docker buildx imagetools inspect --raw "$tag" > evidence/tag-index.json
+          digest=$(jq -er '[.manifests[] | select(.platform.os=="linux" and .platform.architecture=="amd64") | .digest] | if length==1 then .[0] else error("expected unique amd64 manifest") end' evidence/tag-index.json)
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          target="docker.io/library/ubuntu@$digest"
+          timeout 90s docker buildx imagetools inspect --raw "$target" > evidence/amd64-manifest.json
+          jq -e '.config.digest | test("^sha256:[0-9a-f]{64}$")' evidence/amd64-manifest.json >/dev/null
+          status=distinct_candidate
+          if [ "$digest" = "$old" ]; then status=unchanged_base; fi
+          jq -n --arg tag "$tag" --arg digest "$digest" --arg previous "$old" --arg status "$status" '{tag:$tag,amd64_manifest:$digest,previous_manifest:$previous,status:$status,official_images_library_blob:"e206488905d81655f345b70ae331839d740b70a9",canonical_amd64_source_commit:"3160ed726dafb8da2af14f4a2b3420c9e9886fb6",security_approved:false,build_authorized:false,release_authorized:false}' > evidence/candidate.json
+          printf 'target=%s\nstatus=%s\n' "$target" "$status" >> "$GITHUB_OUTPUT"
+      - name: Scan only a distinct immutable candidate without running it
+        if: steps.candidate.outputs.status == 'distinct_candidate'
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        env:
+          TRIVY_IMAGE_SRC: remote
+          TRIVY_PLATFORM: linux/amd64
+          TRIVY_IGNORE_UNFIXED: 'false'
+          TRIVY_SEVERITY: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+        with:
+          version: v0.69.3
+          scan-type: image
+          image-ref: ${{ steps.candidate.outputs.target }}
+          scanners: vuln
+          format: json
+          list-all-pkgs: true
+          exit-code: '0'
+          ignore-unfixed: false
+          output: evidence/candidate-scan.json
+          cache: false
+          timeout: 8m
+      - name: Preserve distinct candidate scanner evidence
+        if: steps.candidate.outputs.status == 'distinct_candidate'
+        run: |
+          set -euo pipefail
+          trivy --version > evidence/trivy-version.txt
+          jq -e '.Metadata.OS.Family == "ubuntu" and (.Results | type == "array" and length > 0)' evidence/candidate-scan.json >/dev/null
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-noble-candidate-discovery
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
