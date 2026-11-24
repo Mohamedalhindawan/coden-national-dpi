@@ -1,0 +1,113 @@
+name: Rootless source-built OpenHands server probe
+on:
+  pull_request:
+    paths: ['.github/workflows/openhands-signed-runtime-probe.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  probe:
+    if: github.event.repository.private == false && github.head_ref == 'audit/openhands-signed-runtime' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      BASE: docker.io/library/ubuntu@sha256:9a04f13b3f80ef056361e30868593b1cfd2279fe19e4081cb93a90bf56819d6a
+      BINARY_SHA: 5ad5fa2bb86256b510df3bfbbd9653fbc60a243ea744a579d3ca4c6fd9e91cf3
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45431783950
+          name: openhands-source-product
+          path: product
+      - name: Recheck signature, exact product and archived security results
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir evidence
+          dir=docs/evidence/openhands-077f3fad
+          echo "a86bac8c435a835697d8cfe3cee1f8c38ab4a99591b5af1fba6698686bfb7fd8  $dir/fixed-source-provenance.zip" | sha256sum -c -
+          echo "684eba3009dc8885f9a3199220996083b32b139cab7d0a13fb63f6e2ac034760  $dir/fixed-source-audit.zip" | sha256sum -c -
+          unzip -p "$dir/fixed-source-provenance.zip" bundle.jsonl > "$RUNNER_TEMP/bundle.jsonl"
+          gh attestation verify product/openhands-agent-server --bundle "$RUNNER_TEMP/bundle.jsonl" --repo "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/openhands-source-build.yml" --source-digest d2c1cd0c41695205f868ff89faa318a80bb754de --deny-self-hosted-runners >/dev/null
+          echo "$BINARY_SHA  product/openhands-agent-server" | sha256sum -c -
+          for f in image-scan.json environment-scan.json; do
+            unzip -p "$dir/fixed-source-audit.zip" "$f" | jq -e '(.Results|length>0) and ([.Results[] | .Vulnerabilities[]? | select(.Severity=="HIGH" or .Severity=="CRITICAL")] | length==0)'
+          done
+      - name: Inspect real process and probe loopback health
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          podman info --format json | jq -e '.host.security.rootless == true and .host.cgroupVersion == "v2" and (.host.cgroupControllers | contains(["cpu","memory","pids"]))'
+          mkdir context
+          install -m 0555 product/openhands-agent-server context/openhands-agent-server
+          printf 'FROM %s\nCOPY openhands-agent-server /usr/local/bin/openhands-agent-server\nUSER 65534:65534\nENTRYPOINT ["/usr/local/bin/openhands-agent-server"]\nCMD []\n' "$BASE" > context/Dockerfile
+          podman pull --platform linux/amd64 "$BASE"
+          podman build --network none --pull=never -t localhost/coden-source-probe context
+          name=coden-source-probe
+          cleanup() {
+            podman rm -f --ignore "$name" >/dev/null
+            if podman container exists "$name"; then exit 1; fi
+            podman volume rm -f probe-work probe-tmp >/dev/null 2>&1 || true
+            for volume in probe-work probe-tmp; do
+              if podman volume exists "$volume"; then exit 1; fi
+            done
+            echo removed > evidence/cleanup.txt
+          }
+          trap cleanup EXIT
+          podman volume create --opt type=tmpfs --opt device=tmpfs --opt o=rw,exec,nosuid,nodev,size=768m,nr_inodes=32768,mode=1777 probe-tmp
+          podman volume create --opt type=tmpfs --opt device=tmpfs --opt o=rw,noexec,nosuid,nodev,size=32m,nr_inodes=2048,uid=65534,gid=65534,mode=0700 probe-work
+          podman create --name "$name" --network none --http-proxy=false --read-only --read-only-tmpfs=false --cap-drop=all --security-opt=no-new-privileges --user 65534:65534 --cpus=1 --memory=1536m --memory-swap=1536m --pids-limit=96 --cgroupns=private --pid=private --ipc=private --timeout=120 --ulimit core=0:0 --volume probe-tmp:/tmp:rw,nocopy --volume probe-work:/workspace:rw,nocopy --workdir /workspace --env HOME=/workspace --env XDG_CACHE_HOME=/workspace/cache --env OPENHANDS_SUPPRESS_BANNER=1 localhost/coden-source-probe --host 127.0.0.1 --port 8002
+          podman inspect "$name" | jq -e '.[0].HostConfig | .NetworkMode=="none" and .ReadonlyRootfs==true and .Privileged==false and ([.Binds[]? | split(":")[0]] | all(.=="probe-tmp" or .=="probe-work")) and ((.PortBindings // {})|length==0)'
+          podman inspect "$name" | jq -e '.[0].Mounts | length==2 and all(.[]; .Type=="volume")'
+          podman start "$name"
+          healthy=false
+          for _ in $(seq 1 45); do
+            if [[ "$(podman inspect -f '{{.State.Running}}' "$name")" != true ]]; then break; fi
+            if podman exec "$name" bash -ec 'exec 3<>/dev/tcp/127.0.0.1/8002; printf "GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n" >&3; read -rt 3 line <&3; [[ "$line" == *" 200 "* ]]' 2>/dev/null; then healthy=true; break; fi
+            sleep 1
+          done
+          if [[ "$healthy" != true ]]; then
+            podman logs --tail 60 "$name" 2>&1 | tail -60
+            exit 1
+          fi
+          podman exec "$name" bash -euc '
+            set -o pipefail
+            test "$(df -Pi /tmp | awk "NR==2 {print \$2}")" = 32768
+            test "$(df -Pi /workspace | awk "NR==2 {print \$2}")" = 2048
+            test "$(df -Pk /tmp | awk "NR==2 {print \$2}")" = 786432
+            test "$(df -Pk /workspace | awk "NR==2 {print \$2}")" = 32768
+            test "$(id -u)" = 65534
+            test "$(ls /sys/class/net)" = lo
+            test ! -S /var/run/docker.sock
+            test "$(cat /sys/fs/cgroup/memory.max)" = 1610612736
+            test "$(cat /sys/fs/cgroup/pids.max)" = 96
+            read -r quota period < /sys/fs/cgroup/cpu.max
+            test "$quota" = "$period"
+            count=0
+            for exe in /proc/[0-9]*/exe; do
+              [[ "$(readlink "$exe" || true)" == /usr/local/bin/openhands-agent-server ]] || continue
+              proc=${exe%/exe}
+              cmp /proc/self/cgroup "$proc/cgroup"
+              grep -Eq "^CapEff:[[:space:]]+0+$" "$proc/status"
+              grep -Eq "^NoNewPrivs:[[:space:]]+1$" "$proc/status"
+              grep -Eq "^Uid:[[:space:]]+65534[[:space:]]+65534" "$proc/status"
+              keys=$(tr "\0" "\n" < "$proc/environ" | cut -d= -f1)
+              if grep -Eiq "(TOKEN|PASSWORD|API_KEY|GITHUB_|DOCKER_HOST|SECRET)" <<< "$keys"; then exit 1; fi
+              count=$((count+1))
+            done
+            test "$count" -ge 2
+            echo "server_processes_checked=$count"
+          ' > evidence/processes.txt
+          echo loopback_http_200 > evidence/health.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: rootless-server-probe
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 14
