@@ -1,0 +1,133 @@
+name: CODEN P0 bounded external rootfs feasibility
+on:
+  pull_request:
+    paths: ['.github/workflows/factory-external-rootfs-proof.yml']
+permissions: {}
+jobs:
+  external-rootfs-synthetic:
+    if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      BASE: docker.io/library/ubuntu@sha256:9a04f13b3f80ef056361e30868593b1cfd2279fe19e4081cb93a90bf56819d6a
+    steps:
+      - name: Test supported external rootfs without installing real packages
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          test "$(id -u)" -ne 0
+          podman info --format json | jq -e '.host.security.rootless == true and .host.cgroupVersion == "v2"' >/dev/null
+          podman pull --platform linux/amd64 "$BASE"
+          printf '%s\n' '{"synthetic_only":true,"real_deb_installation":false,"os_attempt_consumed":false,"release_authorized":false}' > evidence/scope.json
+          # Only setup/cleanup of our own tmpfs is done in the rootless user namespace.
+          # No sudo, host-root mount, host proc/dev binding, host service socket or real deb.
+          podman unshare bash -s -- "$BASE" "$PWD/evidence" "coden-rootfs-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" <<'SH'
+          set -euo pipefail
+          base=$1
+          evidence=$2
+          name=$3
+          test "$(id -u)" = 0
+          awk 'NR==1{exit !($1==0 && $2!=0)}' /proc/self/uid_map
+          cat /proc/self/uid_map > "$evidence/setup-uid-map.txt"
+          work=$(mktemp -d)
+          root="$work/root"
+          mkdir "$root"
+          logpath="$work/runtime.log"
+          mounted=false
+          image_mounted=false
+          cleanup() {
+            rc=$?
+            trap - EXIT
+            timeout 20s podman rm -f --ignore "$name" >/dev/null 2>&1 || rc=1
+            if podman container exists "$name"; then rc=1; fi
+            if "$image_mounted"; then timeout 20s podman image unmount "$base" >/dev/null || rc=1; fi
+            if "$mounted"; then timeout 20s umount "$root" || rc=1; fi
+            if mountpoint -q "$root"; then rc=1; else rmdir "$root" || rc=1; fi
+            rm -f -- "$logpath"
+            rmdir "$work" || rc=1
+            printf 'final_exit_code=%s\n' "$rc" > "$evidence/exit.txt"
+            if [ "$rc" = 0 ]; then echo resources_removed > "$evidence/cleanup.txt"; fi
+            exit "$rc"
+          }
+          trap cleanup EXIT
+          mount -t tmpfs -o size=768m,nr_inodes=49152,nosuid,nodev,mode=0755 tmpfs "$root"
+          mounted=true
+          test "$(df -Pk "$root" | awk 'NR==2{print $2}')" = 786432
+          test "$(df -Pi "$root" | awk 'NR==2{print $2}')" = 49152
+          findmnt -n -o FSTYPE,OPTIONS --target "$root" > "$evidence/setup-rootfs-mount.txt"
+          source=$(podman image mount "$base")
+          image_mounted=true
+          test -d "$source" && test "$source" != /
+          test -z "$(find "$source" -xdev \( -type b -o -type c -o -type s -o -type p \) -print -quit)"
+          timeout 60s cp -a "$source/." "$root/"
+          test -f "$root/var/lib/dpkg/status"
+          sha256sum "$root/var/lib/dpkg/status" | awk '{print $1}' > "$evidence/status.before"
+          timeout 20s podman image unmount "$base" >/dev/null
+          image_mounted=false
+          df -Pk "$root" > "$evidence/setup-blocks.txt"
+          df -Pi "$root" > "$evidence/setup-inodes.txt"
+          podman create --name "$name" --network none --http-proxy=false \
+            --read-only-tmpfs=false --cap-drop=all --cap-add=CHOWN,DAC_OVERRIDE,FOWNER,SYS_CHROOT \
+            --security-opt=no-new-privileges --user 0:0 \
+            --cpus=2 --memory=4096m --memory-swap=4096m --pids-limit=128 \
+            --cgroupns=private --pid=private --ipc=private --timeout=60 \
+            --ulimit core=0:0 --ulimit nofile=256:256 --ulimit msgqueue=65536:65536 --ulimit memlock=0:0 \
+            --log-driver=k8s-file --log-opt max-size=1mb --log-opt "path=$logpath" \
+            --rootfs "$root" /bin/sh -eu -c '
+              test "$(id -u)" = 0
+              awk "NR==1{exit !(\$1==0 && \$2!=0)}" /proc/self/uid_map
+              test "$(cat /sys/fs/cgroup/cpu.max)" = "200000 100000"
+              test "$(cat /sys/fs/cgroup/memory.max)" = "4294967296"
+              test "$(cat /sys/fs/cgroup/memory.swap.max)" = 0
+              test "$(cat /sys/fs/cgroup/pids.max)" = 128
+              grep -Eq "^CapEff:[[:space:]]+000000000004000b$" /proc/self/status
+              grep -Eq "^NoNewPrivs:[[:space:]]+1$" /proc/self/status
+              test "$(ls /sys/class/net | tr "\n" " ")" = "lo "
+              test "$(df -Pk / | awk "NR==2{print \$2}")" = 786432
+              test "$(df -Pi / | awk "NR==2{print \$2}")" = 49152
+              awk "\$5==\"/\" && \$0 ~ / - tmpfs / {ok=1} END{exit !ok}" /proc/self/mountinfo
+              test -c /dev/null
+              printf test > /dev/null
+              test -r /proc/1/stat
+              test ! -e /run/podman/podman.sock && test ! -e /var/run/docker.sock
+              test -z "$(find /dev -xdev -type b -print)"
+              for ns in ipc pid net mnt cgroup; do printf "NS %s %s\n" "$ns" "$(readlink "/proc/self/ns/$ns")"; done
+              cat /proc/self/mountinfo
+              df -Pk
+              df -Pi
+              printf synthetic > /tmp/coden-rootfs-probe
+              test "$(cat /tmp/coden-rootfs-probe)" = synthetic
+              test -z "$(dpkg --audit)"
+              rc=0
+              ischroot || rc=$?
+              case "$rc" in 0|1|2) ;; *) exit 21;; esac
+              printf "OCI_ISCHROOT_EXIT=%s\n" "$rc"
+              for path in /sbin/init /sbin/telinit /run/systemd/system; do if test -e "$path" || test -L "$path"; then printf "INIT_PATH_PRESENT %s\n" "$path"; else printf "INIT_PATH_ABSENT %s\n" "$path"; fi; done
+              printf "EXTERNAL_ROOTFS_SYNTHETIC_PASS\n"
+            ' >/dev/null
+          podman inspect "$name" | jq -e '.[0] | .HostConfig.Privileged==false and .HostConfig.ReadonlyRootfs==false and .HostConfig.NetworkMode=="none" and ([.Mounts[]? | select(.Type=="bind")]|length==0)' >/dev/null
+          for ns in ipc pid net mnt cgroup; do printf "NS %s %s\n" "$ns" "$(readlink "/proc/self/ns/$ns")"; done > "$evidence/setup-namespaces.txt"
+          podman start "$name" >/dev/null
+          timeout 75s podman wait "$name" > "$evidence/container-exit.txt"
+          podman logs "$name" > "$evidence/probe.log" 2>&1
+          test "$(cat "$evidence/container-exit.txt")" = 0
+          grep -qx EXTERNAL_ROOTFS_SYNTHETIC_PASS "$evidence/probe.log"
+          for ns in ipc pid net mnt cgroup; do
+            h=$(awk -v n="$ns" '$2==n && $1=="NS"{print $3}' "$evidence/setup-namespaces.txt")
+            c=$(awk -v n="$ns" '$2==n && $1=="NS"{print $3}' "$evidence/probe.log")
+            test -n "$h" && test -n "$c" && test "$h" != "$c"
+          done
+          test "$(cat "$root/tmp/coden-rootfs-probe")" = synthetic
+          sha256sum "$root/var/lib/dpkg/status" | awk '{print $1}' > "$evidence/status.after"
+          cmp "$evidence/status.before" "$evidence/status.after"
+          test -f "$logpath" && test ! -L "$logpath"
+          test "$(stat -c %s "$logpath")" -le 1048576
+          printf '%s\n' '{"external_rootfs_feasibility_pass":true,"rootfs_tmpfs_bytes":805306368,"rootfs_tmpfs_inodes":49152,"private_proc_and_dev_observed":true,"namespace_identity_checks":5,"actual_installation_allowed":false,"aggregate_writable_budget_proven":false,"real_glibc_scripts_executed":false,"release_authorized":false}' > "$evidence/review.json"
+          SH
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: bounded-external-rootfs-proof
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
