@@ -190,6 +190,11 @@ jobs:
                       assert m.isdir(),"unexpected archive member type"
           receipt={"source":base+"SHA256SUMS","checksum_manifest_sha256":hashlib.sha256(sums).hexdigest(),"url":url,"sha256":digest,"compressed_bytes":len(raw),"expanded_regular_bytes":expanded,"regular_files":files,"archive_member_count":len(seen),"links":links,"notice_candidates":notices,"producer_digest_verified":True,"independent_attestation_verified":False,"extracted":False,"executed":False,"license_approved":False,"build_authorized":False,"release_authorized":False}
           Path("evidence/python-candidate.json").write_text(json.dumps(receipt,indent=2))
+          # Diagnose actual members without executing or extracting the archive.
+          with tarfile.open(fileobj=io.BytesIO(raw),mode="r:gz") as t:
+              candidates=[{"path":m.name,"size":m.size,"type":m.type.hex(),"regular":m.isfile()} for m in t if (m.isfile() and m.size>128*1024*1024) or not (m.isfile() or m.isdir() or m.issym() or m.islnk())]
+          Path("evidence/member-limit-diagnostics.json").write_text(json.dumps(candidates,indent=2))
+          print("Member limit diagnostics:",json.dumps(candidates))
           report=inventory(raw,digest)
           assert report["member_count"]==len(seen) and report["expanded_regular_bytes"]==expanded
           Path("evidence/python-inventory.json").write_text(json.dumps(report,indent=2))
