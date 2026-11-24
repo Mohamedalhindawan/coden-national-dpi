@@ -4,7 +4,9 @@ import shutil
 import tarfile
 import unittest
 from pathlib import Path
-from ai_factory.factory_python_elf import collect_elf
+from types import SimpleNamespace
+from unittest.mock import patch
+from ai_factory.factory_python_elf import collect_elf, inspect_elf_file
 
 
 class PythonElfReviewTest(unittest.TestCase):
@@ -44,3 +46,20 @@ class PythonElfReviewTest(unittest.TestCase):
         result = collect_elf(self.raw, [self.record])[0]
         self.assertIn("Symbol table '.dynsym'", result['dynamic_symbols'])
         self.assertRegex(result['dynamic_symbols'], r'UND\s+__libc_start_main@GLIBC_')
+
+    def test_records_actual_program_interpreter(self):
+        result = collect_elf(self.raw, [self.record])[0]
+        self.assertEqual(result['interpreter'], ['/lib64/ld-linux-x86-64.so.2'])
+
+    def test_distinguishes_rpath_from_runpath(self):
+        def fake_readelf(args, **kwargs):
+            return SimpleNamespace(stdout=(
+                ' 0x000000000000000f (RPATH) Library rpath: [$ORIGIN/old]\n'
+                ' 0x000000000000001d (RUNPATH) Library runpath: [$ORIGIN/new]\n'
+                if '-d' in args else ''))
+        with patch('ai_factory.factory_python_elf.subprocess.run', side_effect=fake_readelf):
+            result = inspect_elf_file(Path('/synthetic/object'))
+        self.assertEqual(result['rpath'], ['$ORIGIN/old'])
+        self.assertEqual(result['runpath'], ['$ORIGIN/new'])
+        self.assertEqual(result['search_paths'], ['$ORIGIN/old', '$ORIGIN/new'])
+        self.assertEqual(result['interpreter'], [])
