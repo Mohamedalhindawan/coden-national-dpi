@@ -150,6 +150,7 @@ class RootlessOpenHandsQwenLinkTests(unittest.TestCase):
             "trap cleanup EXIT",
             "contents: read",
             "persist-credentials: false",
+            "PYTHONPATH:",
         ):
             self.assertIn(required, content)
         for unsafe in ("pull_request_target:", "--privileged", "--network host",
