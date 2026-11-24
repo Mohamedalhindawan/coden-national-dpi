@@ -39,3 +39,8 @@ class PythonElfReviewTest(unittest.TestCase):
         self.assertIn('Version needs section', result['version_info'])
         self.assertIn('File: libc.so.6', result['version_info'])
         self.assertIn('Name: GLIBC_', result['version_info'])
+
+    def test_preserves_dynamic_symbol_evidence(self):
+        result = collect_elf(self.raw, [self.record])[0]
+        self.assertIn("Symbol table '.dynsym'", result['dynamic_symbols'])
+        self.assertRegex(result['dynamic_symbols'], r'UND\s+__libc_start_main@GLIBC_')
