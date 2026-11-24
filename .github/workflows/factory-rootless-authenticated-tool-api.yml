@@ -291,9 +291,8 @@ jobs:
           AUTH
           podman exec -i "$agent" bash -eu -s < auth-check.sh
 
-          # Authenticated operator-owned tool API test. This is NOT a model
-          # generated action or SDK Conversation. The exact harmless command
-          # is fixed in this audited script and emits no sensitive information.
+          # Exactly one operator-authored synthetic tool command, NOT from Qwen.
+          # Bash API credentials remain in OpenHands, never Qwen.
           cat > tool-api-check.sh <<'TOOL_API'
           set -euo pipefail
           body='{"command":"printf CODEN_FACTORY_TOOL_EXECUTION_OK","cwd":"/workspace","timeout":8}'
@@ -309,208 +308,43 @@ jobs:
             local status
             IFS= read -r status <&3
             if [[ "$key" == "$OH_SESSION_API_KEYS_0" ]]; then
-              [[ "$status" == *" 200 "* ]] || { echo 'BLOCKED: authenticated Bash API did not return 200' >&2; exit 1; }
+              [[ "$status" == *" 200 "* ]] || { echo 'BLOCKED: authenticated Bash tool API failed'; exit 1; }
               while IFS= read -r header <&3; do
-                [[ "$header" ==           cat > agent-process-proof.sh <<'AGENT_PROC_PROOF'
-          set -euo pipefail
-          test "$(id -u)" = 65534
-          test "$(cat /sys/fs/cgroup/memory.max)" = 1610612736
-          test "$(cat /sys/fs/cgroup/pids.max)" = 96
-          read -r quota period < /sys/fs/cgroup/cpu.max
-          test "$quota" = "$period"
-          test "$(df -Pi /tmp | awk 'NR==2 {print $2}')" = 32768
-          test "$(df -Pi /workspace | awk 'NR==2 {print $2}')" = 2048
-          test "$(ls /sys/class/net | grep -vc '^lo$')" -ge 1
-          test ! -S /var/run/docker.sock
-          count=0
-          for exe in /proc/[0-9]*/exe; do
-            [[ "$(readlink "$exe" || true)" == /usr/local/bin/openhands-agent-server ]] || continue
-            proc=$(dirname "$exe")
-            cmp /proc/self/cgroup "$proc/cgroup"
-            grep -Eq '^CapEff:[[:space:]]+0+$' "$proc/status"
-            grep -Eq '^NoNewPrivs:[[:space:]]+1$' "$proc/status"
-            keys=$(tr '\0' '\n' < "$proc/environ" | cut -d= -f1)
-            printf '%s\n' "$keys" | grep -Fxq OH_SESSION_API_KEYS_0
-            printf '%s\n' "$keys" | grep -Fxq OH_SECRET_KEY
-            unexpected=$(printf '%s\n' "$keys" | grep -Ev '^(OH_SESSION_API_KEYS_0|OH_SECRET_KEY)$' || true)
-            if grep -Eiq '(TOKEN|PASSWORD|API.KEY|GITHUB_|DOCKER_HOST|SECRET)' <<< "$unexpected"; then
-              echo 'BLOCKED: extra secret-looking env name in actual OpenHands child' >&2
-              exit 1
-            fi
-            count=$((count+1))
-          done
-          test "$count" -ge 2
-          echo 'PASS: actual OpenHands child quotas, isolation, session-key allowlist.'
-          AGENT_PROC_PROOF
-          podman exec -i "$agent" bash -eu -s < agent-process-proof.sh
-
-          cat > model-process-proof.sh <<'MODEL_PROC_PROOF'
-          set -eu
-          test "$(id -u)" = 65534
-          test "$(cat /sys/fs/cgroup/memory.max)" = 1610612736
-          test "$(cat /sys/fs/cgroup/pids.max)" = 64
-          set -- $(cat /sys/fs/cgroup/cpu.max)
-          test "$1" -eq $((2*$2))
-          grep -Eq '^CapEff:[[:space:]]+0+$' /proc/self/status
-          grep -Eq '^NoNewPrivs:[[:space:]]+1$' /proc/self/status
-          test ! -S /var/run/docker.sock
-          test "$(df -Pk /tmp | awk 'NR==2 {print $2}')" = 32768
-          keys=$(env | cut -d= -f1)
-          if printf '%s\n' "$keys" | grep -Eiq '(TOKEN|PASSWORD|API.KEY|GITHUB_|DOCKER_HOST|SECRET)'; then
-            echo 'BLOCKED: secret-like env key in Qwen container' >&2
-            exit 1
-          fi
-          echo 'PASS: real Qwen resource caps, no extra privileges, no session key.'
-          MODEL_PROC_PROOF
-          podman exec -i "$model" /bin/sh -eu -s < model-process-proof.sh
-
-          members=$(podman ps --filter "network=$net" --format '{{.ID}}' | wc -l)
-          test "$members" -eq 2
-
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          from ai_factory.factory_rootless_openhands_qwen_link import (
-              BINARY_SHA, UPSTREAM, validate_receipt
-          )
-          from ai_factory.factory_real_qwen_server_admission import LLAMA_SHA, MODEL_SHA
-          generated = json.loads(Path("model-verdict.json").read_text())
-          proof = {
-              "plan_version": "v1.0",
-              "upstream_source_commit": UPSTREAM,
-              "binary_sha256": BINARY_SHA,
-              "model_sha256": MODEL_SHA,
-              "llama_cpp_archive_sha256": LLAMA_SHA,
-              "real_qwen_tokens_predicted": generated["tokens_predicted"],
-              "real_qwen_response_sha256": generated["response_sha256"],
-              "rootless_podman": True,
-              "cgroup_v2_cpu_memory_pids": True,
-              "private_internal_bridge": True,
-              "exactly_two_containers": True,
-              "both_containers_nonroot_capless_readonly": True,
-              "no_host_port_bindings_or_secrets": True,
-              "openhands_server_health_http_200": True,
-              "model_health_from_openhands_container": True,
-              "real_qwen_completion_from_openhands_container": True,
-              "outside_ip_http_denied_from_openhands": True,
-              "outside_dns_http_denied_from_openhands": True,
-              "temporary_storage_bytes_and_inodes_capped": True,
-              "child_processes_cgroup_attested": True,
-              "signed_binary_provenance_verified": True,
-              "independent_high_critical_scan_gate_passed": True,
-              "no_openhands_sdk_conversation": True,
-              "no_agent_tool_calls": True,
-              "no_three_file_candidate_generated": True,
-              "openhands_live_execution_authorized": False,
-              "factory_production_authorized": False,
-              "automatic_merge": False,
-              "release_authorized": False,
-              "paid_calls": 0,
-          }
-          data = validate_receipt(proof)
-          from ai_factory.factory_rootless_session_auth import (
-              verify as verify_auth, OPENHANDS_BINARY_SHA, QWEN_SHA
-          )
-          authed = verify_auth({
-              "plan_version": "v1.0",
-              "rootless_podman": True,
-              "signed_binary_sha256": OPENHANDS_BINARY_SHA,
-              "qwen_weights_sha256": QWEN_SHA,
-              "model_private_network_tested": True,
-              "no_public_ports": True,
-              "no_external_http_egress": True,
-              "no_key_request_rejected": True,
-              "incorrect_key_request_rejected": True,
-              "valid_ephemeral_key_request_accepted": True,
-              "openhands_health_200": True,
-              "session_key_not_logged_or_exported": True,
-              "session_key_unique_per_run": True,
-              "startup_encryption_key_present": True,
-              "actual_sdk_conversation_run": False,
-              "agent_tool_calls_authorized": False,
-              "release_authorized": False,
-              "production_authorized": False,
-              "automatic_merge": False,
-              "paid_calls": 0,
-          })
-          from ai_factory.factory_rootless_tool_api_proof import verify as verify_tool, OPENHANDS_SHA, QWEN_SHA
-          tool_verdict=json.loads(Path("tool-verdict.json").read_text())
-          assert tool_verdict["real_tool_exit_zero"] is True
-          assert tool_verdict["exact_synthetic_stdout_verified"] is True
-          verified=verify_tool({
-              "plan_version":"v1.0",
-              "source_commit":"077f3fad6d31cd852be5c87176e0a93c3b446126",
-              "openhands_binary_sha256":OPENHANDS_SHA,
-              "qwen_gguf_sha256":QWEN_SHA,
-              "rootless_cgroup_and_network_pass":True,
-              "signed_source_build_verified":True,
-              "strict_temporary_workspace_caps_verified":True,
-              "real_model_link_verified":True,
-              "no_key_post_denied":True,
-              "wrong_key_post_denied":True,
-              "correct_key_post_succeeded":True,
-              "real_tool_exit_zero":True,
-              "exact_synthetic_stdout_verified":True,
-              "auth_key_never_forwarded_to_qwen":True,
-              "actual_api_bash_command_ran":True,
-              "model_generated_this_command":False,
-              "openhands_sdk_conversation_ran":False,
-              "independent_three_file_acceptance_passed":False,
-              "production_authorized":False,
-              "release_authorized":False,
-              "automatic_merge":False,
-              "paid_calls":0,
-          })
-          out=Path(os.environ["RUNNER_TEMP"])/"coden-rootless-tool-api-review.json"
-          out.write_text(json.dumps(verified,sort_keys=True,indent=2)+"\n",encoding="utf-8")
-          print("PASS: real authenticated operator-only Bash tool API; no SDK Conversation, no model-generated code or release.")
-          PY
-      - name: Preserve sanitized only review evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: coden-rootless-authenticated-tool-api-review
-          path: ${{ runner.temp }}/coden-rootless-tool-api-review.json
-          if-no-files-found: error
-          retention-days: 7
-\r' || -z "$header" ]] && break
+                [[ "$header" == "$(printf '\r')" || -z "$header" ]] && break
               done
-              cat <&3 > /workspace/coden-operator-tool-response.json
-              test -s /workspace/coden-operator-tool-response.json
+              cat <&3 > /workspace/operator-tool-response.json
+              test -s /workspace/operator-tool-response.json
             fi
             exec 3<&- 3>&-
             printf '%s' "$status"
           }
-          unauth=$(post_command "")
-          [[ "$unauth" == *" 401 "* ]] || { echo 'BLOCKED: no-key Bash POST did not return 401' >&2; exit 1; }
-          wrong=$(post_command "intentionally-invalid-session")
-          [[ "$wrong" == *" 401 "* ]] || { echo 'BLOCKED: wrong-key Bash POST did not return 401' >&2; exit 1; }
-          # Run exactly ONE authenticated, operator-authored command.
-          valid=$(post_command "$OH_SESSION_API_KEYS_0")
-          [[ "$valid" == *" 200 "* ]] || exit 1
-          echo 'PASS: actual OpenHands Bash API denied both unauthorized commands; accepted one static authorized tool command.'
+          no_key=$(post_command "")
+          [[ "$no_key" == *" 401 "* ]] || { echo 'BLOCKED: tool API without auth not 401'; exit 1; }
+          wrong_key=$(post_command "intentionally-invalid-session")
+          [[ "$wrong_key" == *" 401 "* ]] || { echo 'BLOCKED: tool API incorrect auth not 401'; exit 1; }
+          correct_key=$(post_command "$OH_SESSION_API_KEYS_0")
+          [[ "$correct_key" == *" 200 "* ]] || exit 1
+          echo 'PASS: upstream OpenHands Bash tool API 401/401/200 with one operator synthetic command.'
           TOOL_API
           timeout 30 podman exec -i "$agent" bash -eu -s < tool-api-check.sh
-          podman exec "$agent" cat /workspace/coden-operator-tool-response.json > tool-response.json
+          podman exec "$agent" cat /workspace/operator-tool-response.json > tool-response.json
           python - <<'PY'
-          import hashlib
-          import json
+          import hashlib, json
           from pathlib import Path
-          result=json.loads(Path("tool-response.json").read_text(encoding="utf-8"))
-          expected="CODEN_FACTORY_TOOL_EXECUTION_OK"
-          assert type(result) is dict and type(result.get("exit_code")) is int
-          assert result["exit_code"] == 0, "Operator-owned synthetic tool command returned nonzero"
-          assert type(result.get("stdout")) is str and result["stdout"].strip()==expected
-          assert result.get("stderr") in (None,"")
+          response=json.loads(Path("tool-response.json").read_text(encoding="utf-8"))
+          assert type(response) is dict
+          assert type(response.get("exit_code")) is int and response["exit_code"] == 0
+          assert type(response.get("stdout")) is str
+          assert response["stdout"].strip() == "CODEN_FACTORY_TOOL_EXECUTION_OK"
+          assert response.get("stderr") in (None, "")
           Path("tool-verdict.json").write_text(json.dumps({
+              "actual_api_bash_command_ran":True,
               "real_tool_exit_zero":True,
               "exact_synthetic_stdout_verified":True,
-              "stdout_sha256":hashlib.sha256(result["stdout"].encode("utf-8")).hexdigest(),
-              "output_hidden":True,
-              "actual_api_bash_command_ran":True,
+              "stdout_sha256":hashlib.sha256(response["stdout"].encode("utf-8")).hexdigest(),
               "model_generated_this_command":False,
           }),encoding="utf-8")
-          print("PASS: actual authenticated OpenHands API ran one static shell command with exact stdout and exit 0.")
+          print("PASS: real authenticated OpenHands Bash API: exit zero and exact synthetic stdout.")
           PY
 
           cat > agent-process-proof.sh <<'AGENT_PROC_PROOF'
@@ -635,15 +469,43 @@ jobs:
               "automatic_merge": False,
               "paid_calls": 0,
           })
-          out = Path(os.environ["RUNNER_TEMP"]) / "coden-rootless-session-auth-evidence.json"
-          out.write_text(json.dumps(authed, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-          print("PASS: Rootless OpenHands ↔ Qwen with positive/negative ephemeral API session authentication verified; SDK Conversation BLOCKED.")
+          from ai_factory.factory_rootless_tool_api_proof import verify as verify_tool, OPENHANDS_SHA, QWEN_SHA
+          observed=json.loads(Path("tool-verdict.json").read_text(encoding="utf-8"))
+          assert observed["real_tool_exit_zero"] is True
+          assert observed["exact_synthetic_stdout_verified"] is True
+          reviewed=verify_tool({
+              "plan_version":"v1.0",
+              "source_commit":"077f3fad6d31cd852be5c87176e0a93c3b446126",
+              "openhands_binary_sha256":OPENHANDS_SHA,
+              "qwen_gguf_sha256":QWEN_SHA,
+              "rootless_cgroup_and_network_pass":True,
+              "signed_source_build_verified":True,
+              "strict_temporary_workspace_caps_verified":True,
+              "real_model_link_verified":True,
+              "no_key_post_denied":True,
+              "wrong_key_post_denied":True,
+              "correct_key_post_succeeded":True,
+              "real_tool_exit_zero":True,
+              "exact_synthetic_stdout_verified":True,
+              "auth_key_never_forwarded_to_qwen":True,
+              "actual_api_bash_command_ran":True,
+              "model_generated_this_command":False,
+              "openhands_sdk_conversation_ran":False,
+              "independent_three_file_acceptance_passed":False,
+              "production_authorized":False,
+              "release_authorized":False,
+              "automatic_merge":False,
+              "paid_calls":0,
+          })
+          out=Path(os.environ["RUNNER_TEMP"])/"coden-rootless-tool-api-review.json"
+          out.write_text(json.dumps(reviewed,sort_keys=True,indent=2)+"\n",encoding="utf-8")
+          print("PASS: real authenticated operator-only Bash tool API; official SDK Conversation still BLOCKED.")
           PY
       - name: Preserve sanitized only review evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: coden-rootless-openhands-session-auth-review
-          path: ${{ runner.temp }}/coden-rootless-session-auth-evidence.json
+          name: coden-rootless-authenticated-tool-api-review
+          path: ${{ runner.temp }}/coden-rootless-tool-api-review.json
           if-no-files-found: error
           retention-days: 7
