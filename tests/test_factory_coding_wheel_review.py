@@ -1,7 +1,7 @@
 import unittest
 import json
 from email.parser import BytesParser
-from ai_factory.factory_coding_wheel_review import choose_wheel, summarize, metadata_fields
+from ai_factory.factory_coding_wheel_review import choose_wheel, summarize, metadata_fields, primary_metadata
 
 
 def wheel(name, size=10):
@@ -44,3 +44,13 @@ class CandidateWheelReviewTests(unittest.TestCase):
         a = wheel("x-1-py3-none-any.whl")
         b = wheel("x-1-cp312-cp312-win_amd64.whl", 100*1024*1024)
         self.assertEqual(choose_wheel([b,a],lambda n: None if "win" in n else 0),a)
+
+    def test_root_distribution_metadata_not_vendored_metadata(self):
+        outer={"base64":"outer"}
+        nested={"base64":"nested"}
+        self.assertEqual(primary_metadata({"setuptools-84.2.1.dist-info/METADATA":outer,
+            "setuptools/_vendor/x-1.dist-info/METADATA":nested}),outer)
+
+    def test_two_root_metadata_records_block(self):
+        with self.assertRaises(ValueError):
+            primary_metadata({"a-1.dist-info/METADATA":{}, "b-1.dist-info/METADATA":{}})
