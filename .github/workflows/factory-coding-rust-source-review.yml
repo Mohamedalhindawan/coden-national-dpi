@@ -1,0 +1,103 @@
+name: CODEN P0 Rust source dependency security review
+on:
+  pull_request:
+    paths: ['.github/workflows/factory-coding-rust-source-review.yml']
+permissions: {}
+jobs:
+  review:
+    if: github.event.repository.private == false && github.head_ref == 'audit/factory-p0-coding-wheel-notices-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45458755146
+          name: residual-source-notice-evidence
+          path: input
+      - name: Generate Cargo source-lock SBOM without fetching or executing crates
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          python3 - <<'PY'
+          import base64,hashlib,json,re,tomllib
+          from pathlib import Path
+          specs={
+              "jiter":("jiter-0.11.0/Cargo.lock","jiter-0.11.0/crates/jiter/LICENSE","1e84d998b6e90f9dddc51e932315113296acd378","47de40dc06ba673d480a12ef728ce62fe43e3151",120),
+              "tokenizers":("tokenizers-0.23.1/bindings/python/Cargo.lock","tokenizers-0.23.1/tokenizers/LICENSE","a82919bdec8d0399a25c3c89cc08b73baa9f8968","261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64",165)}
+          unique={}
+          sources=[]
+          for name,(lock,notice,lock_blob,notice_blob,count) in specs.items():
+              item=json.loads(Path("input",name+".json").read_text())
+              assert item["record"]["status"]=="collected" and item["record"]["name"]==name
+              def checked(path,blob):
+                  entry=item["evidence"][path]
+                  raw=base64.b64decode(entry["base64"],validate=True)
+                  assert hashlib.sha256(raw).hexdigest()==entry["sha256"]
+                  assert hashlib.sha1(b"blob "+str(len(raw)).encode()+b"\0"+raw).hexdigest()==blob
+                  return raw
+              raw=checked(lock,lock_blob)
+              text=checked(notice,notice_blob)
+              assert text
+              entries=tomllib.loads(raw.decode())["package"]
+              registry=[p for p in entries if p.get("source","").startswith("registry+")]
+              assert len(registry)==count and all(not p.get("source","").startswith("git+") for p in entries)
+              for p in registry:
+                  n,v,h=p["name"],p["version"],p["checksum"]
+                  assert p["source"]=="registry+https://github.com/rust-lang/crates.io-index"
+                  assert re.fullmatch(r"[A-Za-z0-9_-]+",n) and re.fullmatch(r"[A-Za-z0-9.+-]+",v) and re.fullmatch(r"[a-f0-9]{64}",h)
+                  key=(n,v)
+                  if key in unique: assert unique[key]["checksum"]==h
+                  else: unique[key]={"name":n,"version":v,"checksum":h,"source_locks":[]}
+                  unique[key]["source_locks"].append(name)
+              sources.append({"package":name,"lock_sha256":hashlib.sha256(raw).hexdigest(),"license_sha256":hashlib.sha256(text).hexdigest(),"registry_count":count})
+          assert len(unique)==266
+          rows=[unique[k] for k in sorted(unique)]
+          components=[]
+          for p in rows:
+              purl="pkg:cargo/"+p["name"]+"@"+p["version"]
+              components.append({"type":"library","name":p["name"],"version":p["version"],"purl":purl,"bom-ref":purl,"hashes":[{"alg":"SHA-256","content":p["checksum"]}]})
+          root=Path("evidence")
+          (root/"rust-source.cdx.json").write_text(json.dumps({"bomFormat":"CycloneDX","specVersion":"1.5","version":1,"components":components},indent=2))
+          (root/"source-inventory.json").write_text(json.dumps({"sources":sources,"records":rows,"source_scope_only":True,"compiled_membership_verified":False,"crate_license_approved":False,"release_authorized":False},indent=2))
+          print("Cargo source registry identities:",len(rows))
+          PY
+      - uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        with:
+          version: v0.69.3
+          scan-type: sbom
+          scan-ref: evidence/rust-source.cdx.json
+          format: json
+          list-all-pkgs: true
+          output: evidence/rust-source-scan.json
+          cache: false
+      - name: Report exact coverage and all findings
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,collections
+          from pathlib import Path
+          root=Path("evidence")
+          expected={p["purl"] for p in json.loads((root/"rust-source.cdx.json").read_text())["components"]}
+          results=json.loads((root/"rust-source-scan.json").read_text()).get("Results",[])
+          observed={p.get("Identifier",{}).get("PURL") for r in results for p in r.get("Packages",[])}
+          missing=sorted(expected-observed)
+          extra=sorted(str(x) for x in observed-expected)
+          findings=[{"id":v.get("VulnerabilityID"),"package":v.get("PkgName"),"version":v.get("InstalledVersion"),"fixed_version":v.get("FixedVersion"),"severity":v.get("Severity","UNKNOWN")} for r in results for v in r.get("Vulnerabilities",[])]
+          counts=dict(collections.Counter(x["severity"] for x in findings))
+          blocked=bool(not results or missing or extra or counts.get("HIGH") or counts.get("CRITICAL"))
+          report={"status":"blocked" if blocked else "rust_source_high_critical_gate_pass","expected":len(expected),"observed":len(observed),"missing":missing,"extra":extra,"severity_counts":counts,"findings":findings,"compiled_membership_verified":False,"runtime_scanned":False,"license_approved":False,"release_authorized":False}
+          (root/"scan-review.json").write_text(json.dumps(report,indent=2))
+          print("Rust source scan:",report["status"],"coverage:",len(expected)-len(missing),"/",len(expected),"severity:",counts)
+          if blocked: raise SystemExit(1)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: coding-rust-source-security-review
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
