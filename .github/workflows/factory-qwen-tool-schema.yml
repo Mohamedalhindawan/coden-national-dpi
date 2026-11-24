@@ -16,7 +16,7 @@ jobs:
       contents: read
     env:
       LLAMA_SHA: da524c71f9dd09913df29264bb7229b99a2de82d8a26e6902e6921d413560d6d
-      MODEL_SHA: 1d9614638d18024d0fbb36575a15f1302a3adf044df10345688ec4f6e1c4ff32
+      MODEL_SHA: 9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -28,7 +28,7 @@ jobs:
           set -euo pipefail
           test "$(id -u)" -ne 0
           podman info --format json | jq -e '.host.security.rootless and .host.cgroupVersion == "v2" and (.host.cgroupControllers | contains(["cpu","memory","pids"]))' >/dev/null
-      - name: Download only previously SHA-verified Qwen and llama.cpp inputs
+      - name: Download pinned official Qwen3 candidate and previously verified llama.cpp inputs
         shell: bash
         run: |
           set -euo pipefail
@@ -41,7 +41,7 @@ jobs:
           echo "$LLAMA_SHA  llama-b12600-bin-ubuntu-x64.tar.gz" | sha256sum -c -
           curl --fail --silent --show-error --location --retry 2 --connect-timeout 20 --max-time 270 \
             -o qwen-model.gguf \
-            "https://huggingface.co/Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF/resolve/ebb2015119c907b064c512bf053e945850b5875f/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf?download=true"
+            "https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/23749fefcc72300e3a2ad315e1317431b06b590a/Qwen3-0.6B-Q8_0.gguf?download=true"
           echo "$MODEL_SHA  qwen-model.gguf" | sha256sum -c -
           tar -xf llama-b12600-bin-ubuntu-x64.tar.gz
           test -x llama-b12600/llama-server
@@ -76,16 +76,11 @@ jobs:
           }
           trap cleanup EXIT
           podman pull --platform linux/amd64 docker.io/library/ubuntu@sha256:f64b2ffc2f10ab8f8505aa56b2664bd846cbb9df87c7e2532e30f7667021c0e6
-          podman build --network none --pull=never -f .github/docker/Factory-Qwen-CPU.Dockerfile -t "$image" "$RUNNER_TEMP/qwen-rootless-build"
-          # A/B against the previous embedded-template run. Upstream b12600
-          # documents the Qwen2.5 family Hermes-style template; this is a
-          # compatibility hypothesis for the 0.5B Coder, not its own exact template.
-          template="$RUNNER_TEMP/qwen-family-template.jinja"
-          curl --fail --silent --show-error --location --connect-timeout 15 --max-time 45 \
-            -o "$template" https://raw.githubusercontent.com/ggml-org/llama.cpp/b12600/models/templates/Qwen-Qwen2.5-7B-Instruct.jinja
-          test "$(git hash-object "$template")" = bdf7919a96cfe43d50914a007b9c0877bd0ec27e
-          chmod 0444 "$template"
-          echo 'Verified upstream Qwen2.5 family template blob bdf7919a96cfe43d50914a007b9c0877bd0ec27e'
+          # Reuse reviewed Dockerfile with only the candidate weights label changed.
+          sed 's/1d9614638d18024d0fbb36575a15f1302a3adf044df10345688ec4f6e1c4ff32/9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031/' .github/docker/Factory-Qwen-CPU.Dockerfile > "$RUNNER_TEMP/Qwen3.Dockerfile"
+          grep -F "$MODEL_SHA" "$RUNNER_TEMP/Qwen3.Dockerfile" >/dev/null
+          podman build --network none --pull=never -f "$RUNNER_TEMP/Qwen3.Dockerfile" -t "$image" "$RUNNER_TEMP/qwen-rootless-build"
+          echo 'Qwen3-0.6B Q8_0 candidate verified against published SHA256; synthetic probe only.'
           key="$(openssl rand -hex 24)"
           echo "::add-mask::$key"
           podman create --name "$model" --network none --http-proxy=false \
@@ -93,9 +88,8 @@ jobs:
             --user 65534:65534 --cpus=2 --memory=1536m --memory-swap=1536m --pids-limit=64 \
             --cgroupns=private --pid=private --ipc=private --timeout=150 --ulimit core=0:0 \
             --tmpfs /tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777 \
-            --volume "$template:/opt/tool-template.jinja:ro" \
             "$image" --model /opt/model.gguf --alias local-qwen --host 127.0.0.1 --port 11434 \
-            --ctx-size 2048 --threads 2 --n-gpu-layers 0 --no-warmup --jinja --chat-template-file /opt/tool-template.jinja --api-key "$key"
+            --ctx-size 2048 --threads 2 --n-gpu-layers 0 --no-warmup --jinja --chat-template-kwargs '{"enable_thinking":false}' --api-key "$key"
           podman inspect "$model" | jq -e '.[0].HostConfig | .Privileged==false and .ReadonlyRootfs==true and .NetworkMode=="none" and ((.PortBindings // {})|length==0)' >/dev/null
           podman start "$model" >/dev/null
           ready=false
@@ -138,7 +132,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: qwen-structured-tool-schema-review
+          name: qwen3-06b-structured-tool-schema-review
           path: schema-receipt.json
           retention-days: 7
           if-no-files-found: warn
