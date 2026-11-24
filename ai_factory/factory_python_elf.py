@@ -10,11 +10,11 @@ from pathlib import Path
 
 def inspect_elf_file(path):
     """Collect bounded readelf metadata without loading the candidate."""
-    def readelf(*flags):
+    def readelf(*flags, limit=512 * 1024):
         result = subprocess.run(['/usr/bin/readelf', '-W', *flags, str(path)],
                                 capture_output=True, text=True, timeout=30,
                                 env={'PATH': '/usr/bin:/bin', 'LC_ALL': 'C'}, check=True)
-        if len(result.stdout) > 512 * 1024:
+        if len(result.stdout) > limit:
             raise ValueError('ELF evidence output limit')
         return result.stdout
 
@@ -23,7 +23,8 @@ def inspect_elf_file(path):
                 needed=re.findall(r'\(NEEDED\).*\[([^\]]+)\]', out),
                 soname=re.findall(r'\(SONAME\).*\[([^\]]+)\]', out),
                 search_paths=re.findall(r'\((?:RPATH|RUNPATH)\).*\[([^\]]+)\]', out),
-                version_info=readelf('-V'))
+                version_info=readelf('-V'),
+                dynamic_symbols=readelf('--dyn-syms', limit=8 * 1024 * 1024))
 
 
 def collect_elf(raw, records):
