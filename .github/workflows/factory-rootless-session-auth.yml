@@ -309,7 +309,8 @@ jobs:
               keys=$(tr "\\0" "\\n" < "$proc/environ" | cut -d= -f1)
               printf '%s\n' "$keys" | grep -Fxq OH_SESSION_API_KEYS_0
               printf '%s\n' "$keys" | grep -Fxq OH_SECRET_KEY
-              unexpected=$(printf '%s\n' "$keys" | grep -Ev '^(OH_SESSION_API_KEYS_0|OH_SECRET_KEY)
+              unexpected=$(printf '%s\\n' "$keys" | grep -Ev '^(OH_SESSION_API_KEYS_0|OH_SECRET_KEY)$' || true)
+              if grep -Eiq "(TOKEN|PASSWORD|API.KEY|GITHUB_|DOCKER_HOST|SECRET)" <<< "$unexpected"; then
                 echo "BLOCKED: secret-like key inherited by OpenHands child" >&2
                 exit 1
               fi
@@ -412,86 +413,5 @@ jobs:
         with:
           name: coden-rootless-openhands-session-auth-review
           path: ${{ runner.temp }}/coden-rootless-session-auth-evidence.json
-          if-no-files-found: warn
-          retention-days: 7
- || true)
-              if grep -Eiq "(TOKEN|PASSWORD|API.KEY|GITHUB_|DOCKER_HOST|SECRET)" <<< "$unexpected"; then
-                echo "BLOCKED: secret-like key inherited by OpenHands child" >&2
-                exit 1
-              fi
-              count=$((count+1))
-            done
-            test "$count" -ge 2
-          '
-          podman exec "$model" /bin/sh -ec '
-            test "$(id -u)" = 65534
-            test "$(cat /sys/fs/cgroup/memory.max)" = 1610612736
-            test "$(cat /sys/fs/cgroup/pids.max)" = 64
-            set -- $(cat /sys/fs/cgroup/cpu.max)
-            test "$1" -eq $((2*$2))
-            grep -Eq "^CapEff:[[:space:]]+0+$" /proc/self/status
-            grep -Eq "^NoNewPrivs:[[:space:]]+1$" /proc/self/status
-            test ! -S /var/run/docker.sock
-            test "$(df -Pk /tmp | awk "NR==2 {print \$2}")" = 32768
-            keys=$(env | cut -d= -f1)
-            if printf '%s\\n' "$keys" | grep -Eiq "(TOKEN|PASSWORD|API.KEY|GITHUB_|DOCKER_HOST|SECRET)"; then
-              echo "BLOCKED: secret-like key inherited by Qwen process" >&2
-              exit 1
-            fi
-          '
-          members=$(podman ps --filter "network=$net" --format '{{.ID}}' | wc -l)
-          test "$members" -eq 2
-
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          from ai_factory.factory_rootless_openhands_qwen_link import (
-              BINARY_SHA, UPSTREAM, validate_receipt
-          )
-          from ai_factory.factory_real_qwen_server_admission import LLAMA_SHA, MODEL_SHA
-          generated = json.loads(Path("model-verdict.json").read_text())
-          proof = {
-              "plan_version": "v1.0",
-              "upstream_source_commit": UPSTREAM,
-              "binary_sha256": BINARY_SHA,
-              "model_sha256": MODEL_SHA,
-              "llama_cpp_archive_sha256": LLAMA_SHA,
-              "real_qwen_tokens_predicted": generated["tokens_predicted"],
-              "real_qwen_response_sha256": generated["response_sha256"],
-              "rootless_podman": True,
-              "cgroup_v2_cpu_memory_pids": True,
-              "private_internal_bridge": True,
-              "exactly_two_containers": True,
-              "both_containers_nonroot_capless_readonly": True,
-              "no_host_port_bindings_or_secrets": True,
-              "openhands_server_health_http_200": True,
-              "model_health_from_openhands_container": True,
-              "real_qwen_completion_from_openhands_container": True,
-              "outside_ip_http_denied_from_openhands": True,
-              "outside_dns_http_denied_from_openhands": True,
-              "temporary_storage_bytes_and_inodes_capped": True,
-              "child_processes_cgroup_attested": True,
-              "signed_binary_provenance_verified": True,
-              "independent_high_critical_scan_gate_passed": True,
-              "no_openhands_sdk_conversation": True,
-              "no_agent_tool_calls": True,
-              "no_three_file_candidate_generated": True,
-              "openhands_live_execution_authorized": False,
-              "factory_production_authorized": False,
-              "automatic_merge": False,
-              "release_authorized": False,
-              "paid_calls": 0,
-          }
-          data = validate_receipt(proof)
-          out = Path(os.environ["RUNNER_TEMP"]) / "coden-rootless-openhands-qwen-evidence.json"
-          out.write_text(json.dumps(data, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-          print("PASS: Rootless OpenHands ↔ real Qwen private link verified; real SDK Conversation still BLOCKED.")
-          PY
-      - name: Preserve sanitized only review evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: coden-rootless-openhands-qwen-private-link
-          path: ${{ runner.temp }}/coden-rootless-openhands-qwen-evidence.json
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 7
