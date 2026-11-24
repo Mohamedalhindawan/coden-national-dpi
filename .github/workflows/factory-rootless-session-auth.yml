@@ -264,11 +264,13 @@ jobs:
           # This real client runs inside the same internal bridge; the server
           # is not published to the runner, and its ephemeral credentials are
           # never written to files or exported as CI artifacts.
+          # Authenticate from inside the existing agent container. Never
+          # inject a session key into the Qwen container.
           cat > auth-check.sh <<'AUTH'
           set -euo pipefail
           request_status() {
             local key="$1"
-            exec 3<>/dev/tcp/openhands/8002
+            exec 3<>/dev/tcp/127.0.0.1/8002
             if [[ -n "$key" ]]; then
               printf 'GET /api/conversations/count HTTP/1.0\r\nHost: openhands\r\nX-Session-API-Key: %s\r\nConnection: close\r\n\r\n' "$key" >&3
             else
@@ -280,60 +282,68 @@ jobs:
             printf '%s' "$status"
           }
           unauth=$(request_status "")
-          [[ "$unauth" == *" 401 "* ]] || { echo 'BLOCKED: request without key not HTTP 401'; exit 1; }
+          [[ "$unauth" == *" 401 "* ]] || { echo 'BLOCKED: no-key request not 401'; exit 1; }
           wrong=$(request_status "intentionally-invalid-session")
-          [[ "$wrong" == *" 401 "* ]] || { echo 'BLOCKED: wrong key not HTTP 401'; exit 1; }
-          valid=$(request_status "$CODEN_AUTH_TEST_KEY")
-          [[ "$valid" == *" 200 "* ]] || { echo 'BLOCKED: valid transient session key not HTTP 200'; exit 1; }
-          echo 'PASS: OpenHands API denied absent/wrong headers and admitted the correct ephemeral header.'
+          [[ "$wrong" == *" 401 "* ]] || { echo 'BLOCKED: wrong-key request not 401'; exit 1; }
+          valid=$(request_status "$OH_SESSION_API_KEYS_0")
+          [[ "$valid" == *" 200 "* ]] || { echo 'BLOCKED: valid-key request not 200'; exit 1; }
+          echo 'PASS: real OpenHands API returned 401/401/200 for no/wrong/correct synthetic key.'
           AUTH
-          podman exec -i --env CODEN_AUTH_TEST_KEY="$session_key" "$model" bash -s < auth-check.sh
+          podman exec -i "$agent" bash -eu -s < auth-check.sh
 
-          podman exec "$agent" bash -euc '
-            test "$(id -u)" = 65534
-            test "$(cat /sys/fs/cgroup/memory.max)" = 1610612736
-            test "$(cat /sys/fs/cgroup/pids.max)" = 96
-            read -r quota period < /sys/fs/cgroup/cpu.max
-            test "$quota" = "$period"
-            test "$(df -Pi /tmp | awk "NR==2 {print \$2}")" = 32768
-            test "$(df -Pi /workspace | awk "NR==2 {print \$2}")" = 2048
-            test "$(ls /sys/class/net | grep -vc "^lo$")" -ge 1
-            test ! -S /var/run/docker.sock
-            count=0
-            for exe in /proc/[0-9]*/exe; do
-              [[ "$(readlink "$exe" || true)" == /usr/local/bin/openhands-agent-server ]] || continue
-              proc=${exe%/exe}
-              cmp /proc/self/cgroup "$proc/cgroup"
-              grep -Eq "^CapEff:[[:space:]]+0+$" "$proc/status"
-              grep -Eq "^NoNewPrivs:[[:space:]]+1$" "$proc/status"
-              keys=$(tr "\\0" "\\n" < "$proc/environ" | cut -d= -f1)
-              printf '%s\n' "$keys" | grep -Fxq OH_SESSION_API_KEYS_0
-              printf '%s\n' "$keys" | grep -Fxq OH_SECRET_KEY
-              unexpected=$(printf '%s\\n' "$keys" | grep -Ev '^(OH_SESSION_API_KEYS_0|OH_SECRET_KEY)$' || true)
-              if grep -Eiq "(TOKEN|PASSWORD|API.KEY|GITHUB_|DOCKER_HOST|SECRET)" <<< "$unexpected"; then
-                echo "BLOCKED: secret-like key inherited by OpenHands child" >&2
-                exit 1
-              fi
-              count=$((count+1))
-            done
-            test "$count" -ge 2
-          '
-          podman exec "$model" /bin/sh -ec '
-            test "$(id -u)" = 65534
-            test "$(cat /sys/fs/cgroup/memory.max)" = 1610612736
-            test "$(cat /sys/fs/cgroup/pids.max)" = 64
-            set -- $(cat /sys/fs/cgroup/cpu.max)
-            test "$1" -eq $((2*$2))
-            grep -Eq "^CapEff:[[:space:]]+0+$" /proc/self/status
-            grep -Eq "^NoNewPrivs:[[:space:]]+1$" /proc/self/status
-            test ! -S /var/run/docker.sock
-            test "$(df -Pk /tmp | awk "NR==2 {print \$2}")" = 32768
-            keys=$(env | cut -d= -f1)
-            if printf '%s\\n' "$keys" | grep -Eiq "(TOKEN|PASSWORD|API.KEY|GITHUB_|DOCKER_HOST|SECRET)"; then
-              echo "BLOCKED: secret-like key inherited by Qwen process" >&2
+          cat > agent-process-proof.sh <<'AGENT_PROC_PROOF'
+          set -euo pipefail
+          test "$(id -u)" = 65534
+          test "$(cat /sys/fs/cgroup/memory.max)" = 1610612736
+          test "$(cat /sys/fs/cgroup/pids.max)" = 96
+          read -r quota period < /sys/fs/cgroup/cpu.max
+          test "$quota" = "$period"
+          test "$(df -Pi /tmp | awk 'NR==2 {print $2}')" = 32768
+          test "$(df -Pi /workspace | awk 'NR==2 {print $2}')" = 2048
+          test "$(ls /sys/class/net | grep -vc '^lo$')" -ge 1
+          test ! -S /var/run/docker.sock
+          count=0
+          for exe in /proc/[0-9]*/exe; do
+            [[ "$(readlink "$exe" || true)" == /usr/local/bin/openhands-agent-server ]] || continue
+            proc=$(dirname "$exe")
+            cmp /proc/self/cgroup "$proc/cgroup"
+            grep -Eq '^CapEff:[[:space:]]+0+$' "$proc/status"
+            grep -Eq '^NoNewPrivs:[[:space:]]+1$' "$proc/status"
+            keys=$(tr '\0' '\n' < "$proc/environ" | cut -d= -f1)
+            printf '%s\n' "$keys" | grep -Fxq OH_SESSION_API_KEYS_0
+            printf '%s\n' "$keys" | grep -Fxq OH_SECRET_KEY
+            unexpected=$(printf '%s\n' "$keys" | grep -Ev '^(OH_SESSION_API_KEYS_0|OH_SECRET_KEY)$' || true)
+            if grep -Eiq '(TOKEN|PASSWORD|API.KEY|GITHUB_|DOCKER_HOST|SECRET)' <<< "$unexpected"; then
+              echo 'BLOCKED: extra secret-looking env name in actual OpenHands child' >&2
               exit 1
             fi
-          '
+            count=$((count+1))
+          done
+          test "$count" -ge 2
+          echo 'PASS: actual OpenHands child quotas, isolation, session-key allowlist.'
+          AGENT_PROC_PROOF
+          podman exec -i "$agent" bash -eu -s < agent-process-proof.sh
+
+          cat > model-process-proof.sh <<'MODEL_PROC_PROOF'
+          set -eu
+          test "$(id -u)" = 65534
+          test "$(cat /sys/fs/cgroup/memory.max)" = 1610612736
+          test "$(cat /sys/fs/cgroup/pids.max)" = 64
+          set -- $(cat /sys/fs/cgroup/cpu.max)
+          test "$1" -eq $((2*$2))
+          grep -Eq '^CapEff:[[:space:]]+0+$' /proc/self/status
+          grep -Eq '^NoNewPrivs:[[:space:]]+1$' /proc/self/status
+          test ! -S /var/run/docker.sock
+          test "$(df -Pk /tmp | awk 'NR==2 {print $2}')" = 32768
+          keys=$(env | cut -d= -f1)
+          if printf '%s\n' "$keys" | grep -Eiq '(TOKEN|PASSWORD|API.KEY|GITHUB_|DOCKER_HOST|SECRET)'; then
+            echo 'BLOCKED: secret-like env key in Qwen container' >&2
+            exit 1
+          fi
+          echo 'PASS: real Qwen resource caps, no extra privileges, no session key.'
+          MODEL_PROC_PROOF
+          podman exec -i "$model" /bin/sh -eu -s < model-process-proof.sh
+
           members=$(podman ps --filter "network=$net" --format '{{.ID}}' | wc -l)
           test "$members" -eq 2
 
