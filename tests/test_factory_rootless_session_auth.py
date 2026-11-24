@@ -118,16 +118,7 @@ class AuthGateTests(unittest.TestCase):
         self.assertEqual(s.count("      - name: Preserve sanitized only review evidence"), 1)
         self.assertNotIn("\n  || true)\n", s)
         self.assertIn("unexpected=$(printf", s)
-        self.assertIn("OH_SESSION_API_KEYS_0|OH_SECRET_KEY)
-        doc = DOC.read_text(encoding="utf-8")
-        for token in ("#181", "#162", "Rootless", "OpenHands",
-                      "Qwen", "v1.0", "SDK Conversation", "human review",
-                      "SBOM", "not"):
-            self.assertIn(token, doc)
-
-if __name__ == "__main__":
-    unittest.main()
- || true)", s)
+        self.assertIn("OH_SESSION_API_KEYS_0|OH_SECRET_KEY)$' || true)", s)
         self.assertIn("if grep -Eiq", s)
         self.assertIn("if-no-files-found: error", s)
 
