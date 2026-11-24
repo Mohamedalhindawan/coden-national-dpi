@@ -250,6 +250,8 @@ jobs:
           deb [arch=amd64 signed-by=$work/ubuntu.gpg] https://archive.ubuntu.com/ubuntu/ noble main
           deb [arch=amd64 signed-by=$work/ubuntu.gpg] https://archive.ubuntu.com/ubuntu/ noble-updates main
           deb [arch=amd64 signed-by=$work/ubuntu.gpg] https://security.ubuntu.com/ubuntu/ noble-security main
+          deb-src [signed-by=$work/ubuntu.gpg] https://archive.ubuntu.com/ubuntu/ noble-updates main
+          deb-src [signed-by=$work/ubuntu.gpg] https://security.ubuntu.com/ubuntu/ noble-security main
           EOF
           cat > "$work/apt.conf" <<EOF
           Dir::Etc::main "/dev/null";
@@ -288,6 +290,11 @@ jobs:
           test "$libc" = "$bin"
           dpkg --compare-versions "$libc" ge "$fixed"
           apt-cache show "libc6=$libc" "libc-bin=$bin" > evidence/candidate-package-metadata.txt
+          apt-cache showsrc --only-source glibc > "$work/glibc-source-records.txt"
+          awk 'BEGIN {RS=""; ORS="\n\n"} {r="\n" $0 "\n"} index(r,"\nPackage: glibc\n") && index(r,"\nVersion: 2.39-0ubuntu8.12\n") && index(r,"\nChecksums-Sha256:\n") {print}' "$work/glibc-source-records.txt" > evidence/exact-glibc-source-records.txt
+          test -s evidence/exact-glibc-source-records.txt
+          grep -Fxq 'Version: 2.39-0ubuntu8.12' evidence/exact-glibc-source-records.txt
+          printf '%s\n' '{"exact_source_metadata_collected":true,"source_archive_downloaded":false,"binary_source_reproduction_verified":false,"legal_approved":false,"release_authorized":false}' > evidence/source-review.json
           timeout 60s apt-get --simulate --no-install-recommends install "libc6=$libc" "libc-bin=$bin" 2>&1 | tee evidence/simulation.txt
           jq -n --arg version "$libc" --arg minimum "$fixed" '{status:"simulation_collected",candidate_version:$version,scanner_reported_minimum:$minimum,simulation_only:true,package_installation:false,base_replaced:false,dependency_plan_approved:false,security_approved:false,build_authorized:false,release_authorized:false}' > evidence/scope.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -330,6 +337,11 @@ jobs:
             timeout 60s dpkg-deb -c "$work/$file" > "evidence/$package.members.txt"
             (ulimit -f 65536; timeout 60s dpkg-deb --fsys-tarfile "$work/$file" > "$work/$package.tar")
             (ulimit -f 4096; timeout 30s dpkg-deb --ctrl-tarfile "$work/$file" > "$work/$package-control.tar")
+            member="./usr/share/doc/$package/copyright"
+            test "$(tar -tf "$work/$package.tar" | grep -Fxc "$member")" -eq 1
+            tar -xOf "$work/$package.tar" "$member" > "evidence/$package.copyright.txt"
+            test "$(stat -c %s "evidence/$package.copyright.txt")" -eq 26462
+            (cd evidence; sha256sum "$package.copyright.txt") >> evidence/copyright.sha256
             tar -tvf "$work/$package-control.tar" > "evidence/$package.control-members.txt"
             for script in preinst postinst prerm postrm triggers; do
               if tar -tf "$work/$package-control.tar" | grep -Fxq "./$script"; then
