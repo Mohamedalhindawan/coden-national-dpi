@@ -106,7 +106,7 @@ jobs:
   synthetic-os-writable-root:
     if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
-    timeout-minutes: 6
+    timeout-minutes: 8
     permissions: {}
     env:
       BASE: docker.io/library/ubuntu@sha256:9a04f13b3f80ef056361e30868593b1cfd2279fe19e4081cb93a90bf56819d6a
@@ -143,7 +143,7 @@ jobs:
             --cap-drop=all --cap-add=CHOWN,DAC_OVERRIDE,FOWNER,SYS_CHROOT \
             --security-opt=no-new-privileges --user 0:0 \
             --cpus=2 --memory=4096m --memory-swap=4096m --pids-limit=128 \
-            --cgroupns=private --pid=private --ipc=private --timeout=60 \
+            --cgroupns=private --pid=private --ipc=private --timeout=180 \
             --ulimit core=0:0 --volume "$scratch:/scratch:rw,nocopy" \
             --workdir /scratch --env HOME=/scratch \
             "$BASE" /bin/sh -eu -c '
@@ -181,12 +181,31 @@ jobs:
               test "$(stat -c %u /scratch/root/tmp/coden-probe)" = 65534
               test ! -e /tmp/coden-probe
               cmp /scratch/status.before /scratch/root/var/lib/dpkg/status
+              # Test only locally generated harmless packages; no real glibc update.
+              mkdir -p /scratch/pkg/DEBIAN /scratch/pkg/usr/share/coden-preflight
+              for version in 1 2; do
+                printf "Package: coden-synthetic-preflight\nVersion: %s\nArchitecture: all\nMaintainer: CODEN Test <test@example.invalid>\nDescription: disposable synthetic isolation probe\n" "$version" > /scratch/pkg/DEBIAN/control
+                printf "%s\n" "$version" > /scratch/pkg/usr/share/coden-preflight/version
+                printf "#!/bin/sh\nset -eu\nprintf configured > /tmp/coden-maintainer-probe\n" > /scratch/pkg/DEBIAN/postinst
+                chmod 0755 /scratch/pkg/DEBIAN/postinst
+                dpkg-deb --build --root-owner-group /scratch/pkg "/scratch/root/tmp/coden-probe-$version.deb"
+                chroot /scratch/root /usr/bin/dpkg -i "/tmp/coden-probe-$version.deb"
+                test "$(chroot /scratch/root /usr/bin/dpkg-query -W -f="\${Version}" coden-synthetic-preflight)" = "$version"
+                test "$(cat /scratch/root/usr/share/coden-preflight/version)" = "$version"
+                test "$(cat /scratch/root/tmp/coden-maintainer-probe)" = configured
+                rm /scratch/root/tmp/coden-maintainer-probe
+              done
+              chroot /scratch/root /usr/bin/dpkg --purge coden-synthetic-preflight
+              test ! -e /scratch/root/usr/share/coden-preflight/version
+              test -z "$(chroot /scratch/root /usr/bin/dpkg --audit)"
+              cmp /scratch/status.before /var/lib/dpkg/status
+              printf "SYNTHETIC_DPKG_LIFECYCLE_PASS\n"
               df -Pk /scratch
               df -Pi /scratch
               if dd if=/dev/zero of=/scratch/limit-probe bs=1M count=769 2>/dev/null; then exit 13; fi
               rm -f /scratch/limit-probe
               printf "SYNTHETIC_WRITABLE_ROOT_COPY_PASS\n"
-              sleep 120 &
+              sleep 240 &
               wait
             '
           podman inspect "$name" | jq -e '.[0] | .HostConfig.Privileged==false and .HostConfig.ReadonlyRootfs==true and .HostConfig.NetworkMode=="none" and ((.HostConfig.PortBindings // {})|length==0) and ([.Mounts[]? | select(.Type=="bind")]|length==0)' >/dev/null
@@ -199,19 +218,20 @@ jobs:
           done
           podman logs "$name" > evidence/probe.log 2>&1
           grep -qx SYNTHETIC_WRITABLE_ROOT_COPY_PASS evidence/probe.log
+          grep -qx SYNTHETIC_DPKG_LIFECYCLE_PASS evidence/probe.log
           podman top "$name" hpid | tail -n +2 | awk '{print $1}' > evidence/host-pids.txt
           test "$(wc -l < evidence/host-pids.txt)" -ge 2
           while read -r pid; do
             printf '%s %s\n' "$pid" "$(awk '{print $22}' "/proc/$pid/stat")"
           done < evidence/host-pids.txt > evidence/process-identities.txt
-          timeout 80 podman wait "$name" > evidence/container-exit.txt
+          timeout 200 podman wait "$name" > evidence/container-exit.txt
           elapsed=$(( $(date +%s) - started ))
-          test "$elapsed" -ge 45 && test "$elapsed" -le 75
+          test "$elapsed" -ge 170 && test "$elapsed" -le 195
           test "$(podman inspect "$name" --format '{{.State.Running}}')" = false
           while read -r pid identity; do
             if test -e "/proc/$pid/stat" && test "$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null || true)" = "$identity"; then exit 14; fi
           done < evidence/process-identities.txt
-          jq -n --argjson elapsed "$elapsed" '{status:"synthetic_root_copy_pass",elapsed_seconds:$elapsed,private_scratch_bytes:805306368,private_scratch_inodes:49152,synthetic_timeout_seconds:60,all_writable_mounts_bounded:false,dpkg_capabilities_verified:false,real_deb_installation:false,os_attempt_consumed:false,legal_approved:false,build_authorized:false,release_authorized:false}' > evidence/review.json
+          jq -n --argjson elapsed "$elapsed" '{status:"synthetic_root_copy_pass",elapsed_seconds:$elapsed,private_scratch_bytes:805306368,private_scratch_inodes:49152,synthetic_timeout_seconds:180,all_writable_mounts_bounded:false,synthetic_dpkg_lifecycle_verified:true,real_glibc_capabilities_verified:false,real_deb_installation:false,os_attempt_consumed:false,legal_approved:false,build_authorized:false,release_authorized:false}' > evidence/review.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
