@@ -144,7 +144,9 @@ jobs:
             --security-opt=no-new-privileges --user 0:0 \
             --cpus=2 --memory=4096m --memory-swap=4096m --pids-limit=128 \
             --cgroupns=private --pid=private --ipc=private --timeout=180 \
-            --ulimit core=0:0 --volume "$scratch:/scratch:rw,nocopy" \
+            --ulimit core=0:0 --ulimit nofile=256:256 --ulimit msgqueue=65536:65536 --ulimit memlock=0:0 \
+            --log-driver=k8s-file --log-opt max-size=1mb \
+            --volume "$scratch:/scratch:rw,nocopy" \
             --workdir /scratch --env HOME=/scratch \
             "$BASE" /bin/sh -eu -c '
               test "$(id -u)" = 0
@@ -164,6 +166,14 @@ jobs:
               if touch /usr/should-not-write 2>/dev/null; then exit 12; fi
               cat /proc/self/mountinfo
               for dev in null zero full tty random urandom; do test -c "/dev/$dev"; done
+              test -z "$(find /dev -xdev -type b -print)"
+              for dev in kvm fuse mem port sd0 sda vda nvme0n1; do test ! -e "/dev/$dev"; done
+              test ! -e /dev/shm/coden-should-not-exist
+              if touch /dev/shm/coden-should-not-exist 2>/dev/null; then exit 19; fi
+              for ns in ipc pid net mnt user cgroup; do printf "NS %s %s\n" "$ns" "$(readlink "/proc/self/ns/$ns")"; done
+              cat /proc/self/limits
+              awk "/^Max open files /{a=(\$4==256 && \$5==256)} /^Max msgqueue size /{b=(\$4==65536 && \$5==65536)} /^Max locked memory /{c=(\$4==0 && \$5==0)} END{exit !(a&&b&&c)}" /proc/self/limits
+              printf "AUXILIARY_LIMITS_PASS\n"
               printf "STANDARD_DEVICE_TYPES_PASS\n"
               df -Pk
               df -Pi
@@ -217,6 +227,7 @@ jobs:
               wait
             '
           podman inspect "$name" | jq -e '.[0] | .HostConfig.Privileged==false and .HostConfig.ReadonlyRootfs==true and .HostConfig.NetworkMode=="none" and ((.HostConfig.PortBindings // {})|length==0) and ([.Mounts[]? | select(.Type=="bind")]|length==0)' >/dev/null
+          for ns in ipc pid net mnt user cgroup; do printf "NS %s %s\n" "$ns" "$(readlink "/proc/self/ns/$ns")"; done > evidence/host-namespaces.txt
           started=$(date +%s)
           podman start "$name" >/dev/null
           for _ in $(seq 1 35); do
@@ -228,6 +239,20 @@ jobs:
           grep -qx SYNTHETIC_WRITABLE_ROOT_COPY_PASS evidence/probe.log
           grep -qx SYNTHETIC_DPKG_LIFECYCLE_PASS evidence/probe.log
           grep -qx STANDARD_DEVICE_TYPES_PASS evidence/probe.log
+          grep -qx AUXILIARY_LIMITS_PASS evidence/probe.log
+          grep '^NS ' evidence/probe.log > evidence/container-namespaces.txt
+          test "$(wc -l < evidence/container-namespaces.txt)" -eq 6
+          for ns in ipc pid net mnt user cgroup; do
+            host_ns=$(awk -v n="$ns" '$2==n{print $3}' evidence/host-namespaces.txt)
+            container_ns=$(awk -v n="$ns" '$2==n{print $3}' evidence/container-namespaces.txt)
+            test -n "$host_ns" && test -n "$container_ns" && test "$host_ns" != "$container_ns"
+          done
+          # Record actual log file bytes before cleanup; no synthetic flooding.
+          logpath=$(podman inspect "$name" --format '{{.LogPath}}')
+          test -n "$logpath" && test -f "$logpath" && test ! -L "$logpath"
+          bytes=$(stat -c %s "$logpath")
+          test "$bytes" -le 1048576
+          jq -n --argjson bytes "$bytes" '{private_namespace_identity_checks:6,open_files_per_process:256,posix_msgqueue_rlimit_bytes:65536,locked_memory_bytes:0,log_configured_max_bytes:1048576,observed_log_bytes:$bytes,log_saturation_tested:false,kernel_resource_accounting_complete:false,all_writable_mounts_bounded:false,real_deb_installation:false}' > evidence/auxiliary-review.json
           checker=$(mktemp)
           cat > "$checker" <<'AWK'
           BEGIN { expected["/scratch"]="tmpfs"; expected["/proc"]="proc"; expected["/dev/pts"]="devpts"; expected["/dev/mqueue"]="mqueue"; split("null zero full tty random urandom", d, " "); for(i in d) expected["/dev/" d[i]]="devtmpfs" }
