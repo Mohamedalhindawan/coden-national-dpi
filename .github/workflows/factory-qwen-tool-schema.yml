@@ -77,6 +77,15 @@ jobs:
           trap cleanup EXIT
           podman pull --platform linux/amd64 docker.io/library/ubuntu@sha256:f64b2ffc2f10ab8f8505aa56b2664bd846cbb9df87c7e2532e30f7667021c0e6
           podman build --network none --pull=never -f .github/docker/Factory-Qwen-CPU.Dockerfile -t "$image" "$RUNNER_TEMP/qwen-rootless-build"
+          # A/B against the previous embedded-template run. Upstream b12600
+          # documents the Qwen2.5 family Hermes-style template; this is a
+          # compatibility hypothesis for the 0.5B Coder, not its own exact template.
+          template="$RUNNER_TEMP/qwen-family-template.jinja"
+          curl --fail --silent --show-error --location --connect-timeout 15 --max-time 45 \
+            -o "$template" https://raw.githubusercontent.com/ggml-org/llama.cpp/b12600/models/templates/Qwen-Qwen2.5-7B-Instruct.jinja
+          test "$(git hash-object "$template")" = bdf7919a96cfe43d50914a007b9c0877bd0ec27e
+          chmod 0444 "$template"
+          echo 'Verified upstream Qwen2.5 family template blob bdf7919a96cfe43d50914a007b9c0877bd0ec27e'
           key="$(openssl rand -hex 24)"
           echo "::add-mask::$key"
           podman create --name "$model" --network none --http-proxy=false \
@@ -84,8 +93,9 @@ jobs:
             --user 65534:65534 --cpus=2 --memory=1536m --memory-swap=1536m --pids-limit=64 \
             --cgroupns=private --pid=private --ipc=private --timeout=150 --ulimit core=0:0 \
             --tmpfs /tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777 \
+            --volume "$template:/opt/tool-template.jinja:ro" \
             "$image" --model /opt/model.gguf --alias local-qwen --host 127.0.0.1 --port 11434 \
-            --ctx-size 2048 --threads 2 --n-gpu-layers 0 --no-warmup --jinja --api-key "$key"
+            --ctx-size 2048 --threads 2 --n-gpu-layers 0 --no-warmup --jinja --chat-template-file /opt/tool-template.jinja --api-key "$key"
           podman inspect "$model" | jq -e '.[0].HostConfig | .Privileged==false and .ReadonlyRootfs==true and .NetworkMode=="none" and ((.PortBindings // {})|length==0)' >/dev/null
           podman start "$model" >/dev/null
           ready=false
