@@ -62,3 +62,25 @@ class QueueAlertTests(unittest.TestCase):
         for value in (True, 0, -1, 1.5, 1001):
             with self.assertRaises(ValueError):
                 self.check(backlog_threshold=value)
+
+    def test_cancelled_before_start_is_not_an_alert(self):
+        self.add("cancelled_task")
+        self.q.request_cancel("cancelled_task", now=1000)
+        before = self.db.read_bytes()
+        result = self.check()
+        self.assertEqual(result["alerts"], [])
+        self.assertFalse(result["needs_attention"])
+        self.assertEqual(before, self.db.read_bytes())
+
+    def test_cancel_requested_is_review_only_and_does_not_disclose(self):
+        self.add("private_cancel_task")
+        lease = self.q.claim("worker", now=1000, lease_seconds=10)
+        self.q.request_cancel("private_cancel_task", now=1001)
+        before = self.db.read_bytes()
+        result = self.check()
+        self.assertIn({"code":"cancel_requested","severity":"warning","count":1}, result["alerts"])
+        self.assertTrue(result["needs_attention"])
+        self.assertFalse(result["automatic_retry_allowed"])
+        self.assertNotIn("private_cancel_task", json.dumps(result))
+        self.assertNotIn(lease["lease_token"], json.dumps(result))
+        self.assertEqual(before, self.db.read_bytes())
