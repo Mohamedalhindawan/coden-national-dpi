@@ -5,6 +5,8 @@
 
 **Visual documentation skills:** For playbooks, architecture diagrams, dashboards, proposals, and PDFs, follow [skills/visual-documentation/README.md](skills/visual-documentation/README.md) and the relevant skill file. The owner-approved CODEN reference image is the visual source of truth; do not substitute a generic brand.
 
+**CODEN Factory execution skills:** Six **DRAFT** Agent Skills are provided as source-only instructions under [`.github/skills/`](.github/skills). Select one by task type using `python -m ai_factory.factory_skill_catalog --task intake|multifile|sandbox|admission|review|recovery` (choose a single value, not the literal pipes). This catalog is **not automatically installed**, does not invoke the OpenHands SDK and grants no installation/deployment/merge rights. Read the selected `SKILL.md` in full, follow tests and obtain human approval. See [docs/FACTORY_ACCELERATION_SKILLS.md](docs/FACTORY_ACCELERATION_SKILLS.md) for evidence and safety boundaries.
+
 CODEN is a proposed Yemeni GovTech / Digital Public Infrastructure project. Tamam is a prototype citizen-facing super-app. This repository is a prototype and planning workspace, not an approved government production system.
 
 ## Rules
