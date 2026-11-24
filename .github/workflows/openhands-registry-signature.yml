@@ -1,0 +1,47 @@
+name: OpenHands registry signature verification
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/openhands-registry-signature.yml'
+permissions: {}
+jobs:
+  verify:
+    if: github.event.repository.private == false && github.head_ref == 'audit/openhands-offline-rebase' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      IMAGE: ghcr.io/openhands/agent-server
+      INDEX: sha256:515b16a210f9cdfe27af715c8ebe5a0f785f1de1250fc02b3b38d425c39e154e
+      AMD64: sha256:9a36355fa2baacaae1c6dd5a1a80492bba89d1dec5a536af572ba5fb3e96e22f
+      SOURCE_SHA: 077f3fad6d31cd852be5c87176e0a93c3b446126
+    steps:
+      - uses: sigstore/cosign-installer@d7543c93d881b35a8faa02e8e3605f69b7a1ce62
+        with:
+          cosign-release: v2.6.1
+      - name: Inspect registry build metadata
+        run: |
+          set -euo pipefail
+          docker buildx imagetools inspect "$IMAGE@$INDEX" --format '{{json .Provenance}}' > buildkit.json
+          jq -n --arg sha "$SOURCE_SHA" --slurpfile p buildkit.json '{source_commit_observed:([$p | .. | strings | select(contains($sha))] | length > 0)}' > metadata-status.json
+      - name: Require a public signature bound to upstream workflow identity and commit
+        run: |
+          set -euo pipefail
+          cosign verify --help | grep -F -- '--certificate-github-workflow-sha' >/dev/null
+          for digest in "$INDEX" "$AMD64"; do
+            if cosign verify --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+                --certificate-identity-regexp '^https://github\.com/OpenHands/software-agent-sdk/\.github/workflows/[^@]+@refs/.+$' \
+                --certificate-github-workflow-sha "$SOURCE_SHA" "$IMAGE@$digest" > signed.json; then
+              jq -e --arg digest "$digest" 'any(.[]; .critical.image["docker-manifest-digest"] == $digest)' signed.json
+              exit 0
+            fi
+          done
+          exit 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: openhands-registry-attestation
+          path: |
+            buildkit.json
+            metadata-status.json
+            signed.json
+          retention-days: 14

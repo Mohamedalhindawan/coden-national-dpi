@@ -1,0 +1,93 @@
+name: OpenHands frozen dependency and signature review
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/openhands-frozen-review.yml'
+      - 'docs/evidence/openhands-077f3fad/ubuntu-rebase-review.zip'
+permissions:
+  contents: read
+  attestations: read
+jobs:
+  review:
+    if: github.event.repository.private == false && github.head_ref == 'audit/openhands-offline-rebase' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Match embedded Python distributions to the pinned source lock
+        run: |
+          set -euo pipefail
+          evidence=docs/evidence/openhands-077f3fad
+          echo "36cce3a3559de7912f3e57dd8d30aa898daa7aa6d181085de82e15affbd70463  $evidence/ubuntu-rebase-review.zip" | sha256sum -c -
+          unzip -p "$evidence/ubuntu-rebase-review.zip" frozen.json > frozen.json
+          python3 - <<'PY'
+          import json, re
+          from pathlib import Path
+          def canonical(name):
+              return re.sub(r"[-_.]+", "-", name).lower()
+          root = Path("docs/evidence/openhands-077f3fad")
+          lock = json.loads((root / "source-lock.cdx.json").read_text())
+          locked = {(canonical(c["name"]), c["version"]) for c in lock["components"]}
+          packages = json.loads(Path("frozen.json").read_text())["packages"]
+          assert len(packages) == 32
+          components = []
+          for p in packages:
+              name, version = canonical(p["name"]), p["version"]
+              assert (name, version) in locked
+              purl = f"pkg:pypi/{name}@{version}"
+              components.append({"type": "library", "name": name, "version": version,
+                                 "bom-ref": purl, "purl": purl})
+          assert len({c["purl"] for c in components}) == len(packages)
+          bom = {"bomFormat":"CycloneDX","specVersion":"1.5","version":1,"components":components}
+          Path("embedded.cdx.json").write_text(json.dumps(bom, indent=2))
+          PY
+      - name: Scan embedded package versions
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        with:
+          version: v0.69.3
+          scan-type: sbom
+          scan-ref: embedded.cdx.json
+          format: json
+          output: embedded-scan.json
+          list-all-pkgs: true
+          cache: false
+      - name: Verify upstream GitHub artifact attestation for the source commit
+        id: attestation
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # The publication may attest the OCI index or the architecture manifest.
+          for digest in 515b16a210f9cdfe27af715c8ebe5a0f785f1de1250fc02b3b38d425c39e154e 9a36355fa2baacaae1c6dd5a1a80492bba89d1dec5a536af572ba5fb3e96e22f; do
+            if gh attestation verify "oci://ghcr.io/openhands/agent-server@sha256:$digest" --repo OpenHands/software-agent-sdk --source-digest 077f3fad6d31cd852be5c87176e0a93c3b446126 --format json > "attestation-$digest.json"; then
+              jq -e 'length > 0' "attestation-$digest.json"
+              exit 0
+            fi
+          done
+          exit 1
+      - name: Preserve scan and signature check result
+        if: always()
+        env:
+          ATTESTATION_OUTCOME: ${{ steps.attestation.outcome }}
+        run: echo "$ATTESTATION_OUTCOME" > attestation-status.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: openhands-embedded-and-signature
+          path: |
+            embedded.cdx.json
+            embedded-scan.json
+            attestation-status.txt
+            attestation-*.json
+          retention-days: 14
+      - name: Evaluate scope, findings and provenance
+        env:
+          ATTESTATION_OUTCOME: ${{ steps.attestation.outcome }}
+        run: |
+          set -euo pipefail
+          jq -e '[.Results[] | select(.Class == "lang-pkgs") | .Packages[]? | .Identifier.PURL] | unique | length == 32' embedded-scan.json
+          jq -e '[.Results[] | .Vulnerabilities[]? | select(.Severity == "HIGH" or .Severity == "CRITICAL")] | length == 0' embedded-scan.json
+          test "$ATTESTATION_OUTCOME" = success

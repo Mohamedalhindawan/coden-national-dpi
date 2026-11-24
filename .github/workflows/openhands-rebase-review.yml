@@ -1,0 +1,87 @@
+name: OpenHands offline rebase review
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/openhands-rebase-review.yml'
+      - '.github/docker/OpenHands-review.Dockerfile'
+      - 'scripts/openhands_frozen_inventory.py'
+permissions:
+  contents: read
+jobs:
+  review:
+    if: github.event.repository.private == false && github.head_ref == 'audit/openhands-offline-rebase' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Build with pinned inputs and inspect the stopped container
+        run: |
+          set -euo pipefail
+          mkdir empty-context
+          docker buildx create --driver docker-container --name coden-repro --use
+          build=(docker buildx build --builder coden-repro --network none --platform linux/amd64 --build-arg SOURCE_DATE_EPOCH=0 --provenance=false -f .github/docker/OpenHands-review.Dockerfile)
+          for target in candidate rebuilt; do
+            "${build[@]}" --no-cache --output "type=docker,name=coden-review:offline,dest=$target.tar,rewrite-timestamp=true" empty-context
+            docker load -i "$target.tar"
+            docker image inspect --format '{{.Id}}' coden-review:offline > "$target.id"
+          done
+          cp candidate.id image.id
+          cmp image.id rebuilt.id
+          id=$(docker create --network none coden-review:offline)
+          trap 'docker rm "$id" >/dev/null' EXIT
+          test "$(docker inspect -f '{{.State.Status}}' "$id")" = created
+          docker cp "$id:/usr/local/bin/openhands-agent-server" server.bin
+          docker cp -L "$id:/usr/lib/x86_64-linux-gnu/libc.so.6" candidate-libc.bin
+          docker image inspect --format '{{json .RootFS.Layers}}' coden-review:offline > layers.json
+      - name: Read frozen metadata and symbol versions without importing the target
+        id: frozen
+        run: |
+          set -euo pipefail
+          url=https://files.pythonhosted.org/packages/7b/b6/dd21d61fc5e25377be24eabf13e99e4e46548a5abe2bf7b15d8b3d9cc74a/pyinstaller-6.22.3-py3-none-manylinux2014_x86_64.whl
+          curl -fsSL "$url" -o reader.whl
+          echo '451a4ae14b719365bf1a2f0a99dae7b3463060061c3a394c70d5264cfb439528  reader.whl' | sha256sum -c -
+          PYTHONPATH="$PWD/reader.whl" python3 scripts/openhands_frozen_inventory.py
+      - name: Inventory candidate OS and files
+        if: success() || failure()
+        uses: anchore/sbom-action@fbfd9c6c189226748411491745178e0c2017392d
+        with:
+          image: docker:coden-review:offline
+          syft-version: v1.38.0
+          format: spdx-json
+          output-file: candidate.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Scan candidate archive directly
+        if: success() || failure()
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        with:
+          version: v0.69.3
+          scan-type: image
+          input: candidate.tar
+          scanners: vuln
+          format: json
+          output: scan.json
+          cache: false
+      - name: Preserve evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: openhands-offline-rebase
+          path: |
+            image.id
+            rebuilt.id
+            layers.json
+            frozen.json
+            scan.json
+            candidate.spdx.json
+          retention-days: 14
+          if-no-files-found: error
+      - name: Evaluate scanned Ubuntu baseline and selected ELF compatibility
+        run: |
+          set -euo pipefail
+          jq -e '.Metadata.OS.Family == "ubuntu" and any(.Results[]; .Class == "os-pkgs")' scan.json
+          jq -e '.packages | length > 0' candidate.spdx.json
+          jq -e '.missing_glibc_versions == []' frozen.json
+          jq -e '[.Results[] | .Vulnerabilities[]? | select(.Severity == "HIGH" or .Severity == "CRITICAL")] | length == 0' scan.json
