@@ -370,3 +370,38 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+  glibc-source-files:
+    if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    permissions: {}
+    steps:
+      - name: Preserve exact source files from signed-index-bound receipt
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence evidence/source
+          printf '%s\n' '{"source_metadata_artifact":14975760656,"source_metadata_zip_sha256":"6567417cd6214598f21da0f4d447e6b1cd77bc3103d51dad97a12a23fc7a4746","source_files_verified":false,"source_executed":false,"legal_approved":false,"release_authorized":false}' > evidence/scope.json
+          cat > evidence/expected.tsv <<'EOF'
+          glibc_2.39.orig.tar.xz 18520988 f77bd47cf8170c57365ae7bf86696c118adb3b120d3259c64c502d3dc1e2d926
+          glibc_2.39.orig.tar.xz.asc 833 2cce427ef7933c17379f5514e4f0ccf8dffae5bf8c72f0f7e0bf8b8401f34be5
+          glibc_2.39-0ubuntu8.12.debian.tar.xz 506308 cc7cf38a3060a282011e83c946b6cec1aebe9b04e21e133449abe28340a710f6
+          glibc_2.39-0ubuntu8.12.dsc 9391 2dd63e1aef4623627bd67c1b8479baa585a68e98f27d2d4fe60d7cde57bcf7fc
+          EOF
+          while read -r file size hash; do
+            url="https://security.ubuntu.com/ubuntu/pool/main/g/glibc/$file"
+            curl --fail --silent --show-error --proto '=https' --connect-timeout 15 --max-time 60 --max-filesize "$size" --output "evidence/source/$file" "$url"
+            test "$(stat -c %s "evidence/source/$file")" -eq "$size"
+            (cd evidence/source; printf '%s  %s\n' "$hash" "$file" | sha256sum -c -)
+          done < evidence/expected.tsv
+          (cd evidence/source; sha256sum -- *) > evidence/source.sha256
+          test "$(wc -l < evidence/source.sha256)" -eq 4
+          grep -Fxq 'Version: 2.39-0ubuntu8.12' evidence/source/glibc_2.39-0ubuntu8.12.dsc
+          printf '%s\n' '{"source_files_verified":4,"source_executed":false,"detached_signature_verified":false,"binary_reproduction_verified":false,"legal_approved":false,"release_authorized":false}' > evidence/result.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-glibc-exact-source-files
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
