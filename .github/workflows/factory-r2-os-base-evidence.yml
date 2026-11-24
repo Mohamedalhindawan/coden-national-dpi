@@ -209,3 +209,91 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+  glibc-update-plan:
+    if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions: {}
+    env:
+      BASE: docker.io/library/ubuntu@sha256:9a04f13b3f80ef056361e30868593b1cfd2279fe19e4081cb93a90bf56819d6a
+    steps:
+      - name: Plan security package remediation using signed APT metadata only
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          work=$(mktemp -d)
+          name="coden-glibc-review-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          cleanup() {
+            rc=$?
+            trap - EXIT
+            podman rm -f --ignore "$name" >/dev/null || rc=1
+            rm -rf "$work"
+            exit "$rc"
+          }
+          trap cleanup EXIT
+          printf '%s\n' '{"status":"incomplete","simulation_only":true,"package_installation":false,"base_replaced":false,"security_approved":false,"build_authorized":false,"release_authorized":false}' > evidence/scope.json
+          test "$(id -u)" -ne 0
+          podman info --format json | jq -e '.host.security.rootless == true and .host.cgroupVersion == "v2"' >/dev/null
+          podman pull --platform linux/amd64 "$BASE"
+          podman image inspect "$BASE" > evidence/base-image.json
+          jq -e '.[0].Architecture=="amd64"' evidence/base-image.json >/dev/null
+          podman create --name "$name" --pull=never --network none --read-only --cap-drop=all --security-opt=no-new-privileges --user 65534:65534 "$BASE" /bin/false >/dev/null
+          podman cp "$name:/var/lib/dpkg/status" "$work/status"
+          podman cp "$name:/usr/share/keyrings/ubuntu-archive-keyring.gpg" "$work/ubuntu.gpg"
+          test -f "$work/status" && test ! -L "$work/status"
+          test -f "$work/ubuntu.gpg" && test ! -L "$work/ubuntu.gpg"
+          (cd "$work"; sha256sum status ubuntu.gpg) > evidence/base-inputs.sha256
+          dpkg-query --admindir="$work" -W -f='${binary:Package}\t${Version}\n' libc6 libc-bin > evidence/installed.txt
+          mkdir -p "$work/lists/partial" "$work/cache/archives/partial" "$work/empty"
+          cat > "$work/sources.list" <<EOF
+          deb [arch=amd64 signed-by=$work/ubuntu.gpg] https://archive.ubuntu.com/ubuntu/ noble main
+          deb [arch=amd64 signed-by=$work/ubuntu.gpg] https://archive.ubuntu.com/ubuntu/ noble-updates main
+          deb [arch=amd64 signed-by=$work/ubuntu.gpg] https://security.ubuntu.com/ubuntu/ noble-security main
+          EOF
+          cat > "$work/apt.conf" <<EOF
+          Dir::Etc::main "/dev/null";
+          Dir::Etc::parts "$work/empty";
+          Dir::Etc::sourcelist "$work/sources.list";
+          Dir::Etc::sourceparts "$work/empty";
+          Dir::Etc::preferences "/dev/null";
+          Dir::Etc::preferencesparts "$work/empty";
+          Dir::State "$work";
+          Dir::State::status "$work/status";
+          Dir::State::lists "$work/lists";
+          Dir::Cache "$work/cache";
+          APT::Architecture "amd64";
+          APT::Architectures { "amd64"; };
+          APT::Get::AllowUnauthenticated "false";
+          Acquire::AllowInsecureRepositories "false";
+          Acquire::AllowDowngradeToInsecureRepositories "false";
+          Acquire::Check-Valid-Until "true";
+          Acquire::Check-Date "true";
+          Acquire::Retries "0";
+          Acquire::Languages "none";
+          Acquire::https::Timeout "30";
+          Acquire::http::Timeout "30";
+          APT::Update::Error-Mode "any";
+          EOF
+          export APT_CONFIG="$work/apt.conf" LC_ALL=C
+          apt-get --version > evidence/apt-version.txt
+          timeout 240s apt-get update 2>&1 | tee evidence/index-update.txt
+          (cd "$work/lists"; sha256sum -- *InRelease) > evidence/signed-indexes.sha256
+          apt-cache policy libc6 libc-bin > evidence/policy.txt
+          fixed='2.39-0ubuntu8.12'
+          libc=$(apt-cache policy libc6 | awk '/Candidate:/ {print $2; exit}')
+          bin=$(apt-cache policy libc-bin | awk '/Candidate:/ {print $2; exit}')
+          [[ "$libc" =~ ^[0-9][0-9A-Za-z.+:~-]*$ ]]
+          [[ "$bin" =~ ^[0-9][0-9A-Za-z.+:~-]*$ ]]
+          test "$libc" = "$bin"
+          dpkg --compare-versions "$libc" ge "$fixed"
+          apt-cache show "libc6=$libc" "libc-bin=$bin" > evidence/candidate-package-metadata.txt
+          timeout 60s apt-get --simulate --no-install-recommends install "libc6=$libc" "libc-bin=$bin" 2>&1 | tee evidence/simulation.txt
+          jq -n --arg version "$libc" --arg minimum "$fixed" '{status:"simulation_collected",candidate_version:$version,scanner_reported_minimum:$minimum,simulation_only:true,package_installation:false,base_replaced:false,dependency_plan_approved:false,security_approved:false,build_authorized:false,release_authorized:false}' > evidence/scope.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-glibc-update-plan
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
