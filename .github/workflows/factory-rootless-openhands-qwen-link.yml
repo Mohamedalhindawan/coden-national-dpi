@@ -271,6 +271,11 @@ jobs:
               cmp /proc/self/cgroup "$proc/cgroup"
               grep -Eq "^CapEff:[[:space:]]+0+$" "$proc/status"
               grep -Eq "^NoNewPrivs:[[:space:]]+1$" "$proc/status"
+              keys=$(tr "\\0" "\\n" < "$proc/environ" | cut -d= -f1)
+              if grep -Eiq "(TOKEN|PASSWORD|API.KEY|GITHUB_|DOCKER_HOST|SECRET)" <<< "$keys"; then
+                echo "BLOCKED: secret-like key inherited by OpenHands child" >&2
+                exit 1
+              fi
               count=$((count+1))
             done
             test "$count" -ge 2
@@ -281,6 +286,15 @@ jobs:
             test "$(cat /sys/fs/cgroup/pids.max)" = 64
             set -- $(cat /sys/fs/cgroup/cpu.max)
             test "$1" -eq $((2*$2))
+            grep -Eq "^CapEff:[[:space:]]+0+$" /proc/self/status
+            grep -Eq "^NoNewPrivs:[[:space:]]+1$" /proc/self/status
+            test ! -S /var/run/docker.sock
+            test "$(df -Pk /tmp | awk "NR==2 {print \\$2}")" = 32768
+            keys=$(env | cut -d= -f1)
+            if grep -Eiq "(TOKEN|PASSWORD|API.KEY|GITHUB_|DOCKER_HOST|SECRET)" <<< "$keys"; then
+              echo "BLOCKED: secret-like key inherited by Qwen process" >&2
+              exit 1
+            fi
           '
           members=$(podman ps --filter "network=$net" --format '{{.ID}}' | wc -l)
           test "$members" -eq 2
