@@ -130,6 +130,9 @@ jobs:
     timeout-minutes: 5
     permissions: {}
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
       - name: Initialize bounded evidence directory
         run: mkdir -m 0700 evidence
       - name: Review upstream Python standalone archive identity without extraction or execution
@@ -137,6 +140,7 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           import hashlib,io,json,re,tarfile
+          from ai_factory.factory_python_archive import inventory
           from pathlib import Path,PurePosixPath
           from urllib.request import urlopen,Request
           base="https://github.com/astral-sh/python-build-standalone/releases/download/20260814/"
@@ -154,6 +158,7 @@ jobs:
                   matches.append(parts[0])
           assert len(matches)==1 and re.fullmatch(r"[0-9a-f]{64}",matches[0]),"exact release checksum missing"
           digest=matches[0]
+          assert digest=="45816a2653b47a6cc48d8ada4ea1185758a4c2db389d012b31e0205e5ccb548b"
           url=base+name.replace("+","%2B")
           raw=read(url,128*1024*1024)
           assert hashlib.sha256(raw).hexdigest()==digest
@@ -185,6 +190,10 @@ jobs:
                       assert m.isdir(),"unexpected archive member type"
           receipt={"source":base+"SHA256SUMS","checksum_manifest_sha256":hashlib.sha256(sums).hexdigest(),"url":url,"sha256":digest,"compressed_bytes":len(raw),"expanded_regular_bytes":expanded,"regular_files":files,"archive_member_count":len(seen),"links":links,"notice_candidates":notices,"producer_digest_verified":True,"independent_attestation_verified":False,"extracted":False,"executed":False,"license_approved":False,"build_authorized":False,"release_authorized":False}
           Path("evidence/python-candidate.json").write_text(json.dumps(receipt,indent=2))
+          report=inventory(raw,digest)
+          assert report["member_count"]==len(seen) and report["expanded_regular_bytes"]==expanded
+          Path("evidence/python-inventory.json").write_text(json.dumps(report,indent=2))
+          print("Native candidates:",len(report["native"]),"Text evidence:",len(report["text_evidence"]))
           print("Static Python archive digest verified; no extraction or execution")
           PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
