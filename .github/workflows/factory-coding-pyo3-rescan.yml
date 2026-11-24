@@ -46,7 +46,7 @@ jobs:
           from email.parser import BytesParser
           raw=Path("input/pyo3-candidate.lock").read_bytes()
           receipt=json.loads(Path("input/candidate-review.json").read_text())
-          assert hashlib.sha256(raw).hexdigest()==receipt["sha256"]
+          assert hashlib.sha256(raw).hexdigest()==receipt["sha256"]=="93447ba7c43d7c8bffe1bb66d99abad1eaffcbd0d11fe1ef5bb776c7155998a3"
           assert receipt["added"]==[["jiter","0.16.0"],["tokenizers","0.23.2"]]
           assert receipt["removed"]==[["jiter","0.11.0"],["tokenizers","0.23.1"]]
           packages=tomllib.loads(raw.decode())["package"]
