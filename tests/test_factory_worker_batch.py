@@ -99,3 +99,69 @@ class WorkerBatchTests(unittest.TestCase):
         report = reconcile.scan(self.db, self.journal, self.tasks)
         self.assertEqual(report["conditions"], {"consistent_queued":1, "consistent_review":2})
         self.assertEqual(sum(self.q.read(x)["attempts"] for x in ("one","two","three")), 2)
+
+
+    def test_second_batch_refused_while_first_holds_lock(self):
+        self.add("one")
+        nested = []
+        def worker(**kwargs):
+            nested.append(self.run_batch())
+            return {"status":"timed_out_review_required", "execution_authorized":False,
+                    "automatic_retry_allowed":False}
+        with patch.object(worker_supervisor, "run_once", side_effect=worker) as call:
+            # Avoid recursion on the RED baseline if no lock exists.
+            def bounded_worker(**kwargs):
+                if nested or call.call_count > 1:
+                    return {"status":"timed_out_review_required", "execution_authorized":False,
+                            "automatic_retry_allowed":False}
+                return worker(**kwargs)
+            call.side_effect = bounded_worker
+            result = self.run_batch()
+        self.assertEqual(call.call_count, 1)
+        self.assertEqual(nested[0]["status"], "batch_busy")
+        self.assertEqual(result["status"], "worker_review_required")
+        self.assertEqual(self.q.read("one")["attempts"], 0)
+
+    def test_lock_released_after_worker_error(self):
+        self.add("one")
+        with patch.object(worker_supervisor, "run_once", side_effect=ValueError("synthetic")) as call:
+            self.assertEqual(self.run_batch()["status"], "worker_review_required")
+            self.assertEqual(self.run_batch()["status"], "worker_review_required")
+        self.assertEqual(call.call_count, 2)
+
+    def test_symlink_lock_refused_without_touching_target(self):
+        self.add("one")
+        target = self.root / "protected"
+        target.write_text("unchanged")
+        Path(str(self.db) + ".batch.lock").symlink_to(target)
+        with patch.object(worker_supervisor, "run_once") as worker:
+            with self.assertRaises((OSError, ValueError)):
+                self.run_batch()
+        worker.assert_not_called()
+        self.assertEqual(target.read_text(), "unchanged")
+
+    def test_external_process_lock_is_respected_and_released_on_exit(self):
+        import subprocess
+        import sys
+        self.add("one")
+        lock = Path(str(self.db) + ".batch.lock")
+        script = (
+            "import fcntl, os, sys; "
+            "fd=os.open(sys.argv[1], os.O_CREAT|os.O_RDWR, 0o600); "
+            "fcntl.flock(fd, fcntl.LOCK_EX); "
+            "print('locked',flush=True); sys.stdin.read()"
+        )
+        with subprocess.Popen([sys.executable, "-c", script, str(lock)],
+                              stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                              text=True) as child:
+            try:
+                self.assertEqual(child.stdout.readline().strip(), "locked")
+                with patch.object(worker_supervisor, "run_once") as worker:
+                    self.assertEqual(self.run_batch()["status"], "batch_busy")
+                    worker.assert_not_called()
+            finally:
+                child.stdin.close()
+                child.wait(timeout=5)
+        with patch.object(worker_supervisor, "run_once", side_effect=ValueError("synthetic")) as worker:
+            self.assertEqual(self.run_batch()["status"], "worker_review_required")
+            worker.assert_called_once()
