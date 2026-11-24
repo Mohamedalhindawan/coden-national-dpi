@@ -5,7 +5,7 @@ on:
 permissions: {}
 jobs:
   static-inventory:
-    if: github.event.repository.private == false && github.head_ref == 'audit/factory-p0-coding-wheel-notices-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event.repository.private == false && (github.head_ref == 'audit/factory-p0-coding-wheel-notices-20261124' || github.head_ref == 'feat/factory-acceleration-batch01-20261124') && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -42,11 +42,12 @@ jobs:
           mkdir -m 0700 evidence
           readelf --version | head -n 1 > evidence/readelf-version.txt
           python - <<'PY'
-          import hashlib,io,json,re,subprocess,tempfile,tomllib,zipfile
+          import hashlib,io,json,re,tempfile,tomllib,zipfile
           from pathlib import Path
           from urllib.parse import urlsplit
           from urllib.request import build_opener
           from ai_factory.factory_wheel_notice_audit import NoRedirect,inspect_wheel,CAP
+          from ai_factory.factory_python_elf import inspect_elf_file
           def sha(b): return hashlib.sha256(b).hexdigest()
           raw=Path("input/pyo3-candidate.lock").read_bytes()
           assert sha(raw)=="93447ba7c43d7c8bffe1bb66d99abad1eaffcbd0d11fe1ef5bb776c7155998a3"
@@ -70,10 +71,7 @@ jobs:
               with tempfile.TemporaryDirectory() as temp:
                   p=Path(temp)/"object"
                   p.write_bytes(data)
-                  result=subprocess.run(["readelf","-W","-h","-d",str(p)],capture_output=True,text=True,timeout=15,env={"PATH":"/usr/bin:/bin","LC_ALL":"C"},check=True)
-                  assert len(result.stdout)<=512*1024
-                  out=result.stdout
-                  return {"machine":re.findall(r"^\s*Machine:\s*(.+)$",out,re.M),"needed":re.findall(r"\(NEEDED\).*\[([^\]]+)\]",out),"soname":re.findall(r"\(SONAME\).*\[([^\]]+)\]",out),"search_paths":re.findall(r"\((?:RPATH|RUNPATH)\).*\[([^\]]+)\]",out)}
+                  return inspect_elf_file(p)
           reports=[]
           compressed_total=expanded_total=members_total=0
           for n,v,url,digest in selected:
@@ -114,6 +112,9 @@ jobs:
               print(n,v,len(native),flush=True)
               Path("evidence/inventory.json").write_text(json.dumps({"records":reports,"complete":len(reports)==131,"installed":False,"compiled_membership_verified":False,"license_approved":False,"release_authorized":False},indent=2))
           assert len(reports)==131 and compressed_total==105369096
+          elf_records=[n for r in reports for n in r["native"] if n["kind"]=="ELF"]
+          assert len(elf_records)==75 and all(n["version_info"] for n in elf_records)
+          print("Collected version information for 75 wheel ELF records; compatibility not yet verified.")
           Path("evidence/capacity.json").write_text(json.dumps({"wheel_count":len(reports),"compressed_bytes":compressed_total,"expanded_member_bytes":expanded_total,"archive_member_count":members_total,"crc_verified":True,"installed":False,"installed_size_measured":False,"build_authorized":False,"release_authorized":False},indent=2))
           print("PASS: 131 exact R2 wheels statically inventoried. No execution/installation.")
           PY
@@ -200,7 +201,7 @@ jobs:
           assert report["member_count"]==len(seen) and report["expanded_regular_bytes"]==expanded
           Path("evidence/python-inventory.json").write_text(json.dumps(report,indent=2))
           elf=collect_elf(raw,report["native"])
-          assert len(elf)==9
+          assert len(elf)==9 and all(n["version_info"] for n in elf)
           Path("evidence/python-elf.json").write_text(json.dumps({"records":elf,"executed":False,"os_resolution_verified":False,"compiled_membership_verified":False,"license_approved":False,"release_authorized":False},indent=2))
           print("ELF candidates:",len(elf))
           print("Native candidates:",len(report["native"]),"Text evidence:",len(report["text_evidence"]))
