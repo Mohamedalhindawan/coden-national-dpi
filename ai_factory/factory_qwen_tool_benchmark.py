@@ -13,7 +13,7 @@ CASES = {
 TOOLS = (
     ("count_flags", "Count the number of flags in an input array", "flags", {"type": "array", "items": {"type": "string"}}),
     ("summarize_flags", "Describe flags in prose", "flags", {"type": "array", "items": {"type": "string"}}),
-    ("set_limit", "Set the maximum number of synthetic records", "limit", {"type": "integer"}),
+    ("set_limit", "Prepare a proposed maximum record count in a synthetic test. Accept the requested whole number as a numeric argument. This tool only describes a proposed limit.", "limit", {"type": "integer", "description": "The maximum number of synthetic records requested, as a whole number, not text."}),
 )
 
 
