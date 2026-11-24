@@ -1,7 +1,7 @@
 name: CODEN P0 parent constraints and licensed replacement review
 on:
   pull_request:
-    paths: ['.github/workflows/factory-parent-constraints-review.yml']
+    paths: ['.github/workflows/factory-parent-constraints-review.yml', 'ai_factory/factory_static_sdk_imports.py', 'tests/test_factory_static_sdk_imports.py']
 permissions: {}
 jobs:
   metadata-review:
@@ -14,6 +14,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      - name: Test static import comparator
+        run: python3 -m unittest discover -s tests -p test_factory_static_sdk_imports.py -v
       - name: Inspect exact baseline parent requirements and MIT candidate wheel
         run: |
           set -euo pipefail
@@ -35,7 +37,9 @@ jobs:
               "fastmcp-slim": ("4.2.0", "174239bed3ac47275afa7fe82941a65f86ad0314205195766c92b138c6dcfebe"),
               "opentelemetry-semantic-conventions": ("0.60b1", "9fa8c8b0c110da289809292b0591220d3a7b53c1526a23021e977d68597893fb")
           }
+          from ai_factory.factory_static_sdk_imports import read_python, inspect_imports, compare_imports
           records = {}
+          sources = {}
           def collect(name, version, digest, url):
               assert name not in records
               u = urlsplit(url)
@@ -43,6 +47,8 @@ jobs:
               with build_opener(NoRedirect()).open(url, timeout=30) as response:
                   wheel = response.read(CAP + 1)
               entries = inspect_wheel(wheel, digest)
+              if name in ('browser-use', 'browser-use-sdk'):
+                  sources[name] = read_python(wheel)
               metadata = [e for p,e in entries.items() if p.endswith(".dist-info/METADATA")]
               assert len(metadata) == 1
               m = BytesParser().parsebytes(base64.b64decode(metadata[0]["base64"]))
@@ -65,6 +71,11 @@ jobs:
           # Public PyPI release 2026-07-17, not asserted to be the latest.
           collect("browser-use-sdk","3.10.0","4a65df36f702fab6d90b0a5785bf8456a002abb5b504f856b1a8ab60251b9430",
               "https://files.pythonhosted.org/packages/49/52/a6377a871f791044eeaa2755ce49433dc745e687b40ecd16258c12b0bf44/browser_use_sdk-3.10.0-py3-none-any.whl")
+          refs = inspect_imports(sources["browser-use"])
+          assert refs, "no direct static imports found; review dynamic imports separately"
+          comparison = compare_imports(refs, sources["browser-use-sdk"])
+          Path("sdk-import-comparison.json").write_text(json.dumps({"references":refs, **comparison},indent=2))
+          print("Static SDK import references:",len(refs),"missing modules:",len(comparison["missing_modules"]),"unverified symbols:",len(comparison["unverified_symbols"]))
           Path("parent-constraints-review.json").write_text(json.dumps({"status":"metadata_review_only","records":records,
               "dependency_resolution_passed":False,"api_compatibility_verified":False,"old_license_approved":False,
               "candidate_approved":False,"installed":False,"release_authorized":False},indent=2))
@@ -73,6 +84,8 @@ jobs:
         if: always()
         with:
           name: parent-constraints-review
-          path: parent-constraints-review.json
+          path: |
+            parent-constraints-review.json
+            sdk-import-comparison.json
           retention-days: 7
           if-no-files-found: error
