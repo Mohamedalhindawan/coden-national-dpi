@@ -129,6 +129,14 @@ class AuthGateTests(unittest.TestCase):
         self.assertIn("MODEL_PROC_PROOF", s)
         self.assertIn("if grep -Eiq", s)
         self.assertIn("if-no-files-found: error", s)
+        self.assertNotIn('CODEN_AUTH_TEST_KEY', s)
+        self.assertIn('valid=$(request_status "$OH_SESSION_API_KEYS_0")', s)
+        self.assertIn('request_status "intentionally-invalid-session"', s)
+        self.assertIn('[[ "$unauth" == *" 401 "* ]]', s)
+        self.assertIn('[[ "$valid" == *" 200 "* ]]', s)
+        self.assertIn('test "$count" -ge 2', s)
+        self.assertIn('no_openhands_sdk_conversation', s)
+        self.assertEqual(s.count("      - name: Run source-built OpenHands server"), 1)
 
     def test_doc_retains_auth_session_and_license_limits(self):
         doc = DOC.read_text(encoding="utf-8")
