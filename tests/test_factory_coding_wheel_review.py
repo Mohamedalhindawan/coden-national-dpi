@@ -1,5 +1,7 @@
 import unittest
-from ai_factory.factory_coding_wheel_review import choose_wheel, summarize
+import json
+from email.parser import BytesParser
+from ai_factory.factory_coding_wheel_review import choose_wheel, summarize, metadata_fields
 
 
 def wheel(name, size=10):
@@ -31,3 +33,14 @@ class CandidateWheelReviewTests(unittest.TestCase):
     def test_missing_record_blocks_collection(self):
         result=summarize([],1)
         self.assertEqual(result["status"],"collection_incomplete")
+
+    def test_non_ascii_header_serializes_without_losing_evidence(self):
+        m = BytesParser().parsebytes(b"License: Caf\xc3\xa9\nLicense-Expression: MIT\nLicense-File: LICENSE\n\n")
+        fields = metadata_fields(m)
+        self.assertEqual(json.loads(json.dumps(fields))["license"], str(m["License"]))
+        self.assertEqual(fields["license_expression"], "MIT")
+
+    def test_large_incompatible_wheel_does_not_block_small_compatible(self):
+        a = wheel("x-1-py3-none-any.whl")
+        b = wheel("x-1-cp312-cp312-win_amd64.whl", 100*1024*1024)
+        self.assertEqual(choose_wheel([b,a],lambda n: None if "win" in n else 0),a)
