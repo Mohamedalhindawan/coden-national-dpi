@@ -416,6 +416,41 @@ jobs:
             test "$actual" = "$fp"
             gpg --batch --no-options --import "evidence/signatures/$fp.asc" 2> "evidence/signatures/$fp.import.log"
           done
+          # Independent project-published certificate, merged with keyserver data
+          # so revocations from either source are retained. Never alter the clock.
+          curl --fail --silent --show-error --proto '=https' --connect-timeout 15 --max-time 45 --max-filesize 1048576 --output evidence/signatures/glibc-security.html https://sourceware.org/glibc/security.html
+          python3 - "$work" <<'PY'
+          import html
+          import pathlib
+          import re
+          import sys
+          page = pathlib.Path("evidence/signatures/glibc-security.html").read_text()
+          blocks = re.findall(r"-----BEGIN PGP PUBLIC KEY BLOCK-----.*?-----END PGP PUBLIC KEY BLOCK-----", html.unescape(page), re.S)
+          if not 1 <= len(blocks) <= 20:
+              raise SystemExit("unexpected public key block count")
+          for i, block in enumerate(blocks):
+              lines = re.sub(r"<[^>]*>", "", block).splitlines()
+              pathlib.Path(sys.argv[1], f"official-{i}.asc").write_text("\n".join(line.strip() for line in lines) + "\n")
+          PY
+          matches=0
+          for key in "$work"/official-*.asc; do
+            gpg --batch --no-options --with-colons --show-keys "$key" > "$work/official.keys"
+            actual=$(awk -F: '$1=="pub"{p=1;next} p&&$1=="fpr"{print $10;p=0}' "$work/official.keys")
+            if [ "$actual" = "$upstream" ]; then
+              matches=$((matches+1))
+              cp "$key" evidence/signatures/upstream-official.asc
+              cp "$work/official.keys" evidence/signatures/upstream-official.keys
+            fi
+          done
+          test "$matches" -eq 1
+          gpg --batch --no-options --import evidence/signatures/upstream-official.asc 2> evidence/signatures/upstream-official.import.log
+          gpg --batch --no-options --with-colons --list-keys "$upstream" > evidence/signatures/upstream-merged.keys
+          # Compare Ubuntu's exact original archive to the independent GNU release.
+          curl --fail --silent --show-error --proto '=https' --connect-timeout 15 --max-time 90 --max-filesize 18520988 --output "$work/gnu-glibc-2.39.tar.xz" https://ftp.gnu.org/gnu/glibc/glibc-2.39.tar.xz
+          sha256sum "$work/gnu-glibc-2.39.tar.xz" | awk '{print $1}' > evidence/signatures/gnu-original.sha256
+          test "$(stat -c %s "$work/gnu-glibc-2.39.tar.xz")" -eq 18520988
+          cmp "$work/gnu-glibc-2.39.tar.xz" evidence/source/glibc_2.39.orig.tar.xz
+          printf '%s\n' '{"gnu_original_byte_match":true,"official_key_fingerprint_match":true,"current_signature_gate_unchanged":true,"legal_approved":false}' > evidence/signatures/independent-source-review.json
           gpg --batch --no-options --no-auto-key-retrieve --status-fd 1 --verify evidence/source/glibc_2.39.orig.tar.xz.asc evidence/source/glibc_2.39.orig.tar.xz > evidence/signatures/upstream.status 2> evidence/signatures/upstream.log
           gpg --batch --no-options --no-auto-key-retrieve --status-fd 1 --verify evidence/source/glibc_2.39-0ubuntu8.12.dsc > evidence/signatures/ubuntu.status 2> evidence/signatures/ubuntu.log
           for entry in "upstream:$upstream" "ubuntu:$ubuntu"; do
