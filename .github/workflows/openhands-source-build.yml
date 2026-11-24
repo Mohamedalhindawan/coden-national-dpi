@@ -1,0 +1,214 @@
+name: OpenHands source build and provenance
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/openhands-source-build.yml'
+permissions: {}
+jobs:
+  build:
+    if: github.event.repository.private == false && github.head_ref == 'audit/openhands-source-build' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    env:
+      UPSTREAM: 077f3fad6d31cd852be5c87176e0a93c3b446126
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: OpenHands/software-agent-sdk
+          ref: 077f3fad6d31cd852be5c87176e0a93c3b446126
+          persist-credentials: false
+      - name: Verify checked-out materials
+        run: |
+          test "$(git rev-parse HEAD)" = "$UPSTREAM"
+          echo '71c5479cb609b60872a7cbd34da764a0804c2e50c2658dba1bb5255e180d3603  uv.lock' | sha256sum -c -
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+        with:
+          version: '0.13.7'
+          python-version: '3.13.15'
+          enable-cache: false
+      - name: Build the upstream PyInstaller specification from locked source
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Versions come from the archived HIGH findings on the original build.
+          uv lock --upgrade-package 'aiohttp>=3.14.4' --upgrade-package 'dnspython>=2.9.2' \
+            --upgrade-package 'fsspec>=2026.6.0' --upgrade-package 'oauthlib>=4.0.1' \
+            --upgrade-package 'pyasn1>=0.6.5' --upgrade-package 'pypdf>=6.21.4' \
+            --upgrade-package 'soupsieve>=4.0.0'
+          uv sync --frozen --all-packages --dev
+          spec=openhands-agent-server/openhands/agent_server/agent-server.spec
+          uv run --offline --no-sync pyinstaller "$spec" > "$RUNNER_TEMP/freeze.log" 2>&1 || { tail -80 "$RUNNER_TEMP/freeze.log"; exit 1; }
+          mkdir product
+          cp dist/openhands-agent-server product/
+          file product/openhands-agent-server | grep 'ELF 64-bit'
+          git diff --exit-code HEAD -- "$spec"
+          cp uv.lock product/resolved.lock
+          git diff HEAD -- uv.lock > product/dependency.patch
+          .venv/bin/python - <<'PYMETA' > product/build-environment.json
+          import importlib.metadata as md, json
+          packages = []
+          for dist in md.distributions():
+              metadata = dist.metadata
+              packages.append(dict(name=metadata["Name"], version=dist.version,
+                                   license_expression=metadata["License-Expression"],
+                                   license_classifiers=[x for x in metadata.get_all("Classifier", []) if x.startswith("License ::")],
+                                   license_files=metadata.get_all("License-File", [])))
+          print(json.dumps(sorted(packages, key=lambda p: p["name"].lower()), indent=2))
+          PYMETA
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, subprocess
+          root = pathlib.Path("product")
+          def digest(path):
+              with open(path, "rb") as f:
+                  return hashlib.file_digest(f, "sha256").hexdigest()
+          receipt = dict(upstream_repository="OpenHands/software-agent-sdk",
+                         upstream_commit=os.environ["UPSTREAM"], original_lock_sha256="71c5479cb609b60872a7cbd34da764a0804c2e50c2658dba1bb5255e180d3603", lock_sha256=digest("uv.lock"),
+                         spec_sha256=digest("openhands-agent-server/openhands/agent_server/agent-server.spec"),
+                         binary_sha256=digest(root/"openhands-agent-server"),
+                         environment_sha256=digest(root/"build-environment.json"),
+                         ci_sha=os.environ["GITHUB_SHA"], run_id=os.environ["GITHUB_RUN_ID"],
+                         python=subprocess.check_output([".venv/bin/python","--version"],text=True).strip(),
+                         uv=subprocess.check_output(["uv","--version"],text=True).strip(),
+                         agent_session_executed=False)
+          (root/"materials.json").write_text(json.dumps(receipt,indent=2)+"\n")
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: openhands-source-product
+          path: product/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
+  provenance:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      attestations: write
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: openhands-source-product
+          path: product
+      - name: Bind binary and materials to this workflow identity
+        id: attest
+        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661
+        with:
+          subject-path: 'product/*'
+      - name: Independently verify the signed subjects and check build inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          mkdir receipts
+          cp "$BUNDLE" receipts/bundle.jsonl
+          cp product/{materials,build-environment}.json product/{resolved.lock,dependency.patch} receipts/
+          for name in openhands-agent-server materials.json build-environment.json resolved.lock dependency.patch; do
+            gh attestation verify "product/$name" --bundle "$BUNDLE" --repo "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/openhands-source-build.yml" --source-digest "$GITHUB_SHA" --deny-self-hosted-runners --format json > "receipts/$name.verify.json"
+          done
+          jq -e --arg sha "$GITHUB_SHA" '.upstream_commit == "077f3fad6d31cd852be5c87176e0a93c3b446126" and .ci_sha == $sha' product/materials.json
+          echo "$(jq -r .binary_sha256 product/materials.json)  product/openhands-agent-server" | sha256sum -c -
+          echo "$(jq -r .environment_sha256 product/materials.json)  product/build-environment.json" | sha256sum -c -
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: openhands-source-provenance
+          path: receipts/
+          if-no-files-found: error
+          retention-days: 14
+  scan:
+    needs: provenance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: openhands-source-product
+          path: product
+      - name: Package the verified binary on the previously reviewed Ubuntu base
+        run: |
+          set -euo pipefail
+          echo "$(jq -r .binary_sha256 product/materials.json)  product/openhands-agent-server" | sha256sum -c -
+          mkdir -p context audit
+          install -m 0555 product/openhands-agent-server context/openhands-agent-server
+          cat > context/Dockerfile <<'DOCKERFILE'
+          FROM docker.io/library/ubuntu@sha256:9a04f13b3f80ef056361e30868593b1cfd2279fe19e4081cb93a90bf56819d6a
+          COPY openhands-agent-server /usr/local/bin/openhands-agent-server
+          USER 65534:65534
+          ENTRYPOINT ["/usr/local/bin/openhands-agent-server"]
+          CMD []
+          DOCKERFILE
+          docker build --network none --platform linux/amd64 --iidfile audit/image.id -t coden-source:review context
+          docker save -o candidate.tar coden-source:review
+          python3 - <<'PY'
+          import json,re
+          from pathlib import Path
+          packages=json.loads(Path("product/build-environment.json").read_text())
+          components=[]
+          for pkg in packages:
+              name=re.sub(r"[-_.]+","-",pkg["name"]).lower()
+              purl=f"pkg:pypi/{name}@{pkg['version']}"
+              components.append(dict(type="library", name=name, version=pkg["version"], purl=purl))
+          Path("audit/build-environment.cdx.json").write_text(json.dumps(dict(bomFormat="CycloneDX",specVersion="1.5",version=1,components=components)))
+          PY
+      - name: Generate image SPDX inventory
+        uses: anchore/sbom-action@fbfd9c6c189226748411491745178e0c2017392d
+        with:
+          image: docker:coden-source:review
+          syft-version: v1.38.0
+          format: spdx-json
+          output-file: audit/image.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Scan image OS
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        with:
+          version: v0.69.3
+          scan-type: image
+          input: candidate.tar
+          scanners: vuln
+          format: json
+          output: audit/image-scan.json
+          cache: false
+      - name: Scan the installed Python build environment including development tools
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        with:
+          version: v0.69.3
+          skip-setup-trivy: true
+          scan-type: sbom
+          scan-ref: audit/build-environment.cdx.json
+          format: json
+          list-all-pkgs: true
+          output: audit/environment-scan.json
+          cache: false
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: openhands-source-audit
+          path: audit/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Require coverage and reject unresolved high or critical findings
+        run: |
+          set -euo pipefail
+          jq -e --arg id "$(cat audit/image.id)" '.Metadata.ImageID == $id and .Metadata.OS.Family == "ubuntu" and any(.Results[]; .Class == "os-pkgs")' audit/image-scan.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          audit=Path("audit")
+          expected={p["purl"] for p in json.loads((audit/"build-environment.cdx.json").read_text())["components"]}
+          results=json.loads((audit/"environment-scan.json").read_text())["Results"]
+          observed={p["Identifier"]["PURL"] for r in results for p in r.get("Packages",[])}
+          assert expected and expected == observed
+          PY
+          jq -es '[.[] | .Results[] | .Vulnerabilities[]? | select(.Severity == "HIGH" or .Severity == "CRITICAL")] | length == 0' audit/*-scan.json
