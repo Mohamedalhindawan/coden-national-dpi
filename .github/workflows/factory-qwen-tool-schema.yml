@@ -1,0 +1,134 @@
+name: CODEN P0 Qwen structured tool schema preflight
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/factory-qwen-tool-schema.yml'
+      - 'ai_factory/factory_qwen_tool_schema.py'
+      - 'tests/test_factory_qwen_tool_schema.py'
+permissions: {}
+jobs:
+  model-schema:
+    if: github.event.repository.private == false && github.head_ref == 'feat/factory-p0-qwen-tool-schema-probe-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      LLAMA_SHA: da524c71f9dd09913df29264bb7229b99a2de82d8a26e6902e6921d413560d6d
+      MODEL_SHA: 1d9614638d18024d0fbb36575a15f1302a3adf044df10345688ec4f6e1c4ff32
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Review-only validator tests
+        run: python3 -m unittest discover -s tests -p 'test_factory_qwen_tool_schema.py' -v
+      - name: Verify rootless cgroup host
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          podman info --format json | jq -e '.host.security.rootless and .host.cgroupVersion == "v2" and (.host.cgroupControllers | contains(["cpu","memory","pids"]))' >/dev/null
+      - name: Download only previously SHA-verified Qwen and llama.cpp inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage="$RUNNER_TEMP/qwen-rootless-build"
+          mkdir -p "$stage"
+          cd "$stage"
+          curl --fail --silent --show-error --location --retry 2 --connect-timeout 15 --max-time 150 \
+            -o llama-b12600-bin-ubuntu-x64.tar.gz \
+            https://github.com/ggml-org/llama.cpp/releases/download/b12600/llama-b12600-bin-ubuntu-x64.tar.gz
+          echo "$LLAMA_SHA  llama-b12600-bin-ubuntu-x64.tar.gz" | sha256sum -c -
+          curl --fail --silent --show-error --location --retry 2 --connect-timeout 20 --max-time 270 \
+            -o qwen-model.gguf \
+            "https://huggingface.co/Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF/resolve/ebb2015119c907b064c512bf053e945850b5875f/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf?download=true"
+          echo "$MODEL_SHA  qwen-model.gguf" | sha256sum -c -
+          tar -xf llama-b12600-bin-ubuntu-x64.tar.gz
+          test -x llama-b12600/llama-server
+          curl --fail --silent --show-error --location --retry 2 --connect-timeout 12 --max-time 70 \
+            -o libgomp1.deb \
+            "https://security.ubuntu.com/ubuntu/pool/main/g/gcc-12/libgomp1_12.3.0-1ubuntu1~22.04.3_amd64.deb"
+          echo "870c27299185a5dd4accad3b15bf82a7409fd7073cccaa8025875307da4d0ce2  libgomp1.deb" | sha256sum -c -
+          curl --fail --silent --show-error --location --retry 2 --connect-timeout 12 --max-time 70 \
+            -o libcurl4.deb \
+            "https://security.ubuntu.com/ubuntu/pool/main/c/curl/libcurl4_7.81.0-1ubuntu1.30_amd64.deb"
+          echo "2fc35b8056aebaa6cfe9a5672a8e06339c3e690657fbebc6c5d6b50d9f9626fb  libcurl4.deb" | sha256sum -c -
+          curl --fail --silent --show-error --location --retry 2 --connect-timeout 12 --max-time 70 \
+            -o libstdcxx6.deb \
+            "https://security.ubuntu.com/ubuntu/pool/main/g/gcc-12/libstdc++6_12.3.0-1ubuntu1~22.04.3_amd64.deb"
+          echo "29ef3d289b272704b75141906c8f683db0f2bdb0942061366691333bfb289bdc  libstdcxx6.deb" | sha256sum -c -
+          mkdir runtime-libs
+          for pkg in libgomp1.deb libcurl4.deb libstdcxx6.deb; do
+            dpkg-deb -x "$pkg" runtime-libs
+          done
+          echo 'PASS: exact Qwen model, llama.cpp and Ubuntu runtime libraries before image build.'
+
+      - name: Probe authenticated local model with no network or tool dispatcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="localhost/coden-qwen-schema:$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          model="coden-qwen-schema-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          cleanup() {
+            podman rm -f --ignore "$model" >/dev/null 2>&1 || true
+            podman image rm -f "$image" >/dev/null 2>&1 || true
+            rm -f "$RUNNER_TEMP/qwen-schema-response.json"
+          }
+          trap cleanup EXIT
+          podman pull --platform linux/amd64 docker.io/library/ubuntu@sha256:f64b2ffc2f10ab8f8505aa56b2664bd846cbb9df87c7e2532e30f7667021c0e6
+          podman build --network none --pull=never -f .github/docker/Factory-Qwen-CPU.Dockerfile -t "$image" "$RUNNER_TEMP/qwen-rootless-build"
+          key="$(openssl rand -hex 24)"
+          echo "::add-mask::$key"
+          podman create --name "$model" --network none --http-proxy=false \
+            --read-only --read-only-tmpfs=false --cap-drop=all --security-opt=no-new-privileges \
+            --user 65534:65534 --cpus=2 --memory=1536m --memory-swap=1536m --pids-limit=64 \
+            --cgroupns=private --pid=private --ipc=private --timeout=150 --ulimit core=0:0 \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777 \
+            "$image" --model /opt/model.gguf --alias local-qwen --host 127.0.0.1 --port 11434 \
+            --ctx-size 2048 --threads 2 --n-gpu-layers 0 --no-warmup --jinja --api-key "$key"
+          podman inspect "$model" | jq -e '.[0].HostConfig | .Privileged==false and .ReadonlyRootfs==true and .NetworkMode=="none" and ((.PortBindings // {})|length==0)' >/dev/null
+          podman start "$model" >/dev/null
+          ready=false
+          for _ in $(seq 1 45); do
+            if [[ "$(podman inspect -f '{{.State.Running}}' "$model")" != true ]]; then break; fi
+            if podman exec "$model" bash -ec 'exec 3<>/dev/tcp/127.0.0.1/11434; printf "GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n" >&3; read -rt 3 line <&3; [[ "$line" == *" 200 "* ]]' 2>/dev/null; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" = true
+          podman exec "$model" sh -ec 'test "$(id -u)" -eq 65534; grep -Eq "^CapEff:[[:space:]]+0000000000000000$" /proc/1/status; grep -Eq "^NoNewPrivs:[[:space:]]+1$" /proc/1/status; test "$(cat /sys/fs/cgroup/memory.max)" -eq 1610612736; test "$(cat /sys/fs/cgroup/pids.max)" -eq 64; test "$(cat /sys/fs/cgroup/cpu.max)" = "200000 100000"'
+          cat > "$RUNNER_TEMP/schema-query.sh" <<'QUERY'
+          set -euo pipefail
+          status_for_models() {
+            local token="$1"
+            exec 3<>/dev/tcp/127.0.0.1/11434
+            printf 'GET /v1/models HTTP/1.0\r\nHost: localhost\r\nAuthorization: Bearer %s\r\nConnection: close\r\n\r\n' "$token" >&3
+            IFS= read -r status <&3
+            exec 3<&- 3>&-
+            printf '%s' "$status"
+          }
+          [[ "$(status_for_models "")" == *" 401 "* ]]
+          [[ "$(status_for_models "invalid")" == *" 401 "* ]]
+          [[ "$(status_for_models "$PROBE_KEY")" == *" 200 "* ]]
+          body='{"model":"local-qwen","messages":[{"role":"user","content":"Use the appropriate tool to count these flags: pending, approved. Call the tool with the exact flags in that order. Do not answer in text."}],"tools":[{"type":"function","function":{"name":"count_flags","description":"Count the number of flags in an input array","parameters":{"type":"object","properties":{"flags":{"type":"array","items":{"type":"string"}}},"required":["flags"],"additionalProperties":false}}},{"type":"function","function":{"name":"summarize_flags","description":"Describe flags in prose","parameters":{"type":"object","properties":{"flags":{"type":"array","items":{"type":"string"}}},"required":["flags"],"additionalProperties":false}}}],"tool_choice":"auto","stream":false,"max_tokens":128,"temperature":0,"seed":7}'
+          exec 3<>/dev/tcp/127.0.0.1/11434
+          printf 'POST /v1/chat/completions HTTP/1.0\r\nHost: localhost\r\nAuthorization: Bearer %s\r\nContent-Type: application/json\r\nContent-Length: %s\r\nConnection: close\r\n\r\n%s' "$PROBE_KEY" "$(printf '%s' "$body" | wc -c)" "$body" >&3
+          IFS= read -r status <&3
+          [[ "$status" == *" 200 "* ]]
+          while IFS= read -r header <&3; do
+            [[ "$header" == "$(printf '\r')" || -z "$header" ]] && break
+          done
+          cat <&3
+          QUERY
+          # No agent, shell command or function is invoked based on model output.
+          (ulimit -f 1024; timeout 75 podman exec -i --env PROBE_KEY="$key" "$model" bash -s < "$RUNNER_TEMP/schema-query.sh" > "$RUNNER_TEMP/qwen-schema-response.json")
+          python3 -m ai_factory.factory_qwen_tool_schema "$RUNNER_TEMP/qwen-schema-response.json" schema-receipt.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: qwen-structured-tool-schema-review
+          path: schema-receipt.json
+          retention-days: 7
+          if-no-files-found: warn
