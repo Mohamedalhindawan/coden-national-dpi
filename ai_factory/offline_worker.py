@@ -69,7 +69,6 @@ def submit(queue, checkpoint_root, tasks_dir, task_id, *, branch, commit):
     return queue.enqueue(task_id, branch, commit, digest)
 
 
-
 def submit_idempotent(queue, checkpoint_root, tasks_dir, task_id, *, branch, commit):
     """Register once or return an existing matching receipt, never replay work.
 
@@ -113,11 +112,18 @@ def _public(lease, status, *, directory=None):
     return result
 
 
-def work_once(queue, checkpoint_root, tasks_dir, output_root, *, worker_id, lease_seconds=300):
+def work_once(queue, checkpoint_root, tasks_dir, output_root, *, worker_id, lease_seconds=300, task_id=None):
     """Claim one task and run existing bounded pilot; no unattended retries."""
     if not Path(output_root).is_dir() or Path(output_root).is_symlink():
         raise ValueError("existing operator output directory required")
-    lease = queue.claim(worker_id, lease_seconds=lease_seconds)
+    # Explicit task binding prevents a supervisor watching task A from
+    # accidentally launching another queued task B. The legacy default
+    # remains FIFO for operator-invoked unmonitored pilots.
+    if task_id is None:
+        lease = queue.claim(worker_id, lease_seconds=lease_seconds)
+    else:
+        checkpoint._id(task_id)
+        lease = queue.claim(worker_id, lease_seconds=lease_seconds, task_id=task_id)
     if lease is None:
         return None
     task_id = lease["task_id"]
@@ -185,6 +191,9 @@ def main(argv=None):
     once.add_argument("--output-root", type=Path, required=True)
     once.add_argument("--worker-id", default="offline_operator")
     once.add_argument("--lease-seconds", type=int, default=300)
+    once.add_argument("--task-id", help="Bind one operator-owned worker to a specific task")
+    cancel = modes.add_parser("request-cancel", help="Operator-only request; never kill/retry running code")
+    cancel.add_argument("task_id")
     modes.add_parser("inspect-expired", help="Quarantine expired leases, never replay")
     args = parser.parse_args(argv)
     try:
@@ -193,7 +202,10 @@ def main(argv=None):
             output = submit(q, args.journal, args.task_dir, args.task_id, branch=args.branch, commit=args.commit)
         elif args.command == "work-once":
             output = work_once(q, args.journal, args.task_dir, args.output_root,
-                               worker_id=args.worker_id, lease_seconds=args.lease_seconds)
+                               worker_id=args.worker_id, lease_seconds=args.lease_seconds,
+                               task_id=args.task_id)
+        elif args.command == "request-cancel":
+            output = q.request_cancel(args.task_id)
         else:
             output = {"quarantined": q.recover_expired(), "execution_authorized": False}
     except (OSError, ValueError, TypeError) as exc:
