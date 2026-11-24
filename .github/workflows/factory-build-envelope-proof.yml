@@ -5,7 +5,7 @@ on:
 permissions: {}
 jobs:
   synthetic-envelope:
-    if: github.event.repository.private == false && github.head_ref == 'audit/factory-p0-coding-wheel-notices-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
@@ -23,7 +23,7 @@ jobs:
           mkdir -m 0700 evidence
           name="coden-build-envelope-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           scratch="$name-scratch"
-          printf "%s\n" "attempt_started; previous run 45467750319 failed before execution due to unsupported inline nr_inodes option" > evidence/attempt.txt
+          printf "%s\n" "synthetic_resource_preflight_started; 60s timeout proof only; no source build" > evidence/attempt.txt
           cleanup() {
             rc=$?
             trap - EXIT
@@ -37,12 +37,12 @@ jobs:
           trap cleanup EXIT
           # Use the rootless local tmpfs volume driver proven in the earlier model-link test.
           podman volume create --opt type=tmpfs --opt device=tmpfs \
-            --opt o=rw,exec,nosuid,nodev,size=128m,nr_inodes=8192,mode=1777 "$scratch" >/dev/null
+            --opt o=rw,exec,nosuid,nodev,size=1024m,nr_inodes=65536,mode=1777 "$scratch" >/dev/null
           export CODEN_SYNTHETIC_HOST_SECRET=never_forward_this_canary
           podman create --name "$name" --pull=never --network none \
             --http-proxy=false --read-only --read-only-tmpfs=false \
             --cap-drop=all --security-opt=no-new-privileges --user 65534:65534 \
-            --cpus=2 --memory=2048m --memory-swap=2048m --pids-limit=128 \
+            --cpus=2 --memory=4096m --memory-swap=4096m --pids-limit=128 \
             --cgroupns=private --pid=private --ipc=private --timeout=60 \
             --ulimit core=0:0 --volume "$scratch:/scratch:rw,nocopy" \
             --workdir /scratch --env HOME=/scratch \
@@ -52,18 +52,18 @@ jobs:
               test ! -e /var/run/docker.sock
               test ! -e /run/podman/podman.sock
               test "$(cat /sys/fs/cgroup/cpu.max)" = "200000 100000"
-              test "$(cat /sys/fs/cgroup/memory.max)" = "2147483648"
+              test "$(cat /sys/fs/cgroup/memory.max)" = "4294967296"
               test "$(cat /sys/fs/cgroup/pids.max)" = 128
               test "$(cat /sys/fs/cgroup/memory.swap.max)" = 0
               grep -Eq "^CapEff:[[:space:]]+0+$" /proc/self/status
               grep -Eq "^NoNewPrivs:[[:space:]]+1$" /proc/self/status
               if touch /should-not-write 2>/dev/null; then exit 11; fi
-              test "$(df -Pk /scratch | awk "NR==2 {print \$2}")" = 131072
-              test "$(df -Pi /scratch | awk "NR==2 {print \$2}")" = 8192
+              test "$(df -Pk /scratch | awk "NR==2 {print \$2}")" = 1048576
+              test "$(df -Pi /scratch | awk "NR==2 {print \$2}")" = 65536
               grep -Eq " /scratch .* - tmpfs " /proc/self/mountinfo
               echo synthetic > /scratch/probe
               test "$(cat /scratch/probe)" = synthetic
-              if dd if=/dev/zero of=/scratch/limit-probe bs=1M count=132 2>/dev/null; then exit 12; fi
+              if dd if=/dev/zero of=/scratch/limit-probe bs=1M count=1028 2>/dev/null; then exit 12; fi
               rm /scratch/limit-probe
               test "$(ls /sys/class/net | tr "\n" " ")" = "lo "
               printf "SYNTHETIC_ENVELOPE_CHECKS_PASS\n"
@@ -94,7 +94,7 @@ jobs:
           while read -r pid identity; do
             if test -e "/proc/$pid/stat" && test "$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null || true)" = "$identity"; then exit 13; fi
           done < evidence/process-identities.txt
-          jq -n --argjson elapsed "$elapsed" '{status:"synthetic_build_envelope_pass",cpu:2,memory_bytes:2147483648,pids:128,scratch_bytes:134217728,scratch_inodes:8192,network:"none",elapsed_seconds:$elapsed,actual_source_build:false,actual_agent_server_test:false,license_approved:false,release_authorized:false}' > evidence/review.json
+          jq -n --argjson elapsed "$elapsed" '{status:"synthetic_build_envelope_pass",cpu:2,memory_bytes:4294967296,pids:128,scratch_bytes:1073741824,scratch_inodes:65536,synthetic_timeout_seconds:60,approved_build_timeout_seconds:600,full_build_timeout_tested:false,network:"none",elapsed_seconds:$elapsed,actual_source_build:false,actual_agent_server_test:false,license_approved:false,release_authorized:false}' > evidence/review.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
