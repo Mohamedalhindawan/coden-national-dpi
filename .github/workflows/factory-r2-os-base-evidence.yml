@@ -105,3 +105,49 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+  base-security-review:
+    if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - name: Initialize review-only security evidence
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          printf '%s\n' '{"target":"docker.io/library/ubuntu@sha256:9a04f13b3f80ef056361e30868593b1cfd2279fe19e4081cb93a90bf56819d6a","platform":"linux/amd64","coverage_verified":false,"security_approved":false,"build_authorized":false,"release_authorized":false}' > evidence/scope.json
+      - name: Collect all-severity vulnerability evidence for exact base
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        env:
+          TRIVY_IMAGE_SRC: remote
+          TRIVY_PLATFORM: linux/amd64
+          TRIVY_IGNORE_UNFIXED: 'false'
+          TRIVY_SEVERITY: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+        with:
+          version: v0.69.3
+          scan-type: image
+          image-ref: docker.io/library/ubuntu@sha256:9a04f13b3f80ef056361e30868593b1cfd2279fe19e4081cb93a90bf56819d6a
+          scanners: vuln
+          format: json
+          list-all-pkgs: true
+          exit-code: '0'
+          ignore-unfixed: false
+          output: evidence/base-scan.json
+          cache: false
+          timeout: 8m
+      - name: Preserve scanner identity and verify report exists
+        run: |
+          set -euo pipefail
+          trivy --version > evidence/trivy-version.txt
+          test -s evidence/base-scan.json
+          jq -e '.Metadata.OS.Family == "ubuntu" and (.Results | type == "array" and length > 0)' evidence/base-scan.json >/dev/null
+          # Evidence collection only: independently reconcile package coverage and findings before any admission.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-os-base-security-review
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
