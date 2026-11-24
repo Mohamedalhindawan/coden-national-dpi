@@ -19,6 +19,7 @@ jobs:
   real-actionlint-source-061:
     if: >-
       github.event_name == 'pull_request' &&
+      github.event.repository.private == false &&
       github.head_ref == 'feat/factory-actionlint-p0-activation-20261123' &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-22.04
@@ -113,10 +114,32 @@ jobs:
           print(json.dumps(report, sort_keys=True))
           PY
 
+      - name: Checkout exact Acceleration Batch 01 snapshot for static lint only
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 6772710db90a81bb3362a86d1aa1ae14e041f8e0
+          path: lint-target
+          persist-credentials: false
+
+      - name: Lint all workflows in the pinned Batch 01 snapshot
+        shell: bash
+        working-directory: lint-target
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 6772710db90a81bb3362a86d1aa1ae14e041f8e0
+          git ls-files -- .github/workflows/ | tee "$RUNNER_TEMP/batch01-workflows.txt"
+          actionlint -oneline 2>&1 | tee "$RUNNER_TEMP/batch01-actionlint.txt"
+          echo "PASS: full pinned Batch 01 workflow lint."
+
       - name: Upload evidence for independent human review only
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: coden-pinned-actionlint-source-061-proof
-          path: ${{ runner.temp }}/actionlint-source-061-evidence.json
-          retention-days: 2
+          path: |
+            ${{ runner.temp }}/actionlint-source-061-evidence.json
+            ${{ runner.temp }}/actionlint-negative.txt
+            ${{ runner.temp }}/batch01-workflows.txt
+            ${{ runner.temp }}/batch01-actionlint.txt
+          retention-days: 7
           if-no-files-found: error
