@@ -14,7 +14,7 @@ from urllib.parse import quote
 from . import durable_queue, reconcile
 
 STATES = frozenset({"queued", "leased", "awaiting_human_review",
-                    "needs_review", "blocked", "failed"})
+                    "needs_review", "blocked", "failed", "cancelled", "cancel_requested"})
 
 
 def snapshot(queue_db, journal_dir, task_dir, *, now=None):
@@ -40,12 +40,12 @@ def snapshot(queue_db, journal_dir, task_dir, *, now=None):
         if status not in STATES:
             raise ValueError("unknown queue status")
         counts[status] += 1
-        if status == "leased":
+        if status in ("leased", "cancel_requested"):
             if type(deadline) not in (int, float) or not math.isfinite(deadline) or deadline < 0:
                 raise ValueError("invalid lease deadline")
             expired += int(deadline < stamp)
         elif deadline is not None:
-            raise ValueError("unexpected deadline outside leased state")
+            raise ValueError("unexpected deadline outside running state")
     report = reconcile.scan(path, journal_dir, task_dir)
     return {
         "queue_depth": counts["queued"],
@@ -55,9 +55,12 @@ def snapshot(queue_db, journal_dir, task_dir, *, now=None):
         "needs_review": counts["needs_review"],
         "blocked": counts["blocked"],
         "failed": counts["failed"],
+        "cancelled": counts["cancelled"],
+        "cancel_requested": counts["cancel_requested"],
         "conditions": report["conditions"],
         "needs_attention": bool(expired or report["needs_attention"] or
-                                counts["needs_review"] or counts["blocked"] or counts["failed"]),
+                                counts["needs_review"] or counts["blocked"] or counts["failed"] or
+                                counts["cancel_requested"]),
         "worker_availability": "unverified",
         "read_only": True,
         "execution_authorized": False,
