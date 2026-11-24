@@ -1,0 +1,145 @@
+name: CODEN Factory P0 pinned actionlint proof
+
+# The binary is downloaded from the official immutable *release tag* and
+# verified against the published asset digest before it is ever executed.
+# Only an operator-owned, named first-party Draft PR can run this job.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/factory-actionlint-p0.yml'
+      - 'tests/test_factory_actionlint_p0.py'
+      - 'docs/FACTORY_ACTIONLINT_ACTIVATION.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-actionlint-source-061:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.repository.private == false &&
+      github.head_ref == 'feat/factory-actionlint-p0-activation-20261123' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout review-only code without persisted credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+
+      - name: RED-GREEN contract for actual source-061 execution
+        run: python -m unittest discover -s tests -p 'test_factory_actionlint_p0.py' -v
+
+      - name: Retrieve immutable actionlint v1.7.12 and verify published SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/actionlint-bin"
+          curl --fail --location --silent --show-error --retry 2 --connect-timeout 10 --max-time 120 \
+            -o "$RUNNER_TEMP/actionlint_1.7.12_linux_amd64.tar.gz" \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          cd "$RUNNER_TEMP"
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  actionlint_1.7.12_linux_amd64.tar.gz" | sha256sum --check
+          tar -xzf actionlint_1.7.12_linux_amd64.tar.gz -C actionlint-bin actionlint
+          chmod 0555 actionlint-bin/actionlint
+          echo "$RUNNER_TEMP/actionlint-bin" >> "$GITHUB_PATH"
+
+      - name: Execute official actionlint on checked-in factory workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          actionlint -version
+          actionlint -oneline \
+            .github/workflows/ai-factory-intake-dry-run.yml \
+            .github/workflows/factory-actionlint-p0.yml
+          echo "PASS: actionlint syntax/expression checks on two real CODEN workflows."
+
+      - name: Prove the REAL tool rejects deliberately invalid synthetic workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/bad-workflow.yml" <<'YAML'
+          name: synthetic invalid check
+          on: push
+          jobs:
+            broken:
+              runs-on: ubuntu-latest
+              steps:
+                - name: expected invalid workflow to fail
+                  run: echo "synthetic negative only"
+                  invalid_custom_key: true
+          YAML
+          if actionlint -oneline "$RUNNER_TEMP/bad-workflow.yml" >"$RUNNER_TEMP/actionlint-negative.txt" 2>&1; then
+            echo "expected invalid workflow to fail but actionlint returned success" >&2
+            exit 1
+          fi
+          echo "Observed synthetic-negative actionlint diagnostic:"
+          cat "$RUNNER_TEMP/actionlint-negative.txt"
+          grep -F "invalid_custom_key" "$RUNNER_TEMP/actionlint-negative.txt" >/dev/null
+          echo "PASS: official actionlint rejected invalid_custom_key, no fake scanner."
+
+      - name: Create sanitized no-approval lint evidence (no source mutation)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          out = Path(os.environ["RUNNER_TEMP"]) / "actionlint-source-061-evidence.json"
+          report = dict(
+              source_id="source-061",
+              upstream="rhysd/actionlint",
+              binary_version="v1.7.12",
+              linux_amd64_archive_sha256="8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8",
+              checked_workflow_count=2,
+              rejected_invalid_synthetic_workflow=True,
+              runtime_proof="real_official_cli_invoked_on_ci_runner",
+              source_admission="proposed_only",
+              catalog_approved=False,
+              catalog_enabled=False,
+              repository_modified_by_linter=False,
+              release_authorized=False,
+              paid_calls=0
+          )
+          out.write_text(json.dumps(report, sort_keys=True, indent=2) + chr(10))
+          print(json.dumps(report, sort_keys=True))
+          PY
+
+      - name: Checkout exact Acceleration Batch 01 snapshot for static lint only
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 2ee331bf48430c7f3303415b794d04864fc37f96
+          path: lint-target
+          persist-credentials: false
+
+      - name: Lint all workflows in the pinned Batch 01 snapshot
+        shell: bash
+        working-directory: lint-target
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 2ee331bf48430c7f3303415b794d04864fc37f96
+          git ls-files -- .github/workflows/ | tee "$RUNNER_TEMP/batch01-workflows.txt"
+          actionlint -oneline 2>&1 | tee "$RUNNER_TEMP/batch01-actionlint.txt"
+          echo "PASS: full pinned Batch 01 workflow lint."
+
+      - name: Upload evidence for independent human review only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coden-pinned-actionlint-source-061-proof
+          path: |
+            ${{ runner.temp }}/actionlint-source-061-evidence.json
+            ${{ runner.temp }}/actionlint-negative.txt
+            ${{ runner.temp }}/batch01-workflows.txt
+            ${{ runner.temp }}/batch01-actionlint.txt
+          retention-days: 7
+          if-no-files-found: error
