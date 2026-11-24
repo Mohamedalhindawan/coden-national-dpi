@@ -20,7 +20,8 @@ jobs:
         run: |
           set -euo pipefail
           evidence=docs/evidence/openhands-077f3fad
-          echo "36cce3a3559de7912f3e57dd8d30aa898daa7aa6d181085de82e15affbd70463  $evidence/ubuntu-rebase-review.zip" | sha256sum -c -
+          printf '%s  %s\n' 36cce3a3559de7912f3e57dd8d30aa898daa7aa6d181085de82e15affbd70463 "$evidence/ubuntu-rebase-review.zip" > "$RUNNER_TEMP/coden-rebase.sha256"
+          sha256sum -c "$RUNNER_TEMP/coden-rebase.sha256"
           unzip -p "$evidence/ubuntu-rebase-review.zip" frozen.json > frozen.json
           python3 - <<'PY'
           import json, re
