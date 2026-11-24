@@ -102,3 +102,120 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+  synthetic-os-writable-root:
+    if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    permissions: {}
+    env:
+      BASE: docker.io/library/ubuntu@sha256:9a04f13b3f80ef056361e30868593b1cfd2279fe19e4081cb93a90bf56819d6a
+    steps:
+      - name: Verify rootless host and immutable reviewed base
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          podman info --format json | jq -e '.host.security.rootless == true and .host.cgroupVersion == "v2" and (.host.cgroupControllers | contains(["cpu","memory","pids"]))' >/dev/null
+          podman pull --platform linux/amd64 "$BASE"
+      - name: Test synthetic disposable root copy and namespace-only chroot
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          name="coden-os-preflight-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          scratch="$name-scratch"
+          printf '%s\n' '{"operator_receipt":7147469552,"synthetic_only":true,"real_deb_installation":false,"os_attempt_consumed":false,"build_authorized":false,"release_authorized":false}' > evidence/scope.json
+          cleanup() {
+            rc=$?
+            trap - EXIT
+            podman rm -f --ignore "$name" >/dev/null 2>&1 || rc=1
+            podman volume rm -f "$scratch" >/dev/null 2>&1 || rc=1
+            if podman container exists "$name" || podman volume exists "$scratch"; then rc=1; else echo resources_removed > evidence/cleanup.txt; fi
+            printf 'final_exit_code=%s\n' "$rc" > evidence/exit.txt
+            exit "$rc"
+          }
+          trap cleanup EXIT
+          # Deliberately reserve headroom for auxiliary mounts; total writable quota still requires independent review.
+          podman volume create --opt type=tmpfs --opt device=tmpfs \
+            --opt o=rw,exec,nosuid,nodev,size=768m,nr_inodes=49152,mode=0700 "$scratch" >/dev/null
+          export CODEN_SYNTHETIC_HOST_SECRET=never_forward_this_canary
+          podman create --name "$name" --pull=never --network none \
+            --http-proxy=false --read-only --read-only-tmpfs=false \
+            --cap-drop=all --cap-add=CHOWN,DAC_OVERRIDE,FOWNER,SYS_CHROOT \
+            --security-opt=no-new-privileges --user 0:0 \
+            --cpus=2 --memory=4096m --memory-swap=4096m --pids-limit=128 \
+            --cgroupns=private --pid=private --ipc=private --timeout=60 \
+            --ulimit core=0:0 --volume "$scratch:/scratch:rw,nocopy" \
+            --workdir /scratch --env HOME=/scratch \
+            "$BASE" /bin/sh -eu -c '
+              test "$(id -u)" = 0
+              test -z "${CODEN_SYNTHETIC_HOST_SECRET:-}"
+              test ! -e /var/run/docker.sock
+              test ! -e /run/podman/podman.sock
+              test "$(ls /sys/class/net | tr "\n" " ")" = "lo "
+              cat /proc/self/uid_map /proc/self/gid_map
+              awk "NR==1 {if (\$1!=0 || \$2==0) exit 1}" /proc/self/uid_map
+              test "$(cat /sys/fs/cgroup/cpu.max)" = "200000 100000"
+              test "$(cat /sys/fs/cgroup/memory.max)" = "4294967296"
+              test "$(cat /sys/fs/cgroup/memory.swap.max)" = 0
+              test "$(cat /sys/fs/cgroup/pids.max)" = 128
+              grep -Eq "^CapEff:[[:space:]]+000000000004000b$" /proc/self/status
+              grep -Eq "^NoNewPrivs:[[:space:]]+1$" /proc/self/status
+              if touch /should-not-write 2>/dev/null; then exit 11; fi
+              if touch /usr/should-not-write 2>/dev/null; then exit 12; fi
+              cat /proc/self/mountinfo
+              df -Pk
+              df -Pi
+              test "$(df -Pk /scratch | awk "NR==2 {print \$2}")" = 786432
+              test "$(df -Pi /scratch | awk "NR==2 {print \$2}")" = 49152
+              grep -Eq " /scratch .* - tmpfs " /proc/self/mountinfo
+              mkdir /scratch/root
+              # Copy only trusted base files, preserving symlinks; no host bind mounts or device nodes.
+              for part in bin sbin lib lib64 usr etc var; do
+                if test -e "/$part" || test -L "/$part"; then cp -a "/$part" /scratch/root/; fi
+              done
+              mkdir -p /scratch/root/dev /scratch/root/proc /scratch/root/sys /scratch/root/run /scratch/root/tmp
+              chmod 1777 /scratch/root/tmp
+              cp -a /scratch/root/var/lib/dpkg/status /scratch/status.before
+              chroot /scratch/root /bin/sh -eu -c "printf synthetic > /tmp/coden-probe; chown 65534:65534 /tmp/coden-probe"
+              test "$(cat /scratch/root/tmp/coden-probe)" = synthetic
+              test "$(stat -c %u /scratch/root/tmp/coden-probe)" = 65534
+              test ! -e /tmp/coden-probe
+              cmp /scratch/status.before /scratch/root/var/lib/dpkg/status
+              df -Pk /scratch
+              df -Pi /scratch
+              if dd if=/dev/zero of=/scratch/limit-probe bs=1M count=769 2>/dev/null; then exit 13; fi
+              rm -f /scratch/limit-probe
+              printf "SYNTHETIC_WRITABLE_ROOT_COPY_PASS\n"
+              sleep 120 &
+              wait
+            '
+          podman inspect "$name" | jq -e '.[0] | .HostConfig.Privileged==false and .HostConfig.ReadonlyRootfs==true and .HostConfig.NetworkMode=="none" and ((.HostConfig.PortBindings // {})|length==0) and ([.Mounts[]? | select(.Type=="bind")]|length==0)' >/dev/null
+          started=$(date +%s)
+          podman start "$name" >/dev/null
+          for _ in $(seq 1 35); do
+            if podman logs "$name" 2>&1 | grep -qx SYNTHETIC_WRITABLE_ROOT_COPY_PASS; then break; fi
+            if [ "$(podman inspect "$name" --format '{{.State.Running}}')" = false ]; then break; fi
+            sleep 1
+          done
+          podman logs "$name" > evidence/probe.log 2>&1
+          grep -qx SYNTHETIC_WRITABLE_ROOT_COPY_PASS evidence/probe.log
+          podman top "$name" hpid | tail -n +2 | awk '{print $1}' > evidence/host-pids.txt
+          test "$(wc -l < evidence/host-pids.txt)" -ge 2
+          while read -r pid; do
+            printf '%s %s\n' "$pid" "$(awk '{print $22}' "/proc/$pid/stat")"
+          done < evidence/host-pids.txt > evidence/process-identities.txt
+          timeout 80 podman wait "$name" > evidence/container-exit.txt
+          elapsed=$(( $(date +%s) - started ))
+          test "$elapsed" -ge 45 && test "$elapsed" -le 75
+          test "$(podman inspect "$name" --format '{{.State.Running}}')" = false
+          while read -r pid identity; do
+            if test -e "/proc/$pid/stat" && test "$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null || true)" = "$identity"; then exit 14; fi
+          done < evidence/process-identities.txt
+          jq -n --argjson elapsed "$elapsed" '{status:"synthetic_root_copy_pass",elapsed_seconds:$elapsed,private_scratch_bytes:805306368,private_scratch_inodes:49152,synthetic_timeout_seconds:60,all_writable_mounts_bounded:false,dpkg_capabilities_verified:false,real_deb_installation:false,os_attempt_consumed:false,legal_approved:false,build_authorized:false,release_authorized:false}' > evidence/review.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: synthetic-os-writable-root-proof
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
