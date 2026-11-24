@@ -1,0 +1,104 @@
+name: CODEN P0 optional ToM feature and runtime dependency scope review
+on:
+  pull_request:
+    paths: ['.github/workflows/factory-coding-tom-scope.yml']
+permissions: {}
+jobs:
+  review:
+    if: github.event.repository.private == false && github.head_ref == 'audit/factory-p0-coding-wheel-notices-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: OpenHands/software-agent-sdk
+          ref: 077f3fad6d31cd852be5c87176e0a93c3b446126
+          persist-credentials: false
+          path: upstream
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45449754612
+          name: coding-profile-review
+          path: input
+      - name: Verify candidate and enumerate ToM source call sites
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          test "$(git -C upstream rev-parse HEAD)" = 077f3fad6d31cd852be5c87176e0a93c3b446126
+          echo 'ed07829fc67bf0da94b493e9488e8798a9e067c200e8ccbdc1e2a1b8c35ebd1a  input/candidate.lock' | sha256sum -c -
+          echo '6a9bfac22ee791f438d8eeb28539dda704783cdafaebbb0aad47100eed57f61d  input/candidate-manifests.patch' | sha256sum -c -
+          git -C upstream grep -nE 'tom_swe|tom_consult|TomConsultTool|SleeptimeComputeTool|create_tom_agent' -- 'openhands-*/**/*.py' 'openhands-*/pyproject.toml' 'openhands-*/**/*.spec' > evidence/tom-source-references.txt
+          git -C upstream apply --check ../input/candidate-manifests.patch
+          git -C upstream apply ../input/candidate-manifests.patch
+          cp input/candidate.lock upstream/uv.lock
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+        with:
+          version: '0.13.7'
+          python-version: '3.13.15'
+          enable-cache: false
+      - name: Export original candidate non-dev dependency view
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          uv export --frozen --all-packages --no-dev --no-emit-workspace --format requirements-txt --output-file ../evidence/original-non-dev.txt
+      - name: Evaluate moving ToM to optional extra in temporary source manifest
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import tomllib
+          from pathlib import Path
+          path=Path("openhands-tools/pyproject.toml")
+          raw=path.read_text()
+          before=tomllib.loads(raw)
+          req="tom-swe>=1.0.3"
+          assert req in before["project"]["dependencies"]
+          assert raw.count('    "'+req+'",\n')==1
+          assert "optional-dependencies" not in before["project"]
+          raw=raw.replace('    "'+req+'",\n',"",1)
+          raw=raw.replace("[project.urls]", '[project.optional-dependencies]\ntom-consult = ["'+req+'"]\n\n[project.urls]',1)
+          after=tomllib.loads(raw)
+          assert after["project"]["dependencies"]==[r for r in before["project"]["dependencies"] if r!=req]
+          assert after["project"]["optional-dependencies"]=={"tom-consult":[req]}
+          path.write_text(raw)
+          PY
+          git diff -- '*pyproject.toml' > ../evidence/optional-tom-manifest.patch
+          if ! timeout 120 uv lock --no-build > ../evidence/resolver.log 2>&1; then
+            tail -35 ../evidence/resolver.log
+            exit 1
+          fi
+          cp uv.lock ../evidence/optional-tom.lock
+          uv export --frozen --all-packages --no-dev --no-emit-workspace --format requirements-txt --output-file ../evidence/optional-tom-non-dev.txt
+          python3 - <<'PY'
+          import hashlib,json,re,tomllib
+          from pathlib import Path
+          root=Path("../evidence")
+          raw=(root/"optional-tom.lock").read_bytes()
+          before=tomllib.loads(Path("../input/candidate.lock").read_text())["package"]
+          after=tomllib.loads(raw.decode())["package"]
+          def versions(items):
+              return {(p["name"],p["version"]) for p in items}
+          def names(file):
+              return sorted({re.sub(r"[-_.]+","-",m.group(1)).lower() for line in file.read_text().splitlines() if (m:=re.match(r"^([A-Za-z0-9_.-]+)==",line))})
+          old=names(root/"original-non-dev.txt")
+          new=names(root/"optional-tom-non-dev.txt")
+          assert old and new and "tom-swe" in old
+          assert not {"browser-use","browser-use-sdk","func-timeout","lmnr","lmnr-claude-code-proxy","tom-swe"} & set(new)
+          report={"status":"non_dev_export_excludes_tom","sha256":hashlib.sha256(raw).hexdigest(),"old_lock_records":len(before),"new_lock_records":len(after),
+              "old_non_dev_count":len(old),"new_non_dev_count":len(new),"removed_from_export":sorted(set(old)-set(new)),
+              "added_to_export":sorted(set(new)-set(old)),"lock_removed":sorted(versions(before)-versions(after)),"lock_added":sorted(versions(after)-versions(before)),
+              "tom_still_in_optional_lock":any(p["name"]=="tom-swe" for p in after),"installed":False,"built":False,"runtime_scanned":False,"license_approved":False,"release_authorized":False}
+          (root/"scope-review.json").write_text(json.dumps(report,indent=2))
+          print("Non-dev export",len(old),"->",len(new),"; optional ToM retained in lock:",report["tom_still_in_optional_lock"])
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: optional-tom-runtime-scope
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
