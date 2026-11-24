@@ -52,3 +52,38 @@ Static artifact retrieval: attempts to open all five selected wheel candidate UR
 Next bounded CI task: use the exact archived lock and read-only public CI with pinned actions, download only compatible artifacts from the recorded files.pythonhosted.org URLs, independently SHA-256 check before ZIP inspection, reject unexpected names/path traversal and oversized entries, collect LICENSE/NOTICE/COPYING and METADATA with source hashes, including any nested bundled dependency notices. Verify actual wheel selection separately. Do not run package code or grant license/security admission. Keep review artifact and manual review requirement. No repeat of earlier real-model/runtime jobs is required for this static audit.
 
 Verified existing [#184 initial-head Prototype checks](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/45442822864) completed successfully. This is historical CI for the initial documentation commit, not an execution of the proposed artifact audit.
+
+
+## Observed static CI results and artifact review (2026-11-24)
+
+Verified head `91da8b7bbf25c206c7f780076ef6a286283f7d0e`: [static audit](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/45443675358) SUCCESS, focused 5/5; [prototype](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/45443675667) SUCCESS, 272 run (271 pass, 1 skipped), OpenAPI pass; [intake](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/45443675305) SUCCESS. No package installation or execution in static audit.
+
+Downloaded actual [artifact 14945446397](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/45443675358/artifacts/14945446397) and independently computed ZIP SHA-256 `c77b93ba1033907bb89a9cc6a42e64773ca3fdaa75675bf03b6a40755fb6021e`, matching GitHub. Parsed all six candidate records, decoded each collected metadata/notice file and independently checked its SHA-256 against the receipt. Source wheel hashes were checked by CI, not recomputed locally from original wheels. This supersedes the earlier blocked candidate retrieval result, NOT the installed-distribution selection or legal approval gate.
+
+| Exact candidate | Observed license evidence | Status |
+|---|---|---|
+| agent-client-protocol 1.0.0 | Apache-2.0 text in dist-info/licenses/LICENSE, SHA-256 cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30 | Text observed; obligations review pending |
+| jsonref 1.1.0 | MIT metadata and text, SHA-256 c93d594f97a1bc45d04908cd47c707cd7ff078f038a011443e0049ed28da3f31 | Text observed; obligations review pending |
+| protobuf 6.33.5 | Both ABI3 and pure Python candidates contain identical BSD-3-Clause text, SHA-256 6e5e117324afd944dcf67f36cf329843bc1a92229a8cd9bb573d7a83130fea7d | Text observed; native bundled notices/selection pending |
+| browser-use-sdk 2.0.15 | METADATA only, no license field or notice collected; exact source LICENSE lookup at v2.0.15 and 2.0.15 failed | BLOCKED; no assumption of open-source rights; keep disabled |
+| lmnr-claude-code-proxy 0.1.23 | METADATA only, no license field or notice collected; attempted upstream LICENSE lookup failed | BLOCKED; keep disabled |
+
+Four editable OpenHands packages retain the earlier MIT root-source evidence, with package-specific/nested obligations pending. Of nine original metadata gaps, three now have direct candidate wheel license text, four root-source evidence, and two unresolved wheel license texts. None has final legal approval.
+
+## Independent review of previously recorded vulnerability scan
+
+Downloaded [artifact 14940190698](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/45431783950/artifacts/14940190698) and independently checked ZIP SHA-256 `684eba3009dc8885f9a3199220996083b32b139cab7d0a13fb63f6e2ac034760`, matching GitHub. Parsed both scan JSONs: Python environment 7 MEDIUM / 1 LOW; OS 30 MEDIUM / 5 LOW; no HIGH or CRITICAL rows in either scan. These are prior scan results, not a fresh vulnerability database scan.
+
+All seven Python MEDIUM records have a reported fixed version across five packages:
+
+| Package | Recorded installed | Highest reported fix in archived scan | Advisory IDs |
+|---|---|---|---|
+| mako | 1.3.12 | 1.4.2 | CVE-2026-102991 |
+| multidict | 6.7.0 | 6.9.1 | CVE-2026-104874 |
+| opentelemetry-api | 1.39.1 | 1.45.2 | CVE-2026-114603, CVE-2026-126360 |
+| pyjwt | 2.14.0 | 2.15.0 | CVE-2026-101918, CVE-2026-102275 |
+| setuptools | 80.9.0 | 83.0.0 | CVE-2026-59890 |
+
+OS: twelve records across libc-bin and libc6 report fix 2.39-0ubuntu8.12, versus installed 2.39-0ubuntu8.9; eighteen other medium records report no fixed version in the archived scan. Counts are package/advisory rows, not unique CVEs.
+
+Next: verify current upstream compatibility and signed OS availability before a separate hash-pinned rebuild/rescan. Prefer excluding unneeded optional dependencies only after proven runtime reachability and supported build changes; otherwise obtain exact artifact rights or keep admission blocked. Prepare tool-call schema compatibility tests without executing model-selected commands. #162 remains open. No runtime admission, no package upgrades applied, no new live SDK tests or merges. All approvals false.
