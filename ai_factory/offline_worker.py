@@ -69,6 +69,39 @@ def submit(queue, checkpoint_root, tasks_dir, task_id, *, branch, commit):
     return queue.enqueue(task_id, branch, commit, digest)
 
 
+
+def submit_idempotent(queue, checkpoint_root, tasks_dir, task_id, *, branch, commit):
+    """Register once or return an existing matching receipt, never replay work.
+
+    The operator owns both stores. This is not an atomic cross-store transaction:
+    a concurrent first submission may be rejected and an orphan requires review.
+    The strict submit API remains unchanged.
+    """
+    _, digest = _load_task(tasks_dir, task_id)
+    checkpoint._branch(branch)
+    checkpoint._commit(commit)
+    if not branch or not commit:
+        raise ValueError("branch and full commit required")
+    try:
+        state = queue.read(task_id)
+    except ValueError as exc:
+        if str(exc) != "unknown task":
+            raise
+        # Exclusive journal creation prevents duplicate admissions and refuses
+        # an orphan. Do not retry or delete a journal after a failed enqueue.
+        checkpoint.create(checkpoint_root, task_id, branch=branch, commit=commit)
+        return queue.enqueue(task_id, branch, commit, digest)
+    if (state["branch"], state["commit"], state["task_sha256"]) != (branch, commit, digest):
+        raise ValueError("admission identity conflict")
+    journal = checkpoint.read(checkpoint_root, task_id)
+    if (journal["last_branch"], journal["last_commit"]) != (branch, commit):
+        raise ValueError("admission journal identity conflict")
+    if state["status"] == "queued" and journal["status"] != "prepared":
+        raise ValueError("queued admission requires a prepared journal")
+    # Receipt only: no status update, lease extension, retry or approval.
+    return state
+
+
 def _public(lease, status, *, directory=None):
     result = {
         "task_id": lease["task_id"],
