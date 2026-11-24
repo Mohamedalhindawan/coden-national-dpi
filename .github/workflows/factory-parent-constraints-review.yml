@@ -1,0 +1,78 @@
+name: CODEN P0 parent constraints and licensed replacement review
+on:
+  pull_request:
+    paths: ['.github/workflows/factory-parent-constraints-review.yml']
+permissions: {}
+jobs:
+  metadata-review:
+    if: github.event.repository.private == false && github.head_ref == 'audit/factory-p0-runtime-dependency-remediation-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Inspect exact baseline parent requirements and MIT candidate wheel
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, json, tomllib, zipfile
+          from email.parser import BytesParser
+          from pathlib import Path
+          from urllib.parse import urlsplit
+          from urllib.request import build_opener
+          from ai_factory.factory_wheel_notice_audit import inspect_wheel, NoRedirect, CAP
+          archive = Path("docs/evidence/openhands-077f3fad/fixed-source-provenance.zip")
+          assert hashlib.sha256(archive.read_bytes()).hexdigest() == "a86bac8c435a835697d8cfe3cee1f8c38ab4a99591b5af1fba6698686bfb7fd8"
+          with zipfile.ZipFile(archive) as z:
+              raw = z.read("resolved.lock")
+          assert hashlib.sha256(raw).hexdigest() == "6d8348da6768ae32bb7665bdc7ca2525d53e576e13729fcc41f0a28df7c25b69"
+          targets = {
+              "browser-use": ("0.11.9", "a66accf4dded24d056eb2733e354e159fd7d82cab986d75dc0f14b395467c82c"),
+              "lmnr": ("0.7.60", "efec73de28eb8b66bcda6aaab7db0bda8247a26f982e63295a754412bee607f0"),
+              "fastmcp-slim": ("4.2.0", "174239bed3ac47275afa7fe82941a65f86ad0314205195766c92b138c6dcfebe"),
+              "opentelemetry-semantic-conventions": ("0.60b1", "9fa8c8b0c110da289809292b0591220d3a7b53c1526a23021e977d68597893fb")
+          }
+          records = {}
+          def collect(name, version, digest, url):
+              assert name not in records
+              u = urlsplit(url)
+              assert u.scheme == "https" and u.netloc == "files.pythonhosted.org" and u.path.endswith(".whl") and not u.query and not u.fragment
+              with build_opener(NoRedirect()).open(url, timeout=30) as response:
+                  wheel = response.read(CAP + 1)
+              entries = inspect_wheel(wheel, digest)
+              metadata = [e for p,e in entries.items() if p.endswith(".dist-info/METADATA")]
+              assert len(metadata) == 1
+              m = BytesParser().parsebytes(base64.b64decode(metadata[0]["base64"]))
+              assert m["Name"].lower().replace("_","-") == name and m["Version"] == version
+              records[name] = {"version":version,"sha256":digest,"url":url,
+                  "requires_dist":m.get_all("Requires-Dist",[]),"license":m.get("License"),
+                  "license_expression":m.get("License-Expression"),"license_files":m.get_all("License-File",[]),
+                  "license_evidence":{p:e for p,e in entries.items() if not p.endswith(".dist-info/METADATA")}}
+              print("Verified parent or candidate metadata:",name,version)
+          for p in tomllib.loads(raw.decode())["package"]:
+              name=p["name"]
+              if name not in targets:
+                  continue
+              version,digest=targets[name]
+              assert p["version"] == version
+              wheels=[w for w in p.get("wheels",[]) if w["hash"]=="sha256:"+digest]
+              assert len(wheels)==1
+              collect(name,version,digest,wheels[0]["url"])
+          assert set(records)==set(targets)
+          # Public PyPI release 2026-07-17, not asserted to be the latest.
+          collect("browser-use-sdk","3.10.0","4a65df36f702fab6d90b0a5785bf8456a002abb5b504f856b1a8ab60251b9430",
+              "https://files.pythonhosted.org/packages/49/52/a6377a871f791044eeaa2755ce49433dc745e687b40ecd16258c12b0bf44/browser_use_sdk-3.10.0-py3-none-any.whl")
+          Path("parent-constraints-review.json").write_text(json.dumps({"status":"metadata_review_only","records":records,
+              "dependency_resolution_passed":False,"api_compatibility_verified":False,"old_license_approved":False,
+              "candidate_approved":False,"installed":False,"release_authorized":False},indent=2))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: parent-constraints-review
+          path: parent-constraints-review.json
+          retention-days: 7
+          if-no-files-found: error
