@@ -1,0 +1,29 @@
+name: CODEN OpenHands locked wheel notice audit
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/factory-wheel-notice-audit.yml'
+      - 'ai_factory/factory_wheel_notice_audit.py'
+      - 'tests/test_factory_wheel_notice_audit.py'
+permissions: {}
+jobs:
+  static-audit:
+    if: github.event.repository.private == false && github.head_ref == 'audit/openhands-license-gap-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Focused unit tests (no packages installed)
+        run: python3 -m unittest discover -s tests -p 'test_factory_wheel_notice_audit.py' -v
+      - name: Verify locked wheel hashes and collect static notices
+        run: python3 -m ai_factory.factory_wheel_notice_audit
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: openhands-locked-wheel-review
+          path: wheel-review.json
+          retention-days: 7
+          if-no-files-found: error
