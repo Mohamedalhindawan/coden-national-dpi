@@ -1,0 +1,12 @@
+# Exact source license review and parent constraints — 2026-11-24
+
+Status: review only; #162 remains open.
+
+- Static source review run [45448280567](https://github.com/Mohamedalhindawan/coden-national-dpi/actions/runs/45448280567) succeeded. Downloaded ZIP artifact 14947095717, independently recomputed SHA256 6960f8f5944053639b526da02f3f48416f79def4e26bbed92ddd2e2761d43ae6, parsed sdist-review.json and verified every preserved notice/metadata byte hash.
+- func-timeout 4.3.5: 35 regular source files indexed, 8 notice/metadata records collected. LICENSE is LGPL v3; setup.py header says LGPL v2.1, setup metadata says LGPLv2. Explicit version ambiguity. No redistribution approval or local wheel build.
+- browser-use-sdk 2.0.15: 139 files indexed, 3 metadata/readme records; no license text or declared license in the source records. Source pyproject names browser-use/browser-use-python; its 2.0.15 ref has matching version in pyproject (Git blob e238aef90f83e97f8ca80b69e4d95ab928923f74); lookup of LICENSE at that ref returned 404, not proof that every possible grant is absent. Newer PyPI 3.10.0 release advertises MIT: https://pypi.org/project/browser-use-sdk/3.10.0/ . This does not retroactively license 2.0.15 or establish compatibility with browser-use 0.11.9. Candidate wheel advertised SHA256 4a65df36f702fab6d90b0a5785bf8456a002abb5b504f856b1a8ab60251b9430.
+- lmnr-claude-code-proxy 0.1.23: 42 files indexed, 6 metadata/readme records. No license declaration in Python PKG-INFO or pyproject or Rust Cargo.toml. Rust Cargo.lock is present; full Rust dependency licensing still requires review.
+- Re-read isolated uv attempt logs in artifact 14947020531: all 5 fail on func-timeout's absent usable wheel under --no-build, rather than demonstrating specific incompatibility of each candidate upgrade. The previous combined telemetry conflict remains a separate blocker.
+- New workflow in commit 7081fc6c4ce6eeac864c2223e39d45604b816bbd collects exact parent wheel metadata for browser-use, lmnr, fastmcp-slim, opentelemetry-semantic-conventions, and the MIT-advertised browser-use-sdk 3.10.0 candidate. No install or build, no network inside an executing agent, no dependency override. Candidate compatibility and rights remain unverified until receipt and compatibility review.
+
+No approval, generated command, SDK conversation, release, or merge. Do not infer that static license checks passing means license compliance.

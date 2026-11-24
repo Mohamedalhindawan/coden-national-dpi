@@ -1,0 +1,127 @@
+name: CODEN P0 OpenHands dependency remediation preflight
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/factory-runtime-dependency-preflight.yml'
+permissions: {}
+jobs:
+  dependency-review:
+    if: github.event.repository.private == false && github.head_ref == 'audit/factory-p0-runtime-dependency-remediation-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: OpenHands/software-agent-sdk
+          ref: 077f3fad6d31cd852be5c87176e0a93c3b446126
+          persist-credentials: false
+          path: upstream
+      - name: Verify original source and exact repaired lock
+        run: |
+          set -euo pipefail
+          test "$(git -C upstream rev-parse HEAD)" = 077f3fad6d31cd852be5c87176e0a93c3b446126
+          echo '71c5479cb609b60872a7cbd34da764a0804c2e50c2658dba1bb5255e180d3603  upstream/uv.lock' | sha256sum -c -
+          mkdir -m 0700 evidence
+          archive=docs/evidence/openhands-077f3fad/fixed-source-provenance.zip
+          echo "a86bac8c435a835697d8cfe3cee1f8c38ab4a99591b5af1fba6698686bfb7fd8  $archive" | sha256sum -c -
+          unzip -p "$archive" resolved.lock > evidence/baseline.lock
+          echo '6d8348da6768ae32bb7665bdc7ca2525d53e576e13729fcc41f0a28df7c25b69  evidence/baseline.lock' | sha256sum -c -
+          cp evidence/baseline.lock upstream/uv.lock
+      - name: Static dependency reverse edges and source references
+        run: |
+          set -euo pipefail
+          # Static text search only; no imports, no execution or package installs.
+          git -C upstream grep -n -E 'browser_use_sdk|lmnr_claude_code_proxy|(^|[^a-z_])browser_use([^a-z_]|$)|(^|[^a-z_])lmnr([^a-z_]|$)' -- \
+            'openhands-sdk/**/*.py' 'openhands-tools/**/*.py' 'openhands-agent-server/**/*.py' \
+            'openhands-workspace/**/*.py' '*/pyproject.toml' '*/**/*.spec' \
+            > evidence/source-references.txt
+          python3 - <<'PY'
+          import tomllib, json
+          from pathlib import Path
+          lock = tomllib.loads(Path("evidence/baseline.lock").read_text())
+          names = {"browser-use-sdk", "lmnr-claude-code-proxy", "browser-use", "lmnr", "mako", "multidict", "opentelemetry-api", "pyjwt", "setuptools"}
+          rows = []
+          for p in lock["package"]:
+              for d in p.get("dependencies", []):
+                  if d["name"] in names:
+                      rows.append({"parent": p["name"], "parent_version": p["version"], "dependency": d})
+          assert any(x["dependency"]["name"] == "browser-use-sdk" for x in rows)
+          assert any(x["dependency"]["name"] == "lmnr-claude-code-proxy" for x in rows)
+          Path("evidence/reverse-edges.json").write_text(json.dumps(rows, indent=2))
+          print("Static reverse dependency edges collected:", len(rows))
+          PY
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+        with:
+          version: '0.13.7'
+          python-version: '3.13.15'
+          enable-cache: false
+      - name: Isolate candidate lock upgrades without installing
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Original combined attempt was unsatisfiable. Keep every outcome.
+          # Never override dependency requirements, install packages or build code.
+          mkdir -p ../evidence/attempts
+          for group in four_without_otel mako multidict pyjwt setuptools; do
+            cp ../evidence/baseline.lock uv.lock
+            case "$group" in
+              four_without_otel) args=(--upgrade-package 'mako>=1.4.2' --upgrade-package 'multidict>=6.9.1' --upgrade-package 'pyjwt>=2.15.0' --upgrade-package 'setuptools>=83.0.0');;
+              mako) args=(--upgrade-package 'mako>=1.4.2');;
+              multidict) args=(--upgrade-package 'multidict>=6.9.1');;
+              pyjwt) args=(--upgrade-package 'pyjwt>=2.15.0');;
+              setuptools) args=(--upgrade-package 'setuptools>=83.0.0');;
+            esac
+            if timeout 90 uv lock --no-build "${args[@]}" > "../evidence/attempts/$group.log" 2>&1; then
+              cp uv.lock "../evidence/attempts/$group.lock"
+              printf '%s\n' resolved > "../evidence/attempts/$group.status"
+            else
+              printf '%s\n' unresolved > "../evidence/attempts/$group.status"
+            fi
+          done
+          cp ../evidence/baseline.lock uv.lock
+          python3 - <<'PY'
+          import hashlib, json, tomllib
+          from pathlib import Path
+          root = Path("../evidence")
+          old = tomllib.loads((root/"baseline.lock").read_text())
+          def versions(lock):
+              result = {}
+              for package in lock["package"]:
+                  result.setdefault(package["name"], set()).add(package["version"])
+              return {k: sorted(v) for k,v in result.items()}
+          base = versions(old)
+          results = {}
+          for status in sorted((root/"attempts").glob("*.status")):
+              name = status.stem
+              record = {"status":status.read_text().strip()}
+              candidate = status.with_suffix(".lock")
+              if record["status"] == "resolved":
+                  raw = candidate.read_bytes()
+                  current = versions(tomllib.loads(raw.decode()))
+                  record["sha256"] = hashlib.sha256(raw).hexdigest()
+                  record["version_changes"] = {k:{"before":base.get(k,[]),"after":current.get(k,[])}
+                                              for k in sorted(set(base)|set(current)) if base.get(k)!=current.get(k)}
+              results[name] = record
+              print(name, record["status"])
+          (root/"status.json").write_text(json.dumps({
+              "status":"partial_resolution_review_required",
+              "attempts":results,"opentelemetry_conflict_unresolved":True,
+              "installed":False,"binary_built":False,"runtime_scanned":False,
+              "license_approved":False,"sdk_conversation_ran":False,"release_authorized":False
+          },indent=2))
+          if not any(x["status"]=="resolved" for x in results.values()):
+              raise SystemExit(1)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: openhands-runtime-dependency-preflight
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
