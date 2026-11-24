@@ -1,0 +1,113 @@
+name: CODEN P0 coding-only server packaging source contract
+on:
+  pull_request:
+    paths: ['.github/workflows/factory-coding-packaging-review.yml']
+permissions: {}
+jobs:
+  review:
+    if: github.event.repository.private == false && github.head_ref == 'audit/factory-p0-coding-wheel-notices-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: OpenHands/software-agent-sdk
+          ref: 077f3fad6d31cd852be5c87176e0a93c3b446126
+          persist-credentials: false
+          path: upstream
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45459482500
+          name: optional-tom-runtime-scope
+          path: input
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13.15'
+      - name: Verify exact upstream and optional manifest inputs
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          test "$(git -C upstream rev-parse HEAD)" = 077f3fad6d31cd852be5c87176e0a93c3b446126
+          echo '03975e58f3606f67a9458eae3a28a4076d58296805ab20a537986f03fbe8cf50  input/optional-tom-manifest.patch' | sha256sum -c -
+          echo '6bcb3f75c6a1803e3c47cad87c4881c5e250431b876d79e1deec2f82bd1a4301  input/optional-tom.lock' | sha256sum -c -
+          git -C upstream apply --check ../input/optional-tom-manifest.patch
+          git -C upstream apply ../input/optional-tom-manifest.patch
+      - name: Static RED and GREEN source contract (no upstream code executed)
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ast, hashlib, json
+          from pathlib import Path
+          root=Path("upstream")
+          server=root/"openhands-agent-server/openhands/agent_server"
+          router=server/"tool_router.py"
+          config=server/"config.py"
+          spec=server/"agent-server.spec"
+          laminar=root/"openhands-sdk/openhands/sdk/observability/laminar.py"
+          original={router:"c79975f466b2f6fb841ca4b56a863c400f5234b5",config:"a5cddce61e99d6ebf32a1eaca9dc623b19e55151",spec:"9cb330d45e4ba8f49259b571167dfd567cc43430",laminar:"d167cc3b8065159d06ddf9763698a244d6de557f"}
+          for p,sha in original.items():
+              raw=p.read_bytes()
+              assert hashlib.sha1(b"blob "+str(len(raw)).encode()+b"\0"+raw).hexdigest()==sha
+          forbidden=("openhands.tools.browser_use","openhands.tools.tom_consult","openhands.tools.utils.timeout","browser_use","browser_use_sdk","func_timeout","lmnr","lmnr_claude_code_proxy","tom_swe")
+          def checks():
+              rt=ast.parse(router.read_text())
+              ct=ast.parse(config.read_text())
+              st=ast.parse(spec.read_text())
+              lt=ast.parse(laminar.read_text())
+              calls={n.func.id:n for n in ast.walk(rt) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id in ("register_default_tools","register_builtins_agents","register_gemini_tools")}
+              registration= len(calls)==3 and all(any(k.arg=="enable_browser" and isinstance(k.value,ast.Constant) and k.value.value is False for k in n.keywords) for n in calls.values())
+              cls=next(n for n in ct.body if isinstance(n,ast.ClassDef) and n.name=="Config")
+              f=next(n for n in cls.body if isinstance(n,ast.AnnAssign) and isinstance(n.target,ast.Name) and n.target.id=="enable_browser")
+              default_off=any(k.arg=="default" and isinstance(k.value,ast.Constant) and k.value.value is False for k in f.value.keywords)
+              validator=any(isinstance(n,ast.FunctionDef) and n.name=="reject_coding_browser" for n in cls.body)
+              analysis=next(n.value for n in st.body if isinstance(n,ast.Assign) and isinstance(n.value,ast.Call) and isinstance(n.value.func,ast.Name) and n.value.func.id=="Analysis")
+              ex=next(k.value for k in analysis.keywords if k.arg=="excludes")
+              exclusion=all(any(isinstance(n,ast.Constant) and n.value==x for n in ex.elts) for x in forbidden)
+              hidden=next(k.value for k in analysis.keywords if k.arg=="hiddenimports")
+              tool_filter=any(isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id=="collect_submodules" and n.args and isinstance(n.args[0],ast.Constant) and n.args[0].value=="openhands.tools" and any(k.arg=="filter" for k in n.keywords) for n in ast.walk(hidden))
+              browser_data=not any(isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id=="collect_data_files" and n.args and isinstance(n.args[0],ast.Constant) and n.args[0].value=="openhands.tools.browser_use" for n in ast.walk(st))
+              telemetry=next(n for n in lt.body if isinstance(n,ast.FunctionDef) and n.name=="should_enable_observability")
+              telemetry_off=any(isinstance(n,ast.Raise) for n in ast.walk(telemetry)) and isinstance(telemetry.body[-1],ast.Return) and isinstance(telemetry.body[-1].value,ast.Constant) and telemetry.body[-1].value.value is False
+              return dict(registration_off=registration,config_default_off=default_off,config_reject_browser=validator,explicit_excludes=exclusion,tool_collection_filter=tool_filter,browser_data_removed=browser_data,laminar_fail_closed=telemetry_off)
+          red=checks()
+          assert not all(red.values()),red
+          print("RED:",red)
+          def edit(p,old,new):
+              raw=p.read_text()
+              assert raw.count(old)==1,(str(p),old)
+              p.write_text(raw.replace(old,new,1))
+          for f in ("register_default_tools","register_builtins_agents","register_gemini_tools"):
+              edit(router,f+"(enable_browser=True)",f+"(enable_browser=False)")
+          edit(config,"enable_browser: bool = Field(\n        default=True,","enable_browser: bool = Field(\n        default=False,")
+          edit(config,'    @field_validator("session_api_keys")',
+              '    @field_validator("enable_browser")\n    @classmethod\n    def reject_coding_browser(cls, value: bool) -> bool:\n        if value:\n            raise ValueError("Browser is unavailable in the CODEN coding profile")\n        return value\n\n    @field_validator("session_api_keys")')
+          edit(spec,'        *collect_data_files("openhands.tools.browser_use", includes=["js/*.js"]),\n','')
+          edit(spec,'        *collect_submodules("openhands.tools"),',
+               '        *collect_submodules("openhands.tools", filter=lambda name: not any(name == prefix or name.startswith(prefix + ".") for prefix in '+repr(forbidden[:3])+')),')
+          edit(spec,"    excludes=[\n","    excludes=[\n"+''.join('        '+repr(n)+',\n' for n in forbidden))
+          raw=laminar.read_text()
+          start=raw.index("def should_enable_observability() -> bool:")
+          end=raw.index("\ndef _is_otel_backend_laminar()",start)
+          body="def should_enable_observability() -> bool:\n    # Laminar unavailable; local operator audit remains independent.\n    if any(get_env(key) for key in _OBSERVABILITY_ENV_KEYS) or 'lmnr' in sys.modules:\n        raise RuntimeError('Laminar unavailable in CODEN coding profile')\n    return False\n\n"
+          laminar.write_text(raw[:start]+body+raw[end:])
+          green=checks()
+          assert all(green.values()),green
+          print("GREEN:",green)
+          for p in original:
+              compile(p.read_text(),str(p),"exec")  # compile only, no imports or execution
+          Path("evidence/packaging-contract.json").write_text(json.dumps({"red":red,"green":green,"status":"static_source_contract_pass","runtime_imports_verified":False,"built":False,"installed":False,"license_approved":False,"release_authorized":False},indent=2))
+          PY
+          git -C upstream diff -- '*pyproject.toml' '*.py' '*.spec' > evidence/coding-profile-source.patch
+          sha256sum evidence/coding-profile-source.patch > evidence/patch.sha256
+          git -C upstream diff --check
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: coding-packaging-source-contract
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
