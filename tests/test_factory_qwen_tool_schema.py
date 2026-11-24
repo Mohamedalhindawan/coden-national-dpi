@@ -48,3 +48,34 @@ class ToolSchemaTests(unittest.TestCase):
             value["usage"]["completion_tokens"] = count
             with self.assertRaises(ValueError):
                 audit_response(value)
+
+    def test_rejection_receipt_is_specific_without_untrusted_content(self):
+        import json
+        from ai_factory.factory_qwen_tool_schema import evaluate_response
+        value = response()
+        value["choices"][0]["finish_reason"] = "stop"
+        value["choices"][0]["message"]["content"] = "synthetic-untrusted-text"
+        verdict = evaluate_response(json.dumps(value).encode())
+        self.assertEqual(verdict["status"], "schema_rejected")
+        self.assertEqual(verdict["reason_code"], "finish_reason_or_role")
+        self.assertNotIn("synthetic-untrusted-text", json.dumps(verdict))
+        self.assertFalse(verdict["tool_executed"])
+        self.assertFalse(verdict["release_authorized"])
+
+    def test_invalid_json_diagnostic_does_not_echo_input(self):
+        import json
+        from ai_factory.factory_qwen_tool_schema import evaluate_response
+        verdict = evaluate_response(b"not-json synthetic-untrusted-text")
+        self.assertEqual(verdict["reason_code"], "invalid_json")
+        self.assertNotIn("synthetic-untrusted-text", json.dumps(verdict))
+
+    def test_success_receipt_has_response_digest_and_no_rejection(self):
+        import hashlib
+        import json
+        from ai_factory.factory_qwen_tool_schema import evaluate_response
+        raw = json.dumps(response()).encode()
+        verdict = evaluate_response(raw)
+        self.assertEqual(verdict["status"], "schema_match")
+        self.assertEqual(verdict["response_sha256"], hashlib.sha256(raw).hexdigest())
+        self.assertNotIn("reason_code", verdict)
+        self.assertFalse(verdict["tool_executed"])
