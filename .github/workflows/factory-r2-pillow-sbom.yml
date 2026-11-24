@@ -49,18 +49,26 @@ jobs:
               candidates=[p for p in paths if p.startswith(prefix+"sboms/") and p.endswith(".cdx.json")]
               receipt={"wheel_sha256":digest,"record_members_verified":len(entries)-1,"embedded_sbom_count":len(candidates),"installed":False,"compiled_membership_verified":False,"license_approved":False,"release_authorized":False}
               (out/"receipt.json").write_text(json.dumps(receipt,indent=2))
-              assert len(candidates)==1,"expected exact embedded SBOM"
-              p=candidates[0]
-              b=z.read(p)
-              assert len(b)<=2*1024*1024
-              bom=json.loads(b)
-              assert bom["bomFormat"]=="CycloneDX" and bom["metadata"]["component"]["version"]=="13.0.0"
-              (out/"pillow-embedded.cdx.json").write_bytes(b)
+              # The first exact-wheel audit found two BOMs, not one. Preserve both.
+              assert len(candidates)==2,"unexpected BOM count for immutable wheel"
+              summaries=[]
+              roots=[]
+              for index,p in enumerate(sorted(candidates),1):
+                  b=z.read(p)
+                  assert len(b)<=2*1024*1024
+                  bom=json.loads(b)
+                  assert bom["bomFormat"]=="CycloneDX" and isinstance(bom["components"],list)
+                  component=bom.get("metadata",{}).get("component",{})
+                  roots.append((str(component.get("name","")).lower(),component.get("version")))
+                  target=f"embedded-{index}.cdx.json"
+                  (out/target).write_bytes(b)
+                  summary=[{k:c[k] for k in ("name","version","scope","licenses","purl","bom-ref","hashes") if k in c} for c in bom["components"]]
+                  summaries.append({"archive_path":p,"artifact_path":target,"sha256":sha(b),"root":component,"spec_version":bom.get("specVersion"),"component_count":len(summary),"components":summary})
+              assert ("pillow","13.0.0") in roots,"missing Pillow root identity"
               (out/"wheel-RECORD.csv").write_bytes(z.read(record))
               (out/"wheel-LICENSE.txt").write_bytes(z.read(prefix+"licenses/LICENSE"))
-              summary=[{k:c[k] for k in ("name","version","scope","licenses","purl","bom-ref") if k in c} for c in bom["components"]]
-              (out/"components.json").write_text(json.dumps(summary,indent=2))
-              receipt.update(sbom_path=p,sbom_sha256=sha(b),component_count=len(summary),scope="upstream-declared optional/vendored dependencies; not independent binary attribution")
+              (out/"components.json").write_text(json.dumps(summaries,indent=2))
+              receipt.update(sboms=[{k:v for k,v in row.items() if k!="components"} for row in summaries],scope="producer declarations; independent binary attribution and legal review pending")
               (out/"receipt.json").write_text(json.dumps(receipt,indent=2))
               print(json.dumps(receipt))
           PY
