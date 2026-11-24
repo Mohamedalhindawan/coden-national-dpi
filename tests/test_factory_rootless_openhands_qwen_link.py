@@ -127,7 +127,7 @@ class RootlessOpenHandsQwenLinkTests(unittest.TestCase):
     def test_workflow_true_rootless_private_network_proof(self):
         content = WF.read_text(encoding="utf-8")
         for required in (
-            "audit/openhands-signed-runtime",
+            ".github/workflows/openhands-source-build.yml",
             "feat/factory-p0-rootless-openhands-qwen-link-20261124",
             "podman info --format json",
             "rootless",
