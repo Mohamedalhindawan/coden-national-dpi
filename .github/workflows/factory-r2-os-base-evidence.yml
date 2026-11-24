@@ -56,6 +56,7 @@ jobs:
           trap cleanup EXIT
           podman create --name "$name" --pull=never --network none --read-only --cap-drop=all --security-opt=no-new-privileges --user 65534:65534 "$BASE" /bin/false >/dev/null
           mkdir -m 0700 evidence/provider-elf
+          mkdir -m 0700 evidence/provider-dynsym
           readelf --version > evidence/readelf-version.txt
           cat > "$work/expected.sha256" <<'EOF'
           c20a2dc8917c755f02b94049356320fe1f62ac7d9f8994731f807d9df39302da  ld-linux-x86-64.so.2
@@ -75,9 +76,13 @@ jobs:
             (cd "$work"; printf '%s  %s\n' "$digest" "$file" | sha256sum -c -)
             LC_ALL=C readelf -W -h -d -V "$work/$file" > "evidence/provider-elf/$file.txt"
             test -s "evidence/provider-elf/$file.txt"
+            LC_ALL=C timeout 30s readelf -W --dyn-syms "$work/$file" > "evidence/provider-dynsym/$file.txt"
+            test -s "evidence/provider-dynsym/$file.txt"
+            test "$(stat -c %s "evidence/provider-dynsym/$file.txt")" -le 8388608
           done < "$work/expected.sha256"
           cp "$work/expected.sha256" evidence/provider-files.sha256
           test "$(find evidence/provider-elf -type f | wc -l)" -eq 10
+          test "$(find evidence/provider-dynsym -type f | wc -l)" -eq 10
           podman run --rm --pull=never --network none --http-proxy=false --read-only --read-only-tmpfs=false --cap-drop=all --security-opt=no-new-privileges --user 65534:65534 --cpus=2 --memory=512m --memory-swap=512m --pids-limit=64 --timeout=60 "$BASE" /bin/sh -eu -c '
             for package in libc6 libgcc-s1 libstdc++6 zlib1g; do
               p="/usr/share/doc/$package/copyright"
