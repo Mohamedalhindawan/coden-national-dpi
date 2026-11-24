@@ -166,6 +166,7 @@ class RootlessOpenHandsQwenLinkTests(unittest.TestCase):
         self.assertIn('grep -Eiq "(TOKEN|PASSWORD|API.KEY|GITHUB_|DOCKER_HOST|SECRET)"', content)
         self.assertIn('test ! -S /var/run/docker.sock', content)
         self.assertIn('test "$(df -Pk /tmp', content)
+        self.assertNotIn(r'print \\$2', content)
         self.assertIn('podman network inspect "$net"', content)
 
     def test_docs_explicitly_block_real_agent_session(self):
