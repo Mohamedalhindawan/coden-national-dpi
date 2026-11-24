@@ -289,7 +289,7 @@ jobs:
             grep -Eq "^CapEff:[[:space:]]+0+$" /proc/self/status
             grep -Eq "^NoNewPrivs:[[:space:]]+1$" /proc/self/status
             test ! -S /var/run/docker.sock
-            test "$(df -Pk /tmp | awk "NR==2 {print \\$2}")" = 32768
+            test "$(df -Pk /tmp | awk "NR==2 {print \$2}")" = 32768
             keys=$(env | cut -d= -f1)
             if grep -Eiq "(TOKEN|PASSWORD|API.KEY|GITHUB_|DOCKER_HOST|SECRET)" <<< "$keys"; then
               echo "BLOCKED: secret-like key inherited by Qwen process" >&2
