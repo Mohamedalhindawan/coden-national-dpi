@@ -27,6 +27,7 @@ jobs:
       LLAMA_SHA: da524c71f9dd09913df29264bb7229b99a2de82d8a26e6902e6921d413560d6d
       MODEL_SHA: 1d9614638d18024d0fbb36575a15f1302a3adf044df10345688ec4f6e1c4ff32
       PYTHONDONTWRITEBYTECODE: '1'
+      PYTHONPATH: ${{ github.workspace }}
     steps:
       - name: Checkout only trusted first-party audit code
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
