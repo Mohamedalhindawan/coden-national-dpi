@@ -32,13 +32,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Versions come from the archived HIGH findings on the original build.
+          uv lock --upgrade-package 'aiohttp>=3.14.4' --upgrade-package 'dnspython>=2.9.2' \
+            --upgrade-package 'fsspec>=2026.6.0' --upgrade-package 'oauthlib>=4.0.1' \
+            --upgrade-package 'pyasn1>=0.6.5' --upgrade-package 'pypdf>=6.21.4' \
+            --upgrade-package 'soupsieve>=4.0.0'
           uv sync --frozen --all-packages --dev
           spec=openhands-agent-server/openhands/agent_server/agent-server.spec
           uv run --offline --no-sync pyinstaller "$spec" > "$RUNNER_TEMP/freeze.log" 2>&1 || { tail -80 "$RUNNER_TEMP/freeze.log"; exit 1; }
           mkdir product
           cp dist/openhands-agent-server product/
           file product/openhands-agent-server | grep 'ELF 64-bit'
-          git diff --exit-code HEAD -- uv.lock "$spec"
+          git diff --exit-code HEAD -- "$spec"
+          cp uv.lock product/resolved.lock
+          git diff HEAD -- uv.lock > product/dependency.patch
           .venv/bin/python - <<'PYMETA' > product/build-environment.json
           import importlib.metadata as md, json
           packages = []
@@ -57,7 +64,7 @@ jobs:
               with open(path, "rb") as f:
                   return hashlib.file_digest(f, "sha256").hexdigest()
           receipt = dict(upstream_repository="OpenHands/software-agent-sdk",
-                         upstream_commit=os.environ["UPSTREAM"], lock_sha256=digest("uv.lock"),
+                         upstream_commit=os.environ["UPSTREAM"], original_lock_sha256="71c5479cb609b60872a7cbd34da764a0804c2e50c2658dba1bb5255e180d3603", lock_sha256=digest("uv.lock"),
                          spec_sha256=digest("openhands-agent-server/openhands/agent_server/agent-server.spec"),
                          binary_sha256=digest(root/"openhands-agent-server"),
                          environment_sha256=digest(root/"build-environment.json"),
@@ -100,8 +107,8 @@ jobs:
           set -euo pipefail
           mkdir receipts
           cp "$BUNDLE" receipts/bundle.jsonl
-          cp product/{materials,build-environment}.json receipts/
-          for name in openhands-agent-server materials.json build-environment.json; do
+          cp product/{materials,build-environment}.json product/{resolved.lock,dependency.patch} receipts/
+          for name in openhands-agent-server materials.json build-environment.json resolved.lock dependency.patch; do
             gh attestation verify "product/$name" --bundle "$BUNDLE" --repo "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/openhands-source-build.yml" --source-digest "$GITHUB_SHA" --deny-self-hosted-runners --format json > "receipts/$name.verify.json"
           done
           jq -e --arg sha "$GITHUB_SHA" '.upstream_commit == "077f3fad6d31cd852be5c87176e0a93c3b446126" and .ci_sha == $sha' product/materials.json
