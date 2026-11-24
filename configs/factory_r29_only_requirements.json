@@ -1,0 +1,1100 @@
+{
+  "schema_version": "1.0.0",
+  "scope": "CODEN_AI_FACTORY_ONLY",
+  "source_document": "CODEN_Playbook_V5_R29_Seven_Engine_Execution_Activation_Blueprint_UNAPPROVED.docx",
+  "source_document_id": "CODEN-PLAYBOOK-V5-R29",
+  "document_status": "UNAPPROVED",
+  "execution_status": "not_proven_by_blueprint",
+  "baseline_adopt_first_manifest": "configs/factory_72_adopt_first.json",
+  "baseline_source_count": 72,
+  "extra_source_count": 12,
+  "combined_candidate_entries": 84,
+  "auto_install": false,
+  "automatic_merge": false,
+  "paid_calls": false,
+  "excluded_additions": [
+    "ADD-32",
+    "ADD-33",
+    "ADD-34",
+    "ADD-36",
+    "ADD-40"
+  ],
+  "excluded_rationale": "TAMAM low-resource, DPI lab, corporate commercial runway, customer delivery and general document annex completion are not factory tool requirements.",
+  "requirements": [
+    {
+      "id": "ADD-03",
+      "title": "حوكمة تعديل المصنع لنفسه",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-03; R29.3 W0",
+      "wave": "W0",
+      "priority_in_source": null,
+      "acceptance": "حظر تعديل بوابات الأمان والموافقة ذاتياً",
+      "linked_sources": [
+        "source-036",
+        "source-060"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-05",
+      "title": "اكتشاف الفجوات باستخدام المتطلبات",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-05; R29.3 W0",
+      "wave": "W0",
+      "priority_in_source": null,
+      "acceptance": "إنتاج فجوات ذات مصدر وأولوية قابلين للتحقق",
+      "linked_sources": [
+        "source-010",
+        "source-011",
+        "source-012"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-06",
+      "title": "أولوية أعمال المصنع والتحسين الذاتي",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-06; R29.3 W0",
+      "wave": "W0",
+      "priority_in_source": null,
+      "acceptance": "إيقاف تحسين أقل أولوية دون فقدان حالته",
+      "linked_sources": [
+        "source-010",
+        "source-025"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-07",
+      "title": "تعريف التشغيل الحقيقي للفرق الثمانية",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-07; R29.3 W0",
+      "wave": "W0",
+      "priority_in_source": null,
+      "acceptance": "اختبار اختصاص كل فريق وتسليم مشترك",
+      "linked_sources": [
+        "source-001",
+        "source-025",
+        "source-066"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-08",
+      "title": "عقود التواصل بين الوكلاء",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-08; R29.3 W0",
+      "wave": "W0",
+      "priority_in_source": null,
+      "acceptance": "تسليم مهمة بين ثلاثة وكلاء مع تحقق الهوية والعقود",
+      "linked_sources": [
+        "source-025",
+        "source-066",
+        "source-036"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-12",
+      "title": "الإيقاف الطارئ والتحكم بالاستقلالية",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-12; R29.3 W0",
+      "wave": "W0",
+      "priority_in_source": null,
+      "acceptance": "إيقاف مهمة جارية ومنع استئناف غير مصرح به",
+      "linked_sources": [
+        "source-023",
+        "source-036"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-14",
+      "title": "معيار اعتماد المصنع التشغيلي",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-14; R29.3 W0",
+      "wave": "W0",
+      "priority_in_source": null,
+      "acceptance": "نجاح ضوابط الجاهزية دون عيوب حرجة",
+      "linked_sources": [
+        "source-003",
+        "source-015",
+        "source-018",
+        "source-019"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-16",
+      "title": "بوابة اعتماد المشاريع المفتوحة",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-16; R29.3 W0",
+      "wave": "W0",
+      "priority_in_source": null,
+      "acceptance": "رفض مصادر خطرة أو تراخيص غير متوافقة",
+      "linked_sources": [
+        "source-018",
+        "source-037",
+        "source-069",
+        "r29-08"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-19",
+      "title": "حماية سلسلة توريد البرمجيات",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-19; R29.3 W0",
+      "wave": "W0",
+      "priority_in_source": null,
+      "acceptance": "ربط المخرجات بمصدر وبناء واختبارات موثقة",
+      "linked_sources": [
+        "source-020",
+        "source-038",
+        "r29-05",
+        "r29-06"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-22",
+      "title": "نظام تقييم موحد للوكلاء والنماذج",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-22; R29.3 W0",
+      "wave": "W0",
+      "priority_in_source": null,
+      "acceptance": "مقارنة متكافئة قابلة لإعادة الإنتاج",
+      "linked_sources": [
+        "source-034",
+        "source-035"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-23",
+      "title": "أمن مكتبة المهارات",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-23; R29.3 W0",
+      "wave": "W0",
+      "priority_in_source": null,
+      "acceptance": "رفض مهارة تتجاوز الصلاحيات أو تسرّب البيانات",
+      "linked_sources": [
+        "source-014",
+        "source-036",
+        "source-067",
+        "source-068"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-26",
+      "title": "أمن أنظمة Agentic AI",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-26; R29.3 W0",
+      "wave": "W0",
+      "priority_in_source": null,
+      "acceptance": "اختبارات منع حقن التعليمات وتسريب الأسرار",
+      "linked_sources": [
+        "source-036",
+        "source-068"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-27",
+      "title": "أمن MCP والتكامل بين الوكلاء",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-27; R29.3 W0",
+      "wave": "W0",
+      "priority_in_source": null,
+      "acceptance": "رفض هوية أو أداة خارج النطاق المخول",
+      "linked_sources": [
+        "source-010",
+        "source-036",
+        "source-066"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-28",
+      "title": "Sandboxing وعزل تنفيذ الوكلاء",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-28; R29.3 W0",
+      "wave": "W0",
+      "priority_in_source": null,
+      "acceptance": "منع قراءة أسرار المضيف والاتصالات غير المسموحة",
+      "linked_sources": [
+        "source-002",
+        "source-009",
+        "r29-09"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-30",
+      "title": "الإدارة المالية الذكية للمصنع",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-30; R29.3 W0",
+      "wave": "W0",
+      "priority_in_source": null,
+      "acceptance": "إيقاف التكلفة عند الحد وربط التكلفة بالمهمة",
+      "linked_sources": [
+        "source-042",
+        "source-043",
+        "source-041"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-31",
+      "title": "جودة واستقلالية بيانات الاختبار",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-31; R29.3 W0",
+      "wave": "W0",
+      "priority_in_source": null,
+      "acceptance": "اختبارات مخفية مستقلة تكشف مخرجات خاطئة",
+      "linked_sources": [
+        "source-021",
+        "source-034",
+        "source-035"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-37",
+      "title": "نظام تتبع الأقسام الـ230",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-37; R29.3 W0",
+      "wave": "W0",
+      "priority_in_source": null,
+      "acceptance": "متطلبات المصنع مرتبطة بالتنفيذ والأدلة وحالة القبول",
+      "linked_sources": [
+        "source-010",
+        "source-011",
+        "source-012"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-38",
+      "title": "نظام أدلة مستقل وغير قابل للتلاعب",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-38; R29.3 W0",
+      "wave": "W0",
+      "priority_in_source": null,
+      "acceptance": "كشف العبث بالبصمات والسجلات وقرارات المراجع",
+      "linked_sources": [
+        "source-020",
+        "source-038",
+        "r29-05",
+        "r29-12"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-39",
+      "title": "خارطة تنفيذ مشروطة بالجاهزية",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-39; R29.3 W0",
+      "wave": "W0",
+      "priority_in_source": null,
+      "acceptance": "توثيق قرار الانتقال واختبارات كل موجة",
+      "linked_sources": [
+        "source-003",
+        "source-061"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-09",
+      "title": "محرك مهام دائم وقابل للاستعادة",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-09; R29.3 W1",
+      "wave": "W1",
+      "priority_in_source": null,
+      "acceptance": "استعادة عامل متوقف دون أثر جانبي مزدوج",
+      "linked_sources": [
+        "source-008",
+        "source-044"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-10",
+      "title": "التنفيذ المتوازي وإدارة التبعيات",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-10; R29.3 W1",
+      "wave": "W1",
+      "priority_in_source": null,
+      "acceptance": "تشغيل مهام مستقلة بالتوازي مع منع التعارض",
+      "linked_sources": [
+        "source-025",
+        "source-008"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-11",
+      "title": "تشغيل المصنع المستمر 24/7",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-11; R29.3 W1",
+      "wave": "W1",
+      "priority_in_source": null,
+      "acceptance": "اختبار استمرار محدود ومراقبة وإنذارات وتعافي",
+      "linked_sources": [
+        "source-033",
+        "source-046",
+        "source-047"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-13",
+      "title": "الانتقال من النماذج الصغيرة إلى المشاريع الكاملة",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-13; R29.3 W1",
+      "wave": "W1",
+      "priority_in_source": null,
+      "acceptance": "تطوير عدة ملفات واختبارها وتسليم PR",
+      "linked_sources": [
+        "source-001",
+        "source-002",
+        "source-030",
+        "r29-03"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-15",
+      "title": "محرك الاكتشاف الآلي لمشاريع GitHub",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-15; R29.3 W1",
+      "wave": "W1",
+      "priority_in_source": null,
+      "acceptance": "اكتشاف ومقارنة ثلاثة بدائل ببيانات أدلة",
+      "linked_sources": [
+        "source-010",
+        "source-069"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-20",
+      "title": "إدارة مشاريع GitHub المتراكمة",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-20; R29.3 W1",
+      "wave": "W1",
+      "priority_in_source": null,
+      "acceptance": "كشف تعارضات وتبعيات PR قبل الدمج",
+      "linked_sources": [
+        "source-010",
+        "source-003"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-21",
+      "title": "التوجيه الذكي للنماذج",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-21; R29.3 W1",
+      "wave": "W1",
+      "priority_in_source": null,
+      "acceptance": "توجيه نموذج وفق الميزانية وتصنيف البيانات",
+      "linked_sources": [
+        "source-005",
+        "source-041",
+        "source-042",
+        "source-043"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-24",
+      "title": "إدارة الذاكرة المؤسسية الآمنة",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-24; R29.3 W1",
+      "wave": "W1",
+      "priority_in_source": null,
+      "acceptance": "استرجاع واع للمصادر والصلاحيات",
+      "linked_sources": [
+        "source-026",
+        "source-031"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-25",
+      "title": "إدارة هندسة التعليمات والسياق",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-25; R29.3 W1",
+      "wave": "W1",
+      "priority_in_source": null,
+      "acceptance": "تحسين سياق مقاس دون فقد جودة أو دقة",
+      "linked_sources": [
+        "source-014",
+        "source-035"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-41",
+      "title": "Enterprise Codebase Intelligence Engine",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-41; R29.3 W1",
+      "wave": "W1",
+      "priority_in_source": "P0",
+      "acceptance": "تحديد التغييرات والتبعيات والاختبارات عبر ملفات متعددة",
+      "linked_sources": [
+        "source-026",
+        "source-027",
+        "source-028"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-42",
+      "title": "Agent-Ready Development Environments",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-42; R29.3 W1",
+      "wave": "W1",
+      "priority_in_source": "P0",
+      "acceptance": "إعادة تجهيز بيئة مشروع من مستودع نظيف بتكرارية",
+      "linked_sources": [
+        "source-002",
+        "source-030",
+        "r29-01",
+        "r29-02"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-45",
+      "title": "Universal Coding Agent Runtime Interface",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-45; R29.3 W1",
+      "wave": "W1",
+      "priority_in_source": "P0",
+      "acceptance": "نفس المهمة بعقد ثابت عبر محركين مؤهلين",
+      "linked_sources": [
+        "source-001",
+        "source-005",
+        "source-007",
+        "source-049"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-43",
+      "title": "Long-Horizon Autonomous Project Execution",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-43; R29.3 W2",
+      "wave": "W2",
+      "priority_in_source": "P0",
+      "acceptance": "مشروع متعدد المراحل يستأنف بعد التوقف دون تكرار خطر",
+      "linked_sources": [
+        "source-008",
+        "source-025",
+        "source-044"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-44",
+      "title": "Parallel Multi-Agent Engineering",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-44; R29.3 W2",
+      "wave": "W2",
+      "priority_in_source": "P0",
+      "acceptance": "وكلاء ببيئات منفصلة يدمجون وحدات باختبارات تكامل",
+      "linked_sources": [
+        "source-010",
+        "source-025"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-46",
+      "title": "Full-Stack Project Engineering Capability",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-46; R29.3 W2",
+      "wave": "W2",
+      "priority_in_source": "P0",
+      "acceptance": "واجهة وAPI وقاعدة بيانات وRBAC واختبارات وPR مراجعة",
+      "linked_sources": [
+        "source-001",
+        "source-021",
+        "source-065",
+        "r29-03"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-47",
+      "title": "Global Software Factory Benchmark Laboratory",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-47; R29.3 W2",
+      "wave": "W2",
+      "priority_in_source": "P1",
+      "acceptance": "نتيجة معيارية متكافئة قابلة للإعادة والتدقيق",
+      "linked_sources": [
+        "source-034",
+        "source-035",
+        "r29-04"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-48",
+      "title": "Independent Multi-Model Engineering Review",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-48; R29.3 W2",
+      "wave": "W2",
+      "priority_in_source": "P1",
+      "acceptance": "مراجعة مستقلة تكشف عيوباً مزروعة ولا تستبدل الاختبارات",
+      "linked_sources": [
+        "source-035",
+        "source-049"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-01",
+      "title": "المحرك السابع للتحسين الذاتي المؤسسي",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-01; R29.3 W3",
+      "wave": "W3",
+      "priority_in_source": null,
+      "acceptance": "فجوة مثبتة ثم PR تحسين ثم قياس أثر مستقل",
+      "linked_sources": [
+        "source-025",
+        "source-049"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-02",
+      "title": "دورة التحسين الذاتي المستمر",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-02; R29.3 W3",
+      "wave": "W3",
+      "priority_in_source": null,
+      "acceptance": "دورة اكتشاف وإصلاح وقياس ثم قبول أو تراجع",
+      "linked_sources": [
+        "source-035",
+        "source-062"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-04",
+      "title": "نظام التعلم المؤسسي",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-04; R29.3 W3",
+      "wave": "W3",
+      "priority_in_source": null,
+      "acceptance": "درس معتمد يمنع تكرار عيب ومرتبط بمصدر",
+      "linked_sources": [
+        "source-031",
+        "source-032"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-17",
+      "title": "متابعة تحديثات المشاريع المفتوحة",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-17; R29.3 W3",
+      "wave": "W3",
+      "priority_in_source": null,
+      "acceptance": "اكتشاف ترقية وتقييم آثارها قبل التطبيق",
+      "linked_sources": [
+        "source-062",
+        "source-069"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-18",
+      "title": "إدارة Forks والتخصيصات",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-18; R29.3 W3",
+      "wave": "W3",
+      "priority_in_source": null,
+      "acceptance": "إعادة بناء تخصيص مع تتبع فروق المصدر",
+      "linked_sources": [
+        "source-010",
+        "source-062"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-29",
+      "title": "التشغيل والتعافي الذاتي",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-29; R29.3 W3",
+      "wave": "W3",
+      "priority_in_source": null,
+      "acceptance": "استعادة الخدمة دون فقد سجلات أو تكرار آثار",
+      "linked_sources": [
+        "source-003",
+        "source-033",
+        "source-046"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-49",
+      "title": "Safe Factory Upgrade & Experimentation Platform",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-49; R29.3 W3",
+      "wave": "W3",
+      "priority_in_source": "P1",
+      "acceptance": "تحديث تجريبي مع rollback ناجح وموافقة",
+      "linked_sources": [
+        "source-003",
+        "source-035",
+        "r29-10"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-51",
+      "title": "Autonomous Maintenance & Incident-to-Fix Engineering",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-51; R29.3 W3",
+      "wave": "W3",
+      "priority_in_source": "P1",
+      "acceptance": "تحويل عيب إلى إصلاح واختبار انحدار مستقل",
+      "linked_sources": [
+        "source-025",
+        "source-033",
+        "source-035"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-35",
+      "title": "الاستقلالية البشرية والحوكمة التشغيلية",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-35; R29.3 W4",
+      "wave": "W4",
+      "priority_in_source": null,
+      "acceptance": "بقاء الموافقات الحساسة معلقة للمخولين",
+      "linked_sources": [
+        "source-010",
+        "source-036",
+        "r29-07"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-50",
+      "title": "Enterprise Factory Developer Portal",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-50; R29.3 W4",
+      "wave": "W4",
+      "priority_in_source": "P2",
+      "acceptance": "لوحة بيانات تشغيل فعلية مع قرارات بشرية مسجلة",
+      "linked_sources": [
+        "source-032",
+        "source-047",
+        "source-056"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    },
+    {
+      "id": "ADD-52",
+      "title": "Factory-as-a-Platform & Enterprise Delivery API",
+      "source_document": "CODEN-PLAYBOOK-V5-R29",
+      "source_reference": "R27/R28 ADD-52; R29.3 W4",
+      "wave": "W4",
+      "priority_in_source": "P2",
+      "acceptance": "عزل مشروعين أو مستأجرين دون اختلاط البيانات والتكلفة",
+      "linked_sources": [
+        "source-010",
+        "source-066",
+        "r29-07"
+      ],
+      "implemented_by_import": false,
+      "tested_by_blueprint": false
+    }
+  ],
+  "extra_sources": [
+    {
+      "id": "r29-01",
+      "upstream_repo": "devcontainers/templates",
+      "url": "https://github.com/devcontainers/templates",
+      "why": "Reproducible agent-ready workspace templates",
+      "wave": "W1",
+      "priority": "P0",
+      "source_status": "verified_repository_exists_not_audited",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "installed": false,
+      "approved": false,
+      "enabled": false
+    },
+    {
+      "id": "r29-02",
+      "upstream_repo": "devcontainers/cli",
+      "url": "https://github.com/devcontainers/cli",
+      "why": "Build and validate devcontainer.json in clean repos",
+      "wave": "W1",
+      "priority": "P0",
+      "source_status": "verified_repository_exists_not_audited",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "installed": false,
+      "approved": false,
+      "enabled": false
+    },
+    {
+      "id": "r29-03",
+      "upstream_repo": "fastapi/full-stack-fastapi-template",
+      "url": "https://github.com/fastapi/full-stack-fastapi-template",
+      "why": "Adopt-first synthetic frontend/API/PostgreSQL reference app",
+      "wave": "W2",
+      "priority": "P0",
+      "source_status": "verified_repository_exists_not_audited",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "installed": false,
+      "approved": false,
+      "enabled": false
+    },
+    {
+      "id": "r29-04",
+      "upstream_repo": "SWE-bench/SWE-bench",
+      "url": "https://github.com/SWE-bench/SWE-bench",
+      "why": "Reproducible coding-agent benchmark candidate; check data/evaluation rules",
+      "wave": "W2",
+      "priority": "P1",
+      "source_status": "verified_repository_exists_not_audited",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "installed": false,
+      "approved": false,
+      "enabled": false
+    },
+    {
+      "id": "r29-05",
+      "upstream_repo": "in-toto/in-toto",
+      "url": "https://github.com/in-toto/in-toto",
+      "why": "Supply-chain step provenance candidate; check transitive licenses",
+      "wave": "W0",
+      "priority": "P1",
+      "source_status": "verified_repository_exists_not_audited",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "installed": false,
+      "approved": false,
+      "enabled": false
+    },
+    {
+      "id": "r29-06",
+      "upstream_repo": "slsa-framework/slsa-github-generator",
+      "url": "https://github.com/slsa-framework/slsa-github-generator",
+      "why": "SLSA build provenance for GitHub Actions",
+      "wave": "W0",
+      "priority": "P1",
+      "source_status": "verified_repository_exists_not_audited",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "installed": false,
+      "approved": false,
+      "enabled": false
+    },
+    {
+      "id": "r29-07",
+      "upstream_repo": "keycloak/keycloak",
+      "url": "https://github.com/keycloak/keycloak",
+      "why": "OIDC/tenant and human approvals identity candidate; heavy deployment",
+      "wave": "W4",
+      "priority": "P2",
+      "source_status": "verified_repository_exists_not_audited",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "installed": false,
+      "approved": false,
+      "enabled": false
+    },
+    {
+      "id": "r29-08",
+      "upstream_repo": "anchore/grype",
+      "url": "https://github.com/anchore/grype",
+      "why": "Additional SBOM vulnerability review (overlaps Trivy; optional)",
+      "wave": "W0",
+      "priority": "P1",
+      "source_status": "verified_repository_exists_not_audited",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "installed": false,
+      "approved": false,
+      "enabled": false
+    },
+    {
+      "id": "r29-09",
+      "upstream_repo": "step-security/harden-runner",
+      "url": "https://github.com/step-security/harden-runner",
+      "why": "GitHub runner egress/call monitoring candidate; review plan",
+      "wave": "W0",
+      "priority": "P1",
+      "source_status": "verified_repository_exists_not_audited",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "installed": false,
+      "approved": false,
+      "enabled": false
+    },
+    {
+      "id": "r29-10",
+      "upstream_repo": "argoproj/argo-rollouts",
+      "url": "https://github.com/argoproj/argo-rollouts",
+      "why": "Canary and rollback for future Kubernetes release only",
+      "wave": "W3",
+      "priority": "P2",
+      "source_status": "verified_repository_exists_not_audited",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "installed": false,
+      "approved": false,
+      "enabled": false
+    },
+    {
+      "id": "r29-11",
+      "upstream_repo": "zaproxy/zaproxy",
+      "url": "https://github.com/zaproxy/zaproxy",
+      "why": "DAST tests for synthetic Full-Stack reference app",
+      "wave": "W2",
+      "priority": "P1",
+      "source_status": "verified_repository_exists_not_audited",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "installed": false,
+      "approved": false,
+      "enabled": false
+    },
+    {
+      "id": "r29-12",
+      "upstream_repo": "sigstore/rekor",
+      "url": "https://github.com/sigstore/rekor",
+      "why": "Tamper-evident evidence ledger candidate; self-host burden",
+      "wave": "W0",
+      "priority": "P2",
+      "source_status": "verified_repository_exists_not_audited",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "installed": false,
+      "approved": false,
+      "enabled": false
+    }
+  ],
+  "gates": [
+    {
+      "id": "G0",
+      "required": "evidence_and_human_owner_decision",
+      "status": "NOT_EVIDENCED_BY_R29"
+    },
+    {
+      "id": "G1",
+      "required": "evidence_and_human_owner_decision",
+      "status": "NOT_EVIDENCED_BY_R29"
+    },
+    {
+      "id": "G2",
+      "required": "evidence_and_human_owner_decision",
+      "status": "NOT_EVIDENCED_BY_R29"
+    },
+    {
+      "id": "G3",
+      "required": "evidence_and_human_owner_decision",
+      "status": "NOT_EVIDENCED_BY_R29"
+    },
+    {
+      "id": "G4",
+      "required": "evidence_and_human_owner_decision",
+      "status": "NOT_EVIDENCED_BY_R29"
+    },
+    {
+      "id": "G5",
+      "required": "evidence_and_human_owner_decision",
+      "status": "NOT_EVIDENCED_BY_R29"
+    },
+    {
+      "id": "G6",
+      "required": "evidence_and_human_owner_decision",
+      "status": "NOT_EVIDENCED_BY_R29"
+    },
+    {
+      "id": "G8",
+      "required": "evidence_and_human_owner_decision",
+      "status": "NOT_EVIDENCED_BY_R29"
+    }
+  ],
+  "excluded_gate": "G7",
+  "reference_tests": [
+    {
+      "id": "T01",
+      "title": "Unauthorized tool invocation",
+      "status": "NOT_EXECUTED_BY_R29"
+    },
+    {
+      "id": "T02",
+      "title": "Worker crash recovery",
+      "status": "NOT_EXECUTED_BY_R29"
+    },
+    {
+      "id": "T03",
+      "title": "Adopt-first quarantine",
+      "status": "NOT_EXECUTED_BY_R29"
+    },
+    {
+      "id": "T04",
+      "title": "Cross-agent message",
+      "status": "NOT_EXECUTED_BY_R29"
+    },
+    {
+      "id": "T05",
+      "title": "Parallel integration",
+      "status": "NOT_EXECUTED_BY_R29"
+    },
+    {
+      "id": "T06",
+      "title": "Cross-model review",
+      "status": "NOT_EXECUTED_BY_R29"
+    },
+    {
+      "id": "T07",
+      "title": "Budget exhaustion",
+      "status": "NOT_EXECUTED_BY_R29"
+    },
+    {
+      "id": "T08",
+      "title": "Fallback data policy",
+      "status": "NOT_EXECUTED_BY_R29"
+    },
+    {
+      "id": "T09",
+      "title": "Self-modification guardrail",
+      "status": "NOT_EXECUTED_BY_R29"
+    },
+    {
+      "id": "T10",
+      "title": "End-to-end PR",
+      "status": "NOT_EXECUTED_BY_R29"
+    },
+    {
+      "id": "T12",
+      "title": "Tenant isolation",
+      "status": "NOT_EXECUTED_BY_R29"
+    }
+  ],
+  "excluded_scenario": "T11",
+  "pilots": [
+    {
+      "id": "PILOT-01",
+      "title": "Clean reference repository",
+      "status": "NOT_EXECUTED_BY_R29"
+    },
+    {
+      "id": "PILOT-02",
+      "title": "Authorized coding-agent handoff",
+      "status": "NOT_EXECUTED_BY_R29"
+    },
+    {
+      "id": "PILOT-03",
+      "title": "Multi-file full-stack PR",
+      "status": "NOT_EXECUTED_BY_R29"
+    },
+    {
+      "id": "PILOT-04",
+      "title": "24/7 bounded recovery",
+      "status": "NOT_EXECUTED_BY_R29"
+    },
+    {
+      "id": "PILOT-05",
+      "title": "CAIE improvement loop",
+      "status": "NOT_EXECUTED_BY_R29"
+    }
+  ],
+  "waves": [
+    {
+      "id": "W0",
+      "title": "Control & Assurance Foundation"
+    },
+    {
+      "id": "W1",
+      "title": "Agent Runtime & Adopt-First"
+    },
+    {
+      "id": "W2",
+      "title": "Complex Project Capability"
+    },
+    {
+      "id": "W3",
+      "title": "CAIE & Safe Evolution"
+    },
+    {
+      "id": "W4",
+      "title": "Factory portal/API subset deferred; TAMAM/DPI excluded"
+    }
+  ]
+}
