@@ -23,6 +23,9 @@ def inspect_elf_file(path):
                 needed=re.findall(r'\(NEEDED\).*\[([^\]]+)\]', out),
                 soname=re.findall(r'\(SONAME\).*\[([^\]]+)\]', out),
                 search_paths=re.findall(r'\((?:RPATH|RUNPATH)\).*\[([^\]]+)\]', out),
+                rpath=re.findall(r'\(RPATH\).*\[([^\]]*)\]', out),
+                runpath=re.findall(r'\(RUNPATH\).*\[([^\]]*)\]', out),
+                interpreter=re.findall(r'\[Requesting program interpreter: ([^\]\n]+)\]', readelf('-l')),
                 version_info=readelf('-V'),
                 dynamic_symbols=readelf('--dyn-syms', limit=8 * 1024 * 1024))
 
