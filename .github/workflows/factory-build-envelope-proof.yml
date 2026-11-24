@@ -220,6 +220,32 @@ jobs:
               test -z "$(chroot /scratch/root /usr/bin/dpkg --audit)"
               cmp /scratch/status.before /var/lib/dpkg/status
               printf "SYNTHETIC_DPKG_LIFECYCLE_PASS\n"
+              # Read-only trusted old-base tools and synthetic diversion, not candidate maintainer scripts.
+              chroot /scratch/root /bin/sh -eu -c "test -L /lib64; test -e /lib64/ld-linux-x86-64.so.2; readlink /lib64; readlink -f /lib64/ld-linux-x86-64.so.2; /lib64/ld-linux-x86-64.so.2 --version"
+              printf "OLD_LOADER_ALIAS_PASS\n"
+              chroot /scratch/root /usr/sbin/ldconfig -p > /scratch/cache.before
+              chroot /scratch/root /usr/sbin/ldconfig
+              chroot /scratch/root /usr/sbin/ldconfig -p > /scratch/cache.after
+              grep -Fq libc.so.6 /scratch/cache.before
+              grep -Fq libc.so.6 /scratch/cache.after
+              printf "OLD_LDCONFIG_PASS\n"
+              chroot /scratch/root /usr/bin/dpkg-divert --list /lib64
+              chroot /scratch/root /usr/bin/dpkg-divert --list /lib64/ld-linux-x86-64.so.2
+              synthetic=/usr/share/coden-preflight-diversion
+              chroot /scratch/root /usr/bin/dpkg-divert --local --add --no-rename --divert "$synthetic.distrib" "$synthetic"
+              test "$(chroot /scratch/root /usr/bin/dpkg-divert --truename "$synthetic")" = "$synthetic.distrib"
+              chroot /scratch/root /usr/bin/dpkg-divert --local --remove --no-rename --divert "$synthetic.distrib" "$synthetic"
+              test "$(chroot /scratch/root /usr/bin/dpkg-divert --truename "$synthetic")" = "$synthetic"
+              printf "SYNTHETIC_DIVERSION_PASS\n"
+              rc=0
+              chroot /scratch/root /usr/bin/ischroot || rc=$?
+              printf "OLD_ISCHROOT_EXIT=%s\n" "$rc"
+              case "$rc" in 0|1|2) ;; *) exit 20;; esac
+              if test -c /scratch/root/dev/null; then printf "INNER_DEV_NULL_CHARACTER=true\n"; else printf "INNER_DEV_NULL_CHARACTER=false\n"; fi
+              if test -r /scratch/root/proc/1/stat; then printf "INNER_PROC_PID1_READABLE=true\n"; else printf "INNER_PROC_PID1_READABLE=false\n"; fi
+              test -z "$(chroot /scratch/root /usr/bin/dpkg --audit)"
+              cmp /scratch/status.before /var/lib/dpkg/status
+              printf "OLD_BASE_TOOL_PROBE_COMPLETE\n"
               df -Pk /scratch
               df -Pi /scratch
               if dd if=/dev/zero of=/scratch/limit-probe bs=1M count=769 2>/dev/null; then exit 13; fi
@@ -242,6 +268,13 @@ jobs:
           grep -qx SYNTHETIC_DPKG_LIFECYCLE_PASS evidence/probe.log
           grep -qx STANDARD_DEVICE_TYPES_PASS evidence/probe.log
           grep -qx AUXILIARY_LIMITS_PASS evidence/probe.log
+          for marker in OLD_LOADER_ALIAS_PASS OLD_LDCONFIG_PASS SYNTHETIC_DIVERSION_PASS OLD_BASE_TOOL_PROBE_COMPLETE; do grep -qx "$marker" evidence/probe.log; done
+          ischroot_rc=$(sed -n "s/^OLD_ISCHROOT_EXIT=//p" evidence/probe.log)
+          inner_null=$(sed -n "s/^INNER_DEV_NULL_CHARACTER=//p" evidence/probe.log)
+          inner_proc=$(sed -n "s/^INNER_PROC_PID1_READABLE=//p" evidence/probe.log)
+          case "$ischroot_rc" in 0|1|2) ;; *) exit 20;; esac
+          case "$inner_null:$inner_proc" in true:true|true:false|false:true|false:false) ;; *) exit 21;; esac
+          jq -n --argjson rc "$ischroot_rc" --argjson null_device "$inner_null" --argjson proc "$inner_proc" '{old_loader_alias_verified:true,old_ldconfig_verified:true,synthetic_diversion_verified:true,ischroot_exit:$rc,inner_null_character_device:$null_device,inner_proc_pid1_readable:$proc,real_glibc_scripts_executed:false,real_glibc_capabilities_verified:false,actual_installation_allowed:false}' > evidence/old-base-tools.json
           grep '^NS ' evidence/probe.log > evidence/container-namespaces.txt
           test "$(wc -l < evidence/container-namespaces.txt)" -eq 6
           for ns in ipc pid net mnt user cgroup; do
