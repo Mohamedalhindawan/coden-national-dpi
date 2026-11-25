@@ -151,8 +151,7 @@ def _run_once(*, task, candidate_root, output_root, workspace, model,
     if base_url != "http://ollama:11434":
         raise ValueError("only operator-owned Docker-network Ollama endpoint allowed")
 
-    export = openhands_multifile_review._trusted_dir(candidate_root)
-    outputs = openhands_multifile_review._trusted_dir(output_root)
+    export, outputs = openhands_multifile_review._review_paths(candidate_root, output_root)
     if any(export.iterdir()):
         raise ValueError("isolated export must start empty")
     if any(key in os.environ for key in UNSAFE_ENV_KEYS):
@@ -297,8 +296,7 @@ def launch_isolated(*, task, candidate_root, output_root, model, base_url,
             or network.lower() in FORBIDDEN_NETWORKS):
         raise ValueError("dedicated named Docker network required")
 
-    export = openhands_multifile_review._trusted_dir(candidate_root)
-    openhands_multifile_review._trusted_dir(output_root)
+    export, outputs = openhands_multifile_review._review_paths(candidate_root, output_root)
     if any(export.iterdir()):
         raise ValueError("export must start empty")
 
@@ -364,7 +362,7 @@ def launch_isolated(*, task, candidate_root, output_root, model, base_url,
                 defer_review=True,
             )
         if outcome["status"] == "conversation_closed_pending_workspace_exit":
-            return _review_closed(task, export, output_root)
+            return _review_closed(task, export, outputs)
         return outcome
     except Exception:
         # SDK construction can have started a container before raising.
