@@ -279,6 +279,47 @@ class OpenHandsSDKOperatorTests(unittest.TestCase):
         self.assertFalse(FakeLLM.seen)
         self.assertFalse(FakeConversation.seen)
 
+    def test_qwen_failure_fixtures_do_not_retry_or_review_and_redact_errors(self):
+        class ProviderFailure(RuntimeError):
+            def __init__(self, status):
+                super().__init__("fixture-private-credential")
+                self.status_code = status
+        for failure in (ProviderFailure(401), ProviderFailure(403),
+                        ProviderFailure(429), TimeoutError("fixture-private-credential")):
+            with self.subTest(failure=type(failure).__name__,
+                              status=getattr(failure,"status_code",None)):
+                FakeConversation.seen = []
+                FakeLLM.seen = []
+                with patch.object(project,"supported_host",return_value=True), \
+                     patch.object(FakeConversation,"run",side_effect=failure) as run, \
+                     patch.object(openhands_multifile_review,"review") as review:
+                    result=self.run_pilot(allow_agent=True,model="openai/local-qwen",
+                                          base_url="http://qwen3:11434/v1")
+                self.assertEqual(result["status"],"agent_failed_review_required")
+                self.assertTrue(result["agent_session_attempted"])
+                self.assertFalse(result["automatic_retry_allowed"])
+                self.assertFalse(result["execution_authorized"])
+                self.assertFalse(result["release_authorized"])
+                self.assertNotIn("fixture-private-credential",repr(result))
+                self.assertEqual(len(FakeLLM.seen),1)
+                self.assertEqual(len(FakeConversation.seen),1)
+                self.assertTrue(FakeConversation.seen[0].closed)
+                run.assert_called_once_with()
+                review.assert_not_called()
+
+    def test_qwen_cancelled_fixture_closes_conversation_without_review(self):
+        import asyncio
+        with patch.object(project,"supported_host",return_value=True), \
+             patch.object(FakeConversation,"run",side_effect=asyncio.CancelledError()) as run, \
+             patch.object(openhands_multifile_review,"review") as review:
+            with self.assertRaises(asyncio.CancelledError):
+                self.run_pilot(allow_agent=True,model="openai/local-qwen",
+                               base_url="http://qwen3:11434/v1")
+        self.assertEqual(len(FakeConversation.seen),1)
+        self.assertTrue(FakeConversation.seen[0].closed)
+        run.assert_called_once_with()
+        review.assert_not_called()
+
     def test_qwen_route_review_has_no_secret_or_execution(self):
         result = openhands_sdk_operator.review_qwen_route(
             model="openai/local-qwen", base_url="http://qwen3:11434/v1")
