@@ -607,6 +607,19 @@ def _inventory_report(tree):
             "embedded_archive_inventory_verified":False,"complete_sbom":False}
 
 
+class _StrictTarInfo(tarfile.TarInfo):
+    @classmethod
+    def frombuf(cls, buf, encoding, errors):
+        # tarfile.TarFile.next silently stops after some invalid headers after
+        # the first member. Only a genuine all-zero block may terminate a layer.
+        try:
+            return super().frombuf(buf, encoding, errors)
+        except tarfile.EOFHeaderError:
+            raise
+        except tarfile.HeaderError as exc:
+            raise ValueError("invalid or truncated tar header") from exc
+
+
 def _scan_layer(store, desc, expected_diff, remaining, member_budget, *, inventory=None, layer=0, binary_capture=None):
     _require(desc["mediaType"] == LAYER_TYPE, "unsupported layer media type")
     digest, size = desc["digest"], desc["size"]
@@ -622,7 +635,7 @@ def _scan_layer(store, desc, expected_diff, remaining, member_budget, *, invento
             whiteouts, markers = [], []
             members = links = special = setid = 0
             changes, seen = [], set()
-            with tarfile.open(fileobj=reader, mode="r|", bufsize=512) as archive:
+            with tarfile.open(fileobj=reader, mode="r|", bufsize=512, tarinfo=_StrictTarInfo) as archive:
                 for entry in archive:
                     members += 1
                     _require(members <= member_budget, "member budget exceeded")
@@ -656,13 +669,19 @@ def _scan_layer(store, desc, expected_diff, remaining, member_budget, *, invento
                     )):
                         markers.append(str(path))
                         _require(len(markers) <= MAX_MARKERS, "marker budget exceeded")
-            # Hash the entire decompressed blob, including tar end padding.
-            # Never treat the tar metadata scan as a full OCI unpacker.
-            while True:
-                data = reader.read(CHUNK)
-                if not data:
-                    break
-                _require(not any(data), "nonzero data after tar end")
+                # Validate the consumed first zero header and the mandatory
+                # second zero block through the tar stream (not its underlying
+                # reader, which could skip buffered bytes).
+                _require(archive.fileobj.tell() == archive.offset + tarfile.BLOCKSIZE,
+                         "tar did not terminate at a zero header")
+                _require(archive.fileobj.read(tarfile.BLOCKSIZE) == b"\0"*tarfile.BLOCKSIZE,
+                         "missing second tar end block")
+                while True:
+                    data = archive.fileobj.read(CHUNK)
+                    if not data:
+                        break
+                    _require(not any(data), "nonzero data after tar end")
+            # Hash covers the complete stream, including its validated end padding.
             _require(reader.digest.hexdigest() == _hex(expected_diff), "diff ID mismatch")
             if inventory is not None:
                 _apply_inventory(inventory, changes, whiteouts, layer)
