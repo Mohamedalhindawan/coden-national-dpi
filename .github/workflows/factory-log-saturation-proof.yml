@@ -1,0 +1,74 @@
+name: CODEN P0 synthetic log saturation proof
+on:
+  pull_request:
+    paths: ['.github/workflows/factory-log-saturation-proof.yml']
+permissions: {}
+jobs:
+  bounded-synthetic-logs:
+    if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    env:
+      BASE: docker.io/library/ubuntu@sha256:9a04f13b3f80ef056361e30868593b1cfd2279fe19e4081cb93a90bf56819d6a
+    steps:
+      - name: Verify rootless runtime and test bounded synthetic log output
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          name="coden-log-proof-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          logdir=$(mktemp -d)
+          logpath="$logdir/synthetic.log"
+          cleanup() {
+            rc=$?
+            trap - EXIT
+            timeout 20s podman rm -f --ignore "$name" >/dev/null 2>&1 || rc=1
+            if podman container exists "$name"; then rc=1; else echo resources_removed > evidence/cleanup.txt; fi
+            rm -rf -- "$logdir"
+            printf 'final_exit_code=%s\n' "$rc" > evidence/exit.txt
+            exit "$rc"
+          }
+          trap cleanup EXIT
+          printf '%s\n' '{"synthetic_only":true,"real_deb_installation":false,"os_attempt_consumed":false,"release_authorized":false}' > evidence/scope.json
+          test "$(id -u)" -ne 0
+          podman info --format json | jq -e '.host.security.rootless == true and .host.cgroupVersion == "v2"' >/dev/null
+          podman pull --platform linux/amd64 "$BASE"
+          # Fixed output: 8192 lines, each 256 bytes, plus a completion marker.
+          # No unbounded loop, credentials, network, writable root or mounted host data.
+          podman create --name "$name" --pull=never --network none --http-proxy=false \
+            --read-only --read-only-tmpfs=false --cap-drop=all --security-opt=no-new-privileges \
+            --user 65534:65534 --cpus=1 --memory=256m --memory-swap=256m --pids-limit=32 \
+            --cgroupns=private --pid=private --ipc=private --timeout=30 \
+            --ulimit core=0:0 --ulimit nofile=256:256 \
+            --log-driver=k8s-file --log-opt max-size=1mb --log-opt "path=$logpath" \
+            "$BASE" /bin/sh -eu -c '
+              awk "BEGIN {for(i=0;i<8192;i++) printf \"%0255d\\n\",i; print \"CODEN_SYNTHETIC_LOG_COMPLETE\"}"
+            ' >/dev/null
+          podman start "$name" >/dev/null
+          max=0
+          for _ in $(seq 1 150); do
+            bytes=0
+            if test -f "$logpath" && test ! -L "$logpath"; then bytes=$(stat -c %s "$logpath"); fi
+            printf '%s\n' "$bytes" >> evidence/sampled-bytes.txt
+            if [ "$bytes" -gt "$max" ]; then max=$bytes; fi
+            test "$bytes" -le 1048576
+            if [ "$(podman inspect "$name" --format '{{.State.Running}}')" = false ]; then break; fi
+            sleep 0.1
+          done
+          timeout 35s podman wait "$name" > evidence/container-exit.txt
+          test "$(cat evidence/container-exit.txt)" = 0
+          test -f "$logpath" && test ! -L "$logpath"
+          bytes=$(stat -c %s "$logpath")
+          test "$bytes" -gt 0 && test "$bytes" -le 1048576
+          grep -Fq CODEN_SYNTHETIC_LOG_COMPLETE "$logpath"
+          if [ "$bytes" -gt "$max" ]; then max=$bytes; fi
+          # Do not archive the generated log or expose it to the workflow console.
+          # This is sampled/final evidence, not an assertion of continuous peak monitoring.
+          jq -n --argjson max "$max" --argjson final "$bytes" \
+            '{synthetic_payload_bytes:2097152,configured_limit_bytes:1048576,max_observed_sample_bytes:$max,final_log_bytes:$final,completion_marker_present:true,log_saturation_probe_passed:true,continuous_peak_proven:false,aggregate_writable_budget_proven:false,real_deb_installation:false,release_authorized:false}' > evidence/review.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: synthetic-log-saturation-proof
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7

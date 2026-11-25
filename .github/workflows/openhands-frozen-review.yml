@@ -20,17 +20,18 @@ jobs:
         run: |
           set -euo pipefail
           evidence=docs/evidence/openhands-077f3fad
-          echo "36cce3a3559de7912f3e57dd8d30aa898daa7aa6d181085de82e15affbd70463  $evidence/ubuntu-rebase-review.zip" | sha256sum -c -
-          unzip -p "$evidence/ubuntu-rebase-review.zip" frozen.json > frozen.json
+          printf '%s  %s\n' 36cce3a3559de7912f3e57dd8d30aa898daa7aa6d181085de82e15affbd70463 "$evidence/ubuntu-rebase-review.zip" > "$RUNNER_TEMP/coden-rebase.sha256"
+          sha256sum -c "$RUNNER_TEMP/coden-rebase.sha256"
+          unzip -p "$evidence/ubuntu-rebase-review.zip" frozen.json > "$RUNNER_TEMP/coden-embedded-distributions.json"
           python3 - <<'PY'
-          import json, re
+          import json, os, re
           from pathlib import Path
           def canonical(name):
               return re.sub(r"[-_.]+", "-", name).lower()
           root = Path("docs/evidence/openhands-077f3fad")
           lock = json.loads((root / "source-lock.cdx.json").read_text())
           locked = {(canonical(c["name"]), c["version"]) for c in lock["components"]}
-          packages = json.loads(Path("frozen.json").read_text())["packages"]
+          packages = json.loads((Path(os.environ["RUNNER_TEMP"]) / "coden-embedded-distributions.json").read_text())["packages"]
           assert len(packages) == 32
           components = []
           for p in packages:

@@ -5,7 +5,7 @@ on:
 permissions: {}
 jobs:
   synthetic-envelope:
-    if: github.event.repository.private == false && github.head_ref == 'audit/factory-p0-coding-wheel-notices-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
@@ -23,7 +23,7 @@ jobs:
           mkdir -m 0700 evidence
           name="coden-build-envelope-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           scratch="$name-scratch"
-          printf "%s\n" "attempt_started; previous run 45467750319 failed before execution due to unsupported inline nr_inodes option" > evidence/attempt.txt
+          printf "%s\n" "synthetic_resource_preflight_started; 60s timeout proof only; no source build" > evidence/attempt.txt
           cleanup() {
             rc=$?
             trap - EXIT
@@ -37,12 +37,12 @@ jobs:
           trap cleanup EXIT
           # Use the rootless local tmpfs volume driver proven in the earlier model-link test.
           podman volume create --opt type=tmpfs --opt device=tmpfs \
-            --opt o=rw,exec,nosuid,nodev,size=128m,nr_inodes=8192,mode=1777 "$scratch" >/dev/null
+            --opt o=rw,exec,nosuid,nodev,size=1024m,nr_inodes=65536,mode=1777 "$scratch" >/dev/null
           export CODEN_SYNTHETIC_HOST_SECRET=never_forward_this_canary
           podman create --name "$name" --pull=never --network none \
             --http-proxy=false --read-only --read-only-tmpfs=false \
             --cap-drop=all --security-opt=no-new-privileges --user 65534:65534 \
-            --cpus=2 --memory=2048m --memory-swap=2048m --pids-limit=128 \
+            --cpus=2 --memory=4096m --memory-swap=4096m --pids-limit=128 \
             --cgroupns=private --pid=private --ipc=private --timeout=60 \
             --ulimit core=0:0 --volume "$scratch:/scratch:rw,nocopy" \
             --workdir /scratch --env HOME=/scratch \
@@ -52,18 +52,18 @@ jobs:
               test ! -e /var/run/docker.sock
               test ! -e /run/podman/podman.sock
               test "$(cat /sys/fs/cgroup/cpu.max)" = "200000 100000"
-              test "$(cat /sys/fs/cgroup/memory.max)" = "2147483648"
+              test "$(cat /sys/fs/cgroup/memory.max)" = "4294967296"
               test "$(cat /sys/fs/cgroup/pids.max)" = 128
               test "$(cat /sys/fs/cgroup/memory.swap.max)" = 0
               grep -Eq "^CapEff:[[:space:]]+0+$" /proc/self/status
               grep -Eq "^NoNewPrivs:[[:space:]]+1$" /proc/self/status
               if touch /should-not-write 2>/dev/null; then exit 11; fi
-              test "$(df -Pk /scratch | awk "NR==2 {print \$2}")" = 131072
-              test "$(df -Pi /scratch | awk "NR==2 {print \$2}")" = 8192
+              test "$(df -Pk /scratch | awk "NR==2 {print \$2}")" = 1048576
+              test "$(df -Pi /scratch | awk "NR==2 {print \$2}")" = 65536
               grep -Eq " /scratch .* - tmpfs " /proc/self/mountinfo
               echo synthetic > /scratch/probe
               test "$(cat /scratch/probe)" = synthetic
-              if dd if=/dev/zero of=/scratch/limit-probe bs=1M count=132 2>/dev/null; then exit 12; fi
+              if dd if=/dev/zero of=/scratch/limit-probe bs=1M count=1028 2>/dev/null; then exit 12; fi
               rm /scratch/limit-probe
               test "$(ls /sys/class/net | tr "\n" " ")" = "lo "
               printf "SYNTHETIC_ENVELOPE_CHECKS_PASS\n"
@@ -73,7 +73,7 @@ jobs:
           podman inspect "$name" | jq -e '.[0] | .HostConfig.Privileged==false and .HostConfig.ReadonlyRootfs==true and .HostConfig.NetworkMode=="none" and ((.HostConfig.PortBindings // {})|length==0) and ([.Mounts[]? | select(.Type=="bind")]|length==0)' >/dev/null
           started=$(date +%s)
           podman start "$name" >/dev/null
-          for i in $(seq 1 20); do
+          for _ in $(seq 1 20); do
             if podman logs "$name" 2>&1 | grep -qx SYNTHETIC_ENVELOPE_CHECKS_PASS; then break; fi
             if [ "$(podman inspect "$name" --format '{{.State.Running}}')" = false ]; then break; fi
             sleep 1
@@ -94,11 +94,238 @@ jobs:
           while read -r pid identity; do
             if test -e "/proc/$pid/stat" && test "$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null || true)" = "$identity"; then exit 13; fi
           done < evidence/process-identities.txt
-          jq -n --argjson elapsed "$elapsed" '{status:"synthetic_build_envelope_pass",cpu:2,memory_bytes:2147483648,pids:128,scratch_bytes:134217728,scratch_inodes:8192,network:"none",elapsed_seconds:$elapsed,actual_source_build:false,actual_agent_server_test:false,license_approved:false,release_authorized:false}' > evidence/review.json
+          jq -n --argjson elapsed "$elapsed" '{status:"synthetic_build_envelope_pass",cpu:2,memory_bytes:4294967296,pids:128,scratch_bytes:1073741824,scratch_inodes:65536,synthetic_timeout_seconds:60,approved_build_timeout_seconds:600,full_build_timeout_tested:false,network:"none",elapsed_seconds:$elapsed,actual_source_build:false,actual_agent_server_test:false,license_approved:false,release_authorized:false}' > evidence/review.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
           name: synthetic-build-envelope-proof
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  synthetic-os-writable-root:
+    if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    permissions: {}
+    env:
+      BASE: docker.io/library/ubuntu@sha256:9a04f13b3f80ef056361e30868593b1cfd2279fe19e4081cb93a90bf56819d6a
+    steps:
+      - name: Verify rootless host and immutable reviewed base
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          podman info --format json | jq -e '.host.security.rootless == true and .host.cgroupVersion == "v2" and (.host.cgroupControllers | contains(["cpu","memory","pids"]))' >/dev/null
+          podman pull --platform linux/amd64 "$BASE"
+      - name: Test synthetic disposable root copy and namespace-only chroot
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          name="coden-os-preflight-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          scratch="$name-scratch"
+          logpath="$PWD/evidence/container.raw.log"
+          test ! -e "$logpath" && test ! -L "$logpath"
+          printf '%s\n' '{"operator_receipt":7147469552,"synthetic_only":true,"real_deb_installation":false,"os_attempt_consumed":false,"build_authorized":false,"release_authorized":false}' > evidence/scope.json
+          cleanup() {
+            rc=$?
+            trap - EXIT
+            podman rm -f --ignore "$name" >/dev/null 2>&1 || rc=1
+            podman volume rm -f "$scratch" >/dev/null 2>&1 || rc=1
+            if podman container exists "$name" || podman volume exists "$scratch"; then rc=1; else echo resources_removed > evidence/cleanup.txt; fi
+            printf 'final_exit_code=%s\n' "$rc" > evidence/exit.txt
+            exit "$rc"
+          }
+          trap cleanup EXIT
+          # Deliberately reserve headroom for auxiliary mounts; total writable quota still requires independent review.
+          podman volume create --opt type=tmpfs --opt device=tmpfs \
+            --opt o=rw,exec,nosuid,nodev,size=768m,nr_inodes=49152,mode=0700 "$scratch" >/dev/null
+          export CODEN_SYNTHETIC_HOST_SECRET=never_forward_this_canary
+          podman create --name "$name" --pull=never --network none \
+            --http-proxy=false --read-only --read-only-tmpfs=false \
+            --cap-drop=all --cap-add=CHOWN,DAC_OVERRIDE,FOWNER,SYS_CHROOT \
+            --security-opt=no-new-privileges --user 0:0 \
+            --cpus=2 --memory=4096m --memory-swap=4096m --pids-limit=128 \
+            --cgroupns=private --pid=private --ipc=private --timeout=180 \
+            --ulimit core=0:0 --ulimit nofile=256:256 --ulimit msgqueue=65536:65536 --ulimit memlock=0:0 \
+            --log-driver=k8s-file --log-opt max-size=1mb --log-opt "path=$logpath" \
+            --volume "$scratch:/scratch:rw,nocopy" \
+            --workdir /scratch --env HOME=/scratch \
+            "$BASE" /bin/sh -eu -c '
+              test "$(id -u)" = 0
+              test -z "${CODEN_SYNTHETIC_HOST_SECRET:-}"
+              test ! -e /var/run/docker.sock
+              test ! -e /run/podman/podman.sock
+              test "$(ls /sys/class/net | tr "\n" " ")" = "lo "
+              cat /proc/self/uid_map /proc/self/gid_map
+              awk "NR==1 {if (\$1!=0 || \$2==0) exit 1}" /proc/self/uid_map
+              test "$(cat /sys/fs/cgroup/cpu.max)" = "200000 100000"
+              test "$(cat /sys/fs/cgroup/memory.max)" = "4294967296"
+              test "$(cat /sys/fs/cgroup/memory.swap.max)" = 0
+              test "$(cat /sys/fs/cgroup/pids.max)" = 128
+              grep -Eq "^CapEff:[[:space:]]+000000000004000b$" /proc/self/status
+              grep -Eq "^NoNewPrivs:[[:space:]]+1$" /proc/self/status
+              if touch /should-not-write 2>/dev/null; then exit 11; fi
+              if touch /usr/should-not-write 2>/dev/null; then exit 12; fi
+              cat /proc/self/mountinfo
+              for dev in null zero full tty random urandom; do test -c "/dev/$dev"; done
+              test -z "$(find /dev -xdev -type b -print)"
+              for dev in kvm fuse mem port sd0 sda vda nvme0n1; do test ! -e "/dev/$dev"; done
+              test ! -e /dev/shm/coden-should-not-exist
+              if touch /dev/shm/coden-should-not-exist 2>/dev/null; then exit 19; fi
+              for ns in ipc pid net mnt user cgroup; do printf "NS %s %s\n" "$ns" "$(readlink "/proc/self/ns/$ns")"; done
+              cat /proc/self/limits
+              awk "/^Max open files /{a=(\$4==256 && \$5==256)} /^Max msgqueue size /{b=(\$4==65536 && \$5==65536)} /^Max locked memory /{c=(\$4==0 && \$5==0)} END{exit !(a&&b&&c)}" /proc/self/limits
+              printf "AUXILIARY_LIMITS_PASS\n"
+              printf "STANDARD_DEVICE_TYPES_PASS\n"
+              df -Pk
+              df -Pi
+              test "$(df -Pk /scratch | awk "NR==2 {print \$2}")" = 786432
+              test "$(df -Pi /scratch | awk "NR==2 {print \$2}")" = 49152
+              grep -Eq " /scratch .* - tmpfs " /proc/self/mountinfo
+              mkdir /scratch/root
+              # Copy only trusted base files, preserving symlinks; no host bind mounts or device nodes.
+              for part in bin sbin lib lib64 usr etc var; do
+                if test -e "/$part" || test -L "/$part"; then cp -a "/$part" /scratch/root/; fi
+              done
+              mkdir -p /scratch/root/dev /scratch/root/proc /scratch/root/sys /scratch/root/run /scratch/root/tmp
+              chmod 1777 /scratch/root/tmp
+              cp -a /scratch/root/var/lib/dpkg/status /scratch/status.before
+              chroot /scratch/root /bin/sh -eu -c "printf synthetic > /tmp/coden-probe; chown 65534:65534 /tmp/coden-probe"
+              test "$(cat /scratch/root/tmp/coden-probe)" = synthetic
+              test "$(stat -c %u /scratch/root/tmp/coden-probe)" = 65534
+              test ! -e /tmp/coden-probe
+              cmp /scratch/status.before /scratch/root/var/lib/dpkg/status
+              # Test only locally generated harmless packages; no real glibc update.
+              mkdir -p /scratch/pkg/DEBIAN /scratch/pkg/usr/share/coden-preflight
+              # Reproduce the denied default path, then use only quota-bound scratch.
+              if TMPDIR=/tmp mktemp 2>/dev/null; then exit 15; fi
+              mkdir -m 0700 /scratch/package-tmp
+              probe=$(TMPDIR=/scratch/package-tmp mktemp)
+              test -f "$probe"
+              rm "$probe"
+              for version in 1 2; do
+                printf "Package: coden-synthetic-preflight\nVersion: %s\nArchitecture: all\nMaintainer: CODEN Test <test@example.invalid>\nDescription: disposable synthetic isolation probe\n" "$version" > /scratch/pkg/DEBIAN/control
+                printf "%s\n" "$version" > /scratch/pkg/usr/share/coden-preflight/version
+                printf "#!/bin/sh\nset -eu\nprintf configured > /tmp/coden-maintainer-probe\n" > /scratch/pkg/DEBIAN/postinst
+                chmod 0755 /scratch/pkg/DEBIAN/postinst
+                TMPDIR=/scratch/package-tmp dpkg-deb --build --root-owner-group /scratch/pkg "/scratch/root/tmp/coden-probe-$version.deb"
+                TMPDIR=/tmp chroot /scratch/root /usr/bin/dpkg -i "/tmp/coden-probe-$version.deb"
+                test "$(chroot /scratch/root /usr/bin/dpkg-query -W -f="\${Version}" coden-synthetic-preflight)" = "$version"
+                test "$(cat /scratch/root/usr/share/coden-preflight/version)" = "$version"
+                test "$(cat /scratch/root/tmp/coden-maintainer-probe)" = configured
+                rm /scratch/root/tmp/coden-maintainer-probe
+              done
+              TMPDIR=/tmp chroot /scratch/root /usr/bin/dpkg --purge coden-synthetic-preflight
+              test ! -e /scratch/root/usr/share/coden-preflight/version
+              test -z "$(chroot /scratch/root /usr/bin/dpkg --audit)"
+              cmp /scratch/status.before /var/lib/dpkg/status
+              printf "SYNTHETIC_DPKG_LIFECYCLE_PASS\n"
+              # Read-only trusted old-base tools and synthetic diversion, not candidate maintainer scripts.
+              chroot /scratch/root /bin/sh -eu -c "test -L /lib64; test -e /lib64/ld-linux-x86-64.so.2; readlink /lib64; readlink -f /lib64/ld-linux-x86-64.so.2; /lib64/ld-linux-x86-64.so.2 --version"
+              printf "OLD_LOADER_ALIAS_PASS\n"
+              chroot /scratch/root /usr/sbin/ldconfig -p > /scratch/cache.before
+              chroot /scratch/root /usr/sbin/ldconfig
+              chroot /scratch/root /usr/sbin/ldconfig -p > /scratch/cache.after
+              grep -Fq libc.so.6 /scratch/cache.before
+              grep -Fq libc.so.6 /scratch/cache.after
+              printf "OLD_LDCONFIG_PASS\n"
+              chroot /scratch/root /usr/bin/dpkg-divert --list /lib64
+              chroot /scratch/root /usr/bin/dpkg-divert --list /lib64/ld-linux-x86-64.so.2
+              synthetic=/usr/share/coden-preflight-diversion
+              chroot /scratch/root /usr/bin/dpkg-divert --local --add --no-rename --divert "$synthetic.distrib" "$synthetic"
+              test "$(chroot /scratch/root /usr/bin/dpkg-divert --truename "$synthetic")" = "$synthetic.distrib"
+              chroot /scratch/root /usr/bin/dpkg-divert --local --remove --no-rename --divert "$synthetic.distrib" "$synthetic"
+              test "$(chroot /scratch/root /usr/bin/dpkg-divert --truename "$synthetic")" = "$synthetic"
+              printf "SYNTHETIC_DIVERSION_PASS\n"
+              rc=0
+              chroot /scratch/root /usr/bin/ischroot || rc=$?
+              printf "OLD_ISCHROOT_EXIT=%s\n" "$rc"
+              case "$rc" in 0|1|2) ;; *) exit 20;; esac
+              if test -c /scratch/root/dev/null; then printf "INNER_DEV_NULL_CHARACTER=true\n"; else printf "INNER_DEV_NULL_CHARACTER=false\n"; fi
+              if test -r /scratch/root/proc/1/stat; then printf "INNER_PROC_PID1_READABLE=true\n"; else printf "INNER_PROC_PID1_READABLE=false\n"; fi
+              test -z "$(chroot /scratch/root /usr/bin/dpkg --audit)"
+              cmp /scratch/status.before /var/lib/dpkg/status
+              printf "OLD_BASE_TOOL_PROBE_COMPLETE\n"
+              df -Pk /scratch
+              df -Pi /scratch
+              if dd if=/dev/zero of=/scratch/limit-probe bs=1M count=769 2>/dev/null; then exit 13; fi
+              rm -f /scratch/limit-probe
+              printf "SYNTHETIC_WRITABLE_ROOT_COPY_PASS\n"
+              sleep 240 &
+              wait
+            '
+          podman inspect "$name" | jq -e '.[0] | .HostConfig.Privileged==false and .HostConfig.ReadonlyRootfs==true and .HostConfig.NetworkMode=="none" and ((.HostConfig.PortBindings // {})|length==0) and ([.Mounts[]? | select(.Type=="bind")]|length==0)' >/dev/null
+          for ns in ipc pid net mnt user cgroup; do printf "NS %s %s\n" "$ns" "$(readlink "/proc/self/ns/$ns")"; done > evidence/host-namespaces.txt
+          started=$(date +%s)
+          podman start "$name" >/dev/null
+          for _ in $(seq 1 35); do
+            if podman logs "$name" 2>&1 | grep -qx SYNTHETIC_WRITABLE_ROOT_COPY_PASS; then break; fi
+            if [ "$(podman inspect "$name" --format '{{.State.Running}}')" = false ]; then break; fi
+            sleep 1
+          done
+          podman logs "$name" > evidence/probe.log 2>&1
+          grep -qx SYNTHETIC_WRITABLE_ROOT_COPY_PASS evidence/probe.log
+          grep -qx SYNTHETIC_DPKG_LIFECYCLE_PASS evidence/probe.log
+          grep -qx STANDARD_DEVICE_TYPES_PASS evidence/probe.log
+          grep -qx AUXILIARY_LIMITS_PASS evidence/probe.log
+          for marker in OLD_LOADER_ALIAS_PASS OLD_LDCONFIG_PASS SYNTHETIC_DIVERSION_PASS OLD_BASE_TOOL_PROBE_COMPLETE; do grep -qx "$marker" evidence/probe.log; done
+          ischroot_rc=$(sed -n "s/^OLD_ISCHROOT_EXIT=//p" evidence/probe.log)
+          inner_null=$(sed -n "s/^INNER_DEV_NULL_CHARACTER=//p" evidence/probe.log)
+          inner_proc=$(sed -n "s/^INNER_PROC_PID1_READABLE=//p" evidence/probe.log)
+          case "$ischroot_rc" in 0|1|2) ;; *) exit 20;; esac
+          case "$inner_null:$inner_proc" in true:true|true:false|false:true|false:false) ;; *) exit 21;; esac
+          jq -n --argjson rc "$ischroot_rc" --argjson null_device "$inner_null" --argjson proc "$inner_proc" '{old_loader_alias_verified:true,old_ldconfig_verified:true,synthetic_diversion_verified:true,ischroot_exit:$rc,inner_null_character_device:$null_device,inner_proc_pid1_readable:$proc,real_glibc_scripts_executed:false,real_glibc_capabilities_verified:false,actual_installation_allowed:false}' > evidence/old-base-tools.json
+          grep '^NS ' evidence/probe.log > evidence/container-namespaces.txt
+          test "$(wc -l < evidence/container-namespaces.txt)" -eq 6
+          for ns in ipc pid net mnt user cgroup; do
+            host_ns=$(awk -v n="$ns" '$2==n{print $3}' evidence/host-namespaces.txt)
+            container_ns=$(awk -v n="$ns" '$2==n{print $3}' evidence/container-namespaces.txt)
+            test -n "$host_ns" && test -n "$container_ns" && test "$host_ns" != "$container_ns"
+          done
+          # Record actual log file bytes before cleanup; no synthetic flooding.
+          # Explicit configured path avoids version-dependent inspect template fields.
+          test -n "$logpath" && test -f "$logpath" && test ! -L "$logpath"
+          bytes=$(stat -c %s "$logpath")
+          test "$bytes" -le 1048576
+          jq -n --argjson bytes "$bytes" '{private_namespace_identity_checks:6,open_files_per_process:256,posix_msgqueue_rlimit_bytes:65536,locked_memory_bytes:0,log_configured_max_bytes:1048576,observed_log_bytes:$bytes,log_saturation_tested:false,kernel_resource_accounting_complete:false,all_writable_mounts_bounded:false,real_deb_installation:false}' > evidence/auxiliary-review.json
+          checker=$(mktemp)
+          cat > "$checker" <<'AWK'
+          BEGIN { expected["/scratch"]="tmpfs"; expected["/proc"]="proc"; expected["/dev/pts"]="devpts"; expected["/dev/mqueue"]="mqueue"; split("null zero full tty random urandom", d, " "); for(i in d) expected["/dev/" d[i]]="devtmpfs" }
+          $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+:[0-9]+$/ {
+            path=$5; if (++seen[path]!=1) bad=1
+            fs=""; for(i=7;i<NF;i++) if($i=="-"){fs=$(i+1); break}
+            if(fs=="") bad=1
+            if ($6 ~ /(^|,)rw(,|$)/) {
+              if (!(path in expected) || expected[path]!=fs) {print "unexpected writable mount",path,fs; bad=1}
+              else {writable[path]=1; print path,fs,$6}
+            } else if ($6 !~ /(^|,)ro(,|$)/) bad=1
+          }
+          END { for(path in expected) if(!writable[path]) {print "missing expected mount",path;bad=1}; for(path in seen) if(path=="/" && writable[path]) bad=1; if(!seen["/"] || !seen["/dev"] || !seen["/dev/shm"] || !seen["/proc/sys"]) bad=1; exit (bad?1:0) }
+          AWK
+          awk -f "$checker" evidence/probe.log > evidence/writable-mounts.txt
+          # Negative regression: fail on an additional disk mount or a writable outer root.
+          if { cat evidence/probe.log; printf '\n999 373 0:99 / /unexpected rw - ext4 ext4 rw\n'; } | awk -f "$checker" > evidence/mount-negative-extra.txt; then exit 16; fi
+          if sed 's@/ / ro,relatime - overlay@/ / rw,relatime - overlay@' evidence/probe.log | awk -f "$checker" > evidence/mount-negative-root.txt; then exit 17; fi
+          if grep -v ' /scratch rw,' evidence/probe.log | awk -f "$checker" > evidence/mount-negative-missing.txt; then exit 18; fi
+          rm -f "$checker"
+          printf '%s\n' '{"ordinary_writable_filesystem_count":1,"expected_pseudo_or_device_mounts":9,"negative_cases_rejected":3,"kernel_resource_accounting_complete":false,"all_writable_mounts_bounded":false,"real_deb_installation":false}' > evidence/mount-review.json
+          podman top "$name" hpid | tail -n +2 | awk '{print $1}' > evidence/host-pids.txt
+          test "$(wc -l < evidence/host-pids.txt)" -ge 2
+          while read -r pid; do
+            printf '%s %s\n' "$pid" "$(awk '{print $22}' "/proc/$pid/stat")"
+          done < evidence/host-pids.txt > evidence/process-identities.txt
+          timeout 200 podman wait "$name" > evidence/container-exit.txt
+          elapsed=$(( $(date +%s) - started ))
+          test "$elapsed" -ge 170 && test "$elapsed" -le 195
+          test "$(podman inspect "$name" --format '{{.State.Running}}')" = false
+          while read -r pid identity; do
+            if test -e "/proc/$pid/stat" && test "$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null || true)" = "$identity"; then exit 14; fi
+          done < evidence/process-identities.txt
+          jq -n --argjson elapsed "$elapsed" '{status:"synthetic_root_copy_pass",elapsed_seconds:$elapsed,private_scratch_bytes:805306368,private_scratch_inodes:49152,synthetic_timeout_seconds:180,all_writable_mounts_bounded:false,synthetic_dpkg_lifecycle_verified:true,real_glibc_capabilities_verified:false,real_deb_installation:false,os_attempt_consumed:false,legal_approved:false,build_authorized:false,release_authorized:false}' > evidence/review.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: synthetic-os-writable-root-proof
           path: evidence/
           if-no-files-found: error
           retention-days: 7

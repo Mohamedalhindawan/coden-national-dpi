@@ -5,7 +5,7 @@ on:
 permissions: {}
 jobs:
   static-inventory:
-    if: github.event.repository.private == false && github.head_ref == 'audit/factory-p0-coding-wheel-notices-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event.repository.private == false && (github.head_ref == 'audit/factory-p0-coding-wheel-notices-20261124' || github.head_ref == 'feat/factory-acceleration-batch01-20261124') && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -42,11 +42,12 @@ jobs:
           mkdir -m 0700 evidence
           readelf --version | head -n 1 > evidence/readelf-version.txt
           python - <<'PY'
-          import hashlib,io,json,re,subprocess,tempfile,tomllib,zipfile
+          import hashlib,io,json,re,tempfile,tomllib,zipfile
           from pathlib import Path
           from urllib.parse import urlsplit
           from urllib.request import build_opener
           from ai_factory.factory_wheel_notice_audit import NoRedirect,inspect_wheel,CAP
+          from ai_factory.factory_python_elf import inspect_elf_file
           def sha(b): return hashlib.sha256(b).hexdigest()
           raw=Path("input/pyo3-candidate.lock").read_bytes()
           assert sha(raw)=="93447ba7c43d7c8bffe1bb66d99abad1eaffcbd0d11fe1ef5bb776c7155998a3"
@@ -70,11 +71,9 @@ jobs:
               with tempfile.TemporaryDirectory() as temp:
                   p=Path(temp)/"object"
                   p.write_bytes(data)
-                  result=subprocess.run(["readelf","-W","-h","-d",str(p)],capture_output=True,text=True,timeout=15,env={"PATH":"/usr/bin:/bin","LC_ALL":"C"},check=True)
-                  assert len(result.stdout)<=512*1024
-                  out=result.stdout
-                  return {"machine":re.findall(r"^\s*Machine:\s*(.+)$",out,re.M),"needed":re.findall(r"\(NEEDED\).*\[([^\]]+)\]",out),"soname":re.findall(r"\(SONAME\).*\[([^\]]+)\]",out),"search_paths":re.findall(r"\((?:RPATH|RUNPATH)\).*\[([^\]]+)\]",out)}
+                  return inspect_elf_file(p)
           reports=[]
+          compressed_total=expanded_total=members_total=0
           for n,v,url,digest in selected:
               assert required[n]==v
               match=[w for w in packages[n,v]["wheels"] if w["url"]==url and w["hash"]=="sha256:"+digest]
@@ -88,6 +87,12 @@ jobs:
               notices=inspect_wheel(b,digest)
               native=[]
               with zipfile.ZipFile(io.BytesIO(b)) as z:
+                  assert z.testzip() is None
+                  expanded=sum(i.file_size for i in z.infolist())
+                  members=len(z.infolist())
+                  compressed_total+=size
+                  expanded_total+=expanded
+                  members_total+=members
                   for info in z.infolist():
                       if info.is_dir(): continue
                       with z.open(info) as f: magic=f.read(8)
@@ -103,16 +108,254 @@ jobs:
                           record={"path":info.filename,"size":len(data),"sha256":sha(data),"kind":kind}
                           if kind=="ELF": record.update(inspect_native(data))
                           native.append(record)
-              reports.append({"name":n,"version":v,"wheel_sha256":digest,"runtime_candidate":n in runtime,"build_candidate":n in build,"native":native,"notice_paths":sorted(k for k in notices if not k.endswith("/METADATA"))})
+              reports.append({"name":n,"version":v,"wheel_sha256":digest,"runtime_candidate":n in runtime,"build_candidate":n in build,"compressed_bytes":size,"expanded_member_bytes":expanded,"archive_member_count":members,"native":native,"notice_paths":sorted(k for k in notices if not k.endswith("/METADATA"))})
               print(n,v,len(native),flush=True)
               Path("evidence/inventory.json").write_text(json.dumps({"records":reports,"complete":len(reports)==131,"installed":False,"compiled_membership_verified":False,"license_approved":False,"release_authorized":False},indent=2))
-          assert len(reports)==131
+          assert len(reports)==131 and compressed_total==105369096
+          elf_records=[n for r in reports for n in r["native"] if n["kind"]=="ELF"]
+          assert len(elf_records)==75 and all(n["version_info"] for n in elf_records)
+          print("Collected version information for 75 wheel ELF records; compatibility not yet verified.")
+          Path("evidence/capacity.json").write_text(json.dumps({"wheel_count":len(reports),"compressed_bytes":compressed_total,"expanded_member_bytes":expanded_total,"archive_member_count":members_total,"crc_verified":True,"installed":False,"installed_size_measured":False,"build_authorized":False,"release_authorized":False},indent=2))
           print("PASS: 131 exact R2 wheels statically inventoried. No execution/installation.")
           PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
           name: r2-native-wheel-inventory
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+  python-static-review:
+    if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Initialize bounded evidence directory
+        run: mkdir -m 0700 evidence
+      - name: Review upstream Python standalone archive identity without extraction or execution
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,io,json,re,tarfile
+          from ai_factory.factory_python_archive import inventory
+          from ai_factory.factory_python_elf import collect_elf
+          from pathlib import Path,PurePosixPath
+          from urllib.request import urlopen,Request
+          base="https://github.com/astral-sh/python-build-standalone/releases/download/20260814/"
+          name="cpython-3.13.15+20260814-x86_64-unknown-linux-gnu-install_only.tar.gz"
+          def read(url,limit):
+              with urlopen(Request(url,headers={"User-Agent":"CODEN-static-review"}),timeout=60) as response:
+                  data=response.read(limit+1)
+              assert len(data)<=limit
+              return data
+          sums=read(base+"SHA256SUMS",2*1024*1024)
+          matches=[]
+          for line in sums.decode("utf-8").splitlines():
+              parts=line.split(maxsplit=1)
+              if len(parts)==2 and parts[1].lstrip("* ")==name:
+                  matches.append(parts[0])
+          assert len(matches)==1 and re.fullmatch(r"[0-9a-f]{64}",matches[0]),"exact release checksum missing"
+          digest=matches[0]
+          assert digest=="45816a2653b47a6cc48d8ada4ea1185758a4c2db389d012b31e0205e5ccb548b"
+          url=base+name.replace("+","%2B")
+          raw=read(url,128*1024*1024)
+          assert hashlib.sha256(raw).hexdigest()==digest
+          Path("evidence/SHA256SUMS").write_bytes(sums)
+          files=0
+          links=[]
+          notices=[]
+          expanded=0
+          seen=set()
+          with tarfile.open(fileobj=io.BytesIO(raw),mode="r:gz") as t:
+              for m in t:
+                  p=PurePosixPath(m.name)
+                  assert not p.is_absolute() and ".." not in p.parts and p.parts[0]=="python"
+                  assert m.name not in seen
+                  seen.add(m.name)
+                  assert len(seen)<=100000
+                  if m.isfile():
+                      files+=1
+                      expanded+=m.size
+                      assert expanded<=1024*1024*1024
+                      if "license" in p.name.lower() or "notice" in p.name.lower() or p.name.lower().startswith("copying"):
+                          assert m.size<=2*1024*1024
+                          stream=t.extractfile(m)
+                          data=stream.read()
+                          notices.append({"path":m.name,"sha256":hashlib.sha256(data).hexdigest(),"bytes":len(data)})
+                  elif m.issym() or m.islnk():
+                      links.append({"path":m.name,"target":m.linkname,"kind":"symlink" if m.issym() else "hardlink"})
+                  else:
+                      assert m.isdir(),"unexpected archive member type"
+          receipt={"source":base+"SHA256SUMS","checksum_manifest_sha256":hashlib.sha256(sums).hexdigest(),"url":url,"sha256":digest,"compressed_bytes":len(raw),"expanded_regular_bytes":expanded,"regular_files":files,"archive_member_count":len(seen),"links":links,"notice_candidates":notices,"producer_digest_verified":True,"independent_attestation_verified":False,"extracted":False,"executed":False,"license_approved":False,"build_authorized":False,"release_authorized":False}
+          Path("evidence/python-candidate.json").write_text(json.dumps(receipt,indent=2))
+          # Diagnose actual members without executing or extracting the archive.
+          with tarfile.open(fileobj=io.BytesIO(raw),mode="r:gz") as t:
+              candidates=[{"path":m.name,"size":m.size,"type":m.type.hex(),"regular":m.isfile()} for m in t if (m.isfile() and m.size>128*1024*1024) or not (m.isfile() or m.isdir() or m.issym() or m.islnk())]
+          Path("evidence/member-limit-diagnostics.json").write_text(json.dumps(candidates,indent=2))
+          print("Member limit diagnostics:",json.dumps(candidates))
+          report=inventory(raw,digest)
+          assert report["member_count"]==len(seen) and report["expanded_regular_bytes"]==expanded
+          Path("evidence/python-inventory.json").write_text(json.dumps(report,indent=2))
+          elf=collect_elf(raw,report["native"])
+          assert len(elf)==9 and all(n["version_info"] for n in elf)
+          Path("evidence/python-elf.json").write_text(json.dumps({"records":elf,"executed":False,"os_resolution_verified":False,"compiled_membership_verified":False,"license_approved":False,"release_authorized":False},indent=2))
+          print("ELF candidates:",len(elf))
+          print("Native candidates:",len(report["native"]),"Text evidence:",len(report["text_evidence"]))
+          print("Static Python archive digest verified; selected ELF bytes copied only to temporary analysis files; no execution or installation")
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-python-standalone-static-review
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  python-provenance:
+    if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      attestations: read
+      contents: read
+    steps:
+      - name: Verify exact Python archive against upstream signed provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          name='cpython-3.13.15+20260814-x86_64-unknown-linux-gnu-install_only.tar.gz'
+          digest='45816a2653b47a6cc48d8ada4ea1185758a4c2db389d012b31e0205e5ccb548b'
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 90 --max-filesize 134217728 -o "$work/$name" "https://github.com/astral-sh/python-build-standalone/releases/download/20260814/$name"
+          test "$(stat -c %s "$work/$name")" -eq 118484282
+          (cd "$work"; printf '%s  %s\n' "$digest" "$name" | sha256sum -c -)
+          gh --version > evidence/verifier-version.txt
+          # Upstream release.yml is workflow_dispatch on main with separate tag/sha inputs.
+          # Pin the reviewed release target independently; signed input reconciliation remains required.
+          git ls-remote https://github.com/astral-sh/python-build-standalone.git 'refs/tags/20260814' 'refs/tags/20260814^{}' > evidence/release-ref.txt
+          target=$(awk '$2=="refs/tags/20260814^{}" {print $1; found=1} $2=="refs/tags/20260814" {tag=$1} END {if (!found) print tag}' evidence/release-ref.txt)
+          test "$target" = '38d35dcf0e212ca02eed8ebc11d0c92906387d56'
+          # Verify exact signer workflow, issuer, repository, main ref and subject digest; no execution.
+          # A missing or invalid attestation is BLOCKED, not a fallback checksum PASS.
+          if gh attestation verify "$work/$name" --repo astral-sh/python-build-standalone --source-ref refs/heads/main --signer-workflow astral-sh/python-build-standalone/.github/workflows/release.yml --cert-oidc-issuer https://token.actions.githubusercontent.com --predicate-type https://slsa.dev/provenance/v1 --format json > evidence/attestation.json 2> evidence/verification.log; then
+            jq -e 'type=="array" and length>0' evidence/attestation.json >/dev/null
+            jq -n --arg sha "$digest" '{archive_sha256:$sha,repository_and_signer_attestation_verified:true,release_tag_target_verified:true,signed_release_inputs_verified:false,signer_commit_independently_reviewed:false,license_approved:false,build_authorized:false,release_authorized:false}' > evidence/provenance-review.json
+          else
+            jq -n --arg sha "$digest" '{archive_sha256:$sha,status:"BLOCKED",repository_and_signer_attestation_verified:false,signed_release_inputs_verified:false,license_approved:false,build_authorized:false,release_authorized:false}' > evidence/provenance-review.json
+            exit 1
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-python-signed-provenance-review
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  staging-capacity-review:
+    needs: [static-inventory, python-static-review]
+    if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: r2-native-wheel-inventory
+          path: wheels
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: r2-python-standalone-static-review
+          path: interpreter
+      - name: Bind capacity estimate to exact reviewed inventory receipts
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          python - <<'PY'
+          import copy, hashlib, json
+          from pathlib import Path
+          from ai_factory.factory_staging_capacity import plan_staging
+
+          def load(path):
+              return json.loads(Path(path).read_text())
+
+          def require(ok, message):
+              if not ok:
+                  raise ValueError(message)
+
+          def bind(wheels, python, capacity):
+              require(wheels.get("complete") is True and wheels.get("installed") is False,
+                      "incomplete or installed wheel inventory")
+              require(python.get("producer_digest_verified") is True and
+                      python.get("executed") is False and python.get("extracted") is False,
+                      "unexpected Python review state")
+              require(python["sha256"] == "45816a2653b47a6cc48d8ada4ea1185758a4c2db389d012b31e0205e5ccb548b",
+                      "Python identity mismatch")
+              require((python["compressed_bytes"], python["expanded_regular_bytes"],
+                       python["archive_member_count"]) == (118484282,386276509,4525),
+                      "Python capacity mismatch")
+              records = wheels["records"]
+              require(len(records) == 131 and len({r["name"] for r in records}) == 131,
+                      "missing or duplicate wheel")
+              identity = sorted([r["name"],r["version"],r["wheel_sha256"]] for r in records)
+              digest = hashlib.sha256(json.dumps(identity,separators=(",",":")).encode()).hexdigest()
+              require(digest == "65775d2185597245ae1f2e7aa98820a4c92040bd21b4bc8e8725495dd2e6922f",
+                      "wheel identity mismatch")
+              keys = ("compressed_bytes","expanded_member_bytes","archive_member_count")
+              for r in records:
+                  require(all(type(r[k]) is int and r[k] > 0 for k in keys),
+                          "invalid wheel sizes")
+              totals = tuple(sum(r[k] for r in records) for k in keys)
+              require(totals == (105369096,301372095,14517), "wheel totals mismatch")
+              require(capacity.get("wheel_count") == 131 and capacity.get("crc_verified") is True and
+                      tuple(capacity[k] for k in keys) == totals, "capacity receipt mismatch")
+              return ([dict(name="cpython-standalone",compressed_bytes=python["compressed_bytes"],
+                            expanded_bytes=python["expanded_regular_bytes"],members=python["archive_member_count"])]
+                      + [dict(name=r["name"],compressed_bytes=r["compressed_bytes"],
+                              expanded_bytes=r["expanded_member_bytes"],members=r["archive_member_count"])
+                         for r in records])
+
+          w=load("wheels/inventory.json")
+          p=load("interpreter/python-candidate.json")
+          c=load("wheels/capacity.json")
+          inputs=bind(w,p,c)
+          require(len(inputs)==132, "input count mismatch")
+          # Regression probes: each modified receipt must be rejected.
+          cases=[]
+          x=copy.deepcopy(w); x["records"].pop(); cases.append((x,p,c))
+          x=copy.deepcopy(w); x["records"][0]["wheel_sha256"]="0"*64; cases.append((x,p,c))
+          x=copy.deepcopy(p); x["compressed_bytes"]+=1; cases.append((w,x,c))
+          x=copy.deepcopy(c); x["archive_member_count"]+=1; cases.append((w,p,x))
+          x=copy.deepcopy(w); x["complete"]=False; cases.append((x,p,c))
+          for case in cases:
+              try: bind(*case)
+              except ValueError: pass
+              else: raise AssertionError("invalid receipt admitted")
+          report=plan_staging(inputs,capacity_bytes=960*1024**2,reserve_bytes=128*1024**2)
+          report.update(input_count=len(inputs),receipt_negative_checks=len(cases),
+                        receipt_sha256={name:hashlib.sha256(Path(name).read_bytes()).hexdigest()
+                                        for name in ("wheels/inventory.json","interpreter/python-candidate.json","wheels/capacity.json")},
+                        reserve_is_provisional=True,actual_installation_allowed=False,
+                        dependency_order_verified=False,license_approved=False,
+                        aggregate_writable_budget_proven=False)
+          Path("evidence/staging-capacity.json").write_text(json.dumps(report,indent=2))
+          print("Review only; modeled peak:",report["peak_bytes"],"fits provisional reserve:",report["fits_model"])
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-staging-capacity-review
           path: evidence/
           if-no-files-found: error
           retention-days: 7

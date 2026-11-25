@@ -1,0 +1,109 @@
+name: CODEN P0 full synthetic build watchdog
+on:
+  pull_request:
+    paths: ['.github/workflows/factory-build-watchdog-proof.yml']
+permissions: {}
+jobs:
+  synthetic-600s-build-envelope:
+    if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      BASE: docker.io/library/ubuntu@sha256:9a04f13b3f80ef056361e30868593b1cfd2279fe19e4081cb93a90bf56819d6a
+    steps:
+      - name: Prove full-duration synthetic watchdog with inventory-sized placeholder staging
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          name="coden-watchdog-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          scratch="$name-scratch"
+          logpath="$PWD/evidence/container.raw.log"
+          printf '%s\n' '{"synthetic_only":true,"actual_source_build":false,"os_attempt_consumed":false,"build_attempt_consumed":false,"release_authorized":false}' > evidence/scope.json
+          cleanup() {
+            rc=$?
+            trap - EXIT
+            timeout 20s podman rm -f --ignore "$name" >/dev/null 2>&1 || rc=1
+            if podman volume exists "$scratch"; then timeout 20s podman volume rm -f "$scratch" >/dev/null 2>&1 || rc=1; fi
+            if podman container exists "$name" || podman volume exists "$scratch"; then echo cleanup_unverified > evidence/cleanup.txt; rc=1; else echo resources_removed > evidence/cleanup.txt; fi
+            printf 'final_exit_code=%s\n' "$rc" > evidence/exit.txt
+            exit "$rc"
+          }
+          trap cleanup EXIT
+          test "$(id -u)" -ne 0
+          podman info --format json | jq -e '.host.security.rootless == true and .host.cgroupVersion == "v2" and (.host.cgroupControllers | contains(["cpu","memory","pids"]))' >/dev/null
+          podman pull --platform linux/amd64 "$BASE"
+          # Leave 64 MiB/4096 inodes below the approved 1 GiB/65536 scratch ceiling.
+          podman volume create --opt type=tmpfs --opt device=tmpfs \
+            --opt o=rw,exec,nosuid,nodev,size=960m,nr_inodes=61440,mode=1777 "$scratch" >/dev/null
+          export CODEN_SYNTHETIC_HOST_SECRET=never_forward_this_canary
+          podman create --name "$name" --pull=never --network none --http-proxy=false \
+            --read-only --read-only-tmpfs=false --cap-drop=all --security-opt=no-new-privileges \
+            --user 65534:65534 --cpus=2 --memory=4096m --memory-swap=4096m --pids-limit=128 \
+            --cgroupns=private --pid=private --ipc=private --timeout=600 \
+            --ulimit core=0:0 --ulimit nofile=256:256 --ulimit msgqueue=65536:65536 --ulimit memlock=0:0 \
+            --log-driver=k8s-file --log-opt max-size=1mb --log-opt "path=$logpath" \
+            --volume "$scratch:/scratch:rw,nocopy" --workdir /scratch --env HOME=/scratch \
+            "$BASE" /bin/sh -eu -c '
+              test "$(id -u)" = 65534
+              test -z "${CODEN_SYNTHETIC_HOST_SECRET:-}"
+              test ! -e /var/run/docker.sock && test ! -e /run/podman/podman.sock
+              test "$(ls /sys/class/net | tr "\n" " ")" = "lo "
+              test "$(cat /sys/fs/cgroup/cpu.max)" = "200000 100000"
+              test "$(cat /sys/fs/cgroup/memory.max)" = 4294967296
+              test "$(cat /sys/fs/cgroup/memory.swap.max)" = 0
+              test "$(cat /sys/fs/cgroup/pids.max)" = 128
+              grep -Eq "^CapEff:[[:space:]]+0+$" /proc/self/status
+              grep -Eq "^NoNewPrivs:[[:space:]]+1$" /proc/self/status
+              if touch /coden-should-not-write 2>/dev/null; then exit 11; fi
+              test "$(df -Pk /scratch | awk "NR==2{print \$2}")" = 983040
+              test "$(df -Pi /scratch | awk "NR==2{print \$2}")" = 61440
+              # Sizes from inventory artifacts 14974862025 and 14974722081.
+              # Dense zeros only; no real interpreter, wheels, source, install, or build.
+              mkdir /scratch/entries
+              head -c 386276509 /dev/zero > /scratch/python-expanded
+              head -c 301372095 /dev/zero > /scratch/wheels-expanded
+              head -c 118484282 /dev/zero > /scratch/python-compressed
+              head -c 105369096 /dev/zero > /scratch/wheels-compressed
+              seq -f /scratch/entries/%05g 1 19174 | xargs -r touch
+              test "$(find /scratch/entries -type f | wc -l)" = 19174
+              test "$(wc -c /scratch/python-expanded /scratch/wheels-expanded /scratch/python-compressed /scratch/wheels-compressed | tail -n 1 | awk "{print \$1}")" = 911501982
+              df -Pk /scratch
+              df -Pi /scratch
+              cat /proc/self/mountinfo
+              printf "SYNTHETIC_INVENTORY_STAGING_PASS\n"
+              # Deliberately outlast the independent 600-second runtime watchdog.
+              sleep 660 &
+              wait
+            ' >/dev/null
+          podman inspect "$name" | jq -e '.[0] | .HostConfig.Privileged==false and .HostConfig.ReadonlyRootfs==true and .HostConfig.NetworkMode=="none" and ([.Mounts[]? | select(.Type=="bind")]|length==0)' >/dev/null
+          started=$(date +%s)
+          podman start "$name" >/dev/null
+          for _ in $(seq 1 90); do
+            if podman logs "$name" 2>&1 | grep -qx SYNTHETIC_INVENTORY_STAGING_PASS; then break; fi
+            if [ "$(podman inspect "$name" --format '{{.State.Running}}')" = false ]; then break; fi
+            sleep 1
+          done
+          podman logs "$name" > evidence/probe.log 2>&1
+          grep -qx SYNTHETIC_INVENTORY_STAGING_PASS evidence/probe.log
+          podman top "$name" hpid | tail -n +2 | awk '{print $1}' > evidence/host-pids.txt
+          test "$(wc -l < evidence/host-pids.txt)" -ge 2
+          while read -r pid; do
+            printf '%s %s\n' "$pid" "$(awk '{print $22}' "/proc/$pid/stat")"
+          done < evidence/host-pids.txt > evidence/process-identities.txt
+          timeout 625s podman wait "$name" > evidence/container-exit.txt
+          elapsed=$(( $(date +%s) - started ))
+          test "$elapsed" -ge 590 && test "$elapsed" -le 625
+          test "$(podman inspect "$name" --format '{{.State.Running}}')" = false
+          while read -r pid identity; do
+            if test -e "/proc/$pid/stat" && test "$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null || true)" = "$identity"; then exit 13; fi
+          done < evidence/process-identities.txt
+          test -f "$logpath" && test ! -L "$logpath"
+          test "$(stat -c %s "$logpath")" -le 1048576
+          jq -n --argjson elapsed "$elapsed" '{synthetic_watchdog_pass:true,synthetic_timeout_seconds:600,elapsed_seconds:$elapsed,synthetic_placeholder_bytes:911501982,synthetic_placeholder_inodes:19174,scratch_bytes:1006632960,scratch_inodes:61440,actual_source_build:false,actual_peak_build_capacity_proven:false,aggregate_writable_budget_proven:false,license_approved:false,release_authorized:false}' > evidence/review.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: full-synthetic-build-watchdog-proof
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7

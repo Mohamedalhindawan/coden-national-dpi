@@ -1,0 +1,469 @@
+name: CODEN P0 exact OS base dependency evidence
+on:
+  pull_request:
+    paths: ['.github/workflows/factory-r2-os-base-evidence.yml']
+permissions: {}
+jobs:
+  base-review:
+    if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      BASE: docker.io/library/ubuntu@sha256:9a04f13b3f80ef056361e30868593b1cfd2279fe19e4081cb93a90bf56819d6a
+    steps:
+      - name: Collect fixed base library and package evidence
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          test "$(id -u)" -ne 0
+          podman info --format json | jq -e '.host.security.rootless == true and .host.cgroupVersion == "v2"' >/dev/null
+          podman pull --platform linux/amd64 "$BASE"
+          podman image inspect "$BASE" > evidence/base-image.json
+          jq -e '.[0].Architecture=="amd64"' evidence/base-image.json >/dev/null
+          podman run --rm --pull=never --network none --http-proxy=false --read-only --read-only-tmpfs=false --cap-drop=all --security-opt=no-new-privileges --user 65534:65534 --cpus=2 --memory=512m --memory-swap=512m --pids-limit=64 --timeout=60 "$BASE" /bin/sh -eu -c '
+            test "$(id -u)" = 65534
+            test "$(ls /sys/class/net | tr "\n" " ")" = "lo "
+            /sbin/ldconfig -p
+            dpkg-query -W -f="\${binary:Package}\t\${Version}\t\${Architecture}\n"
+          ' > evidence/base-cache-and-packages.txt
+          podman run --rm --pull=never --network none --http-proxy=false --read-only --read-only-tmpfs=false --cap-drop=all --security-opt=no-new-privileges --user 65534:65534 --cpus=2 --memory=512m --memory-swap=512m --pids-limit=64 --timeout=60 "$BASE" /bin/sh -eu -c '
+            missing=0
+            for name in ld-linux-x86-64.so.2 libc.so.6 libdl.so.2 libgcc_s.so.1 libm.so.6 libpthread.so.0 librt.so.1 libstdc++.so.6 libutil.so.1 libz.so.1; do
+              p=$(/sbin/ldconfig -p | awk -v n="$name" "\$1==n && /x86-64/ {print \$NF; exit}")
+              if [ "$name" = ld-linux-x86-64.so.2 ] && [ -z "$p" ]; then p=/lib64/ld-linux-x86-64.so.2; fi
+              if [ -z "$p" ] || [ ! -f "$p" ]; then printf "MISSING\t%s\n" "$name"; missing=1; continue; fi
+              actual=$(readlink -f "$p")
+              printf "FOUND\t%s\t%s\t%s\n" "$name" "$p" "$actual"
+              sha256sum "$actual"
+              dpkg-query -S "$p" "$actual" 2>&1 || true
+            done
+            test "$missing" -eq 0
+          ' | tee evidence/required-library-files.txt
+          test "$(grep -c '^FOUND' evidence/required-library-files.txt)" -eq 10
+          printf '%s\n' '{"base_name_presence_verified":true,"recursive_resolution_verified":false,"symbol_compatibility_verified":false,"license_approved":false,"actual_build":false,"release_authorized":false}' > evidence/review.json
+      - name: Review exact provider ELF versions and package copyright notices
+        run: |
+          set -euo pipefail
+          work=$(mktemp -d)
+          name="coden-base-provider-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          cleanup() {
+            rc=$?
+            trap - EXIT
+            podman rm -f --ignore "$name" >/dev/null || rc=1
+            rm -rf "$work"
+            exit "$rc"
+          }
+          trap cleanup EXIT
+          podman create --name "$name" --pull=never --network none --read-only --cap-drop=all --security-opt=no-new-privileges --user 65534:65534 "$BASE" /bin/false >/dev/null
+          mkdir -m 0700 evidence/provider-elf
+          mkdir -m 0700 evidence/provider-dynsym
+          readelf --version > evidence/readelf-version.txt
+          cat > "$work/expected.sha256" <<'EOF'
+          c20a2dc8917c755f02b94049356320fe1f62ac7d9f8994731f807d9df39302da  ld-linux-x86-64.so.2
+          3a15d66867d83762c7f2f1e37359cb8f6c5743edb369c65285cb0b1c4f7498bf  libc.so.6
+          c2994527172cc23b7fb0f7d611b71e00a37da27af12c2e5e9e0dc1a742886c96  libdl.so.2
+          d93224d2b0dab4247598be683adca02f5cf00586f99c187579cd7e92058fb7cb  libgcc_s.so.1
+          fce00b6f25f459cf4ae0b7fae4257909a1a8a86f9149e7c029a5d617baf1ccd0  libm.so.6
+          90491a21ce44efcf3bd4b65ec82501c091d7ebe7f8d9b341dd01d721001d9ecd  libpthread.so.0
+          6d072187d88e092e81561a44c03a4a41397319022c6d43519757cc051c576d82  librt.so.1
+          1fd75fe70354a416d75aef22bcae68c47bd25d20e2d0568c30b1a9838cf62f11  libstdc++.so.6.0.33
+          5181d2b5de571bf054395684bfe77db685badf0163ac50b5e47d2148b52f11c3  libutil.so.1
+          f61677c7bdb7c2aa2a243ea781bfd16afcb361cede7b4ef76127a9d8eb9a5242  libz.so.1.3
+          EOF
+          while read -r digest file; do
+            podman cp "$name:/usr/lib/x86_64-linux-gnu/$file" "$work/$file"
+            test -f "$work/$file" && test ! -L "$work/$file"
+            (cd "$work"; printf '%s  %s\n' "$digest" "$file" | sha256sum -c -)
+            LC_ALL=C readelf -W -h -d -V "$work/$file" > "evidence/provider-elf/$file.txt"
+            test -s "evidence/provider-elf/$file.txt"
+            LC_ALL=C timeout 30s readelf -W --dyn-syms "$work/$file" > "evidence/provider-dynsym/$file.txt"
+            test -s "evidence/provider-dynsym/$file.txt"
+            test "$(stat -c %s "evidence/provider-dynsym/$file.txt")" -le 8388608
+          done < "$work/expected.sha256"
+          cp "$work/expected.sha256" evidence/provider-files.sha256
+          test "$(find evidence/provider-elf -type f | wc -l)" -eq 10
+          test "$(find evidence/provider-dynsym -type f | wc -l)" -eq 10
+          podman run --rm --pull=never --network none --http-proxy=false --read-only --read-only-tmpfs=false --cap-drop=all --security-opt=no-new-privileges --user 65534:65534 --cpus=2 --memory=512m --memory-swap=512m --pids-limit=64 --timeout=60 "$BASE" /bin/sh -eu -c '
+            for package in libc6 libgcc-s1 libstdc++6 zlib1g; do
+              p="/usr/share/doc/$package/copyright"
+              printf "\n=== %s ===\n" "$package"
+              dpkg-query -W "$package"
+              if [ -f "$p" ]; then
+                sha256sum "$p"
+                cat "$p"
+              else
+                printf "NOTICE_MISSING: %s\n" "$package"
+              fi
+            done
+          ' > evidence/provider-copyright.txt
+          test -s evidence/provider-copyright.txt
+          printf '%s\n' '{"provider_elf_records":10,"exact_provider_hashes_verified":true,"consumer_symbol_compatibility_verified":false,"recursive_resolution_verified":false,"legal_admission":false,"release_authorized":false}' > evidence/provider-review.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-os-base-evidence
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  base-security-review:
+    if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - name: Initialize review-only security evidence
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          printf '%s\n' '{"target":"docker.io/library/ubuntu@sha256:9a04f13b3f80ef056361e30868593b1cfd2279fe19e4081cb93a90bf56819d6a","platform":"linux/amd64","coverage_verified":false,"security_approved":false,"build_authorized":false,"release_authorized":false}' > evidence/scope.json
+      - name: Collect all-severity vulnerability evidence for exact base
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        env:
+          TRIVY_IMAGE_SRC: remote
+          TRIVY_PLATFORM: linux/amd64
+          TRIVY_IGNORE_UNFIXED: 'false'
+          TRIVY_SEVERITY: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+        with:
+          version: v0.69.3
+          scan-type: image
+          image-ref: docker.io/library/ubuntu@sha256:9a04f13b3f80ef056361e30868593b1cfd2279fe19e4081cb93a90bf56819d6a
+          scanners: vuln
+          format: json
+          list-all-pkgs: true
+          exit-code: '0'
+          ignore-unfixed: false
+          output: evidence/base-scan.json
+          cache: false
+          timeout: 8m
+      - name: Preserve scanner identity and verify report exists
+        run: |
+          set -euo pipefail
+          trivy --version > evidence/trivy-version.txt
+          test -s evidence/base-scan.json
+          jq -e '.Metadata.OS.Family == "ubuntu" and (.Results | type == "array" and length > 0)' evidence/base-scan.json >/dev/null
+          # Evidence collection only: independently reconcile package coverage and findings before any admission.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-os-base-security-review
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  noble-candidate-discovery:
+    if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - name: Resolve official dated Noble tag to immutable amd64 manifest
+        id: candidate
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          tag='docker.io/library/ubuntu:noble-20261110.1'
+          old='sha256:9a04f13b3f80ef056361e30868593b1cfd2279fe19e4081cb93a90bf56819d6a'
+          timeout 90s docker buildx imagetools inspect --raw "$tag" > evidence/tag-index.json
+          digest=$(jq -er '[.manifests[] | select(.platform.os=="linux" and .platform.architecture=="amd64") | .digest] | if length==1 then .[0] else error("expected unique amd64 manifest") end' evidence/tag-index.json)
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          target="docker.io/library/ubuntu@$digest"
+          timeout 90s docker buildx imagetools inspect --raw "$target" > evidence/amd64-manifest.json
+          jq -e '.config.digest | test("^sha256:[0-9a-f]{64}$")' evidence/amd64-manifest.json >/dev/null
+          status=distinct_candidate
+          if [ "$digest" = "$old" ]; then status=unchanged_base; fi
+          jq -n --arg tag "$tag" --arg digest "$digest" --arg previous "$old" --arg status "$status" '{tag:$tag,amd64_manifest:$digest,previous_manifest:$previous,status:$status,official_images_library_blob:"e206488905d81655f345b70ae331839d740b70a9",canonical_amd64_source_commit:"3160ed726dafb8da2af14f4a2b3420c9e9886fb6",security_approved:false,build_authorized:false,release_authorized:false}' > evidence/candidate.json
+          printf 'target=%s\nstatus=%s\n' "$target" "$status" >> "$GITHUB_OUTPUT"
+      - name: Scan only a distinct immutable candidate without running it
+        if: steps.candidate.outputs.status == 'distinct_candidate'
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        env:
+          TRIVY_IMAGE_SRC: remote
+          TRIVY_PLATFORM: linux/amd64
+          TRIVY_IGNORE_UNFIXED: 'false'
+          TRIVY_SEVERITY: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+        with:
+          version: v0.69.3
+          scan-type: image
+          image-ref: ${{ steps.candidate.outputs.target }}
+          scanners: vuln
+          format: json
+          list-all-pkgs: true
+          exit-code: '0'
+          ignore-unfixed: false
+          output: evidence/candidate-scan.json
+          cache: false
+          timeout: 8m
+      - name: Preserve distinct candidate scanner evidence
+        if: steps.candidate.outputs.status == 'distinct_candidate'
+        run: |
+          set -euo pipefail
+          trivy --version > evidence/trivy-version.txt
+          jq -e '.Metadata.OS.Family == "ubuntu" and (.Results | type == "array" and length > 0)' evidence/candidate-scan.json >/dev/null
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-noble-candidate-discovery
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  glibc-update-plan:
+    if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions: {}
+    env:
+      BASE: docker.io/library/ubuntu@sha256:9a04f13b3f80ef056361e30868593b1cfd2279fe19e4081cb93a90bf56819d6a
+    steps:
+      - name: Plan security package remediation using signed APT metadata only
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          work=$(mktemp -d)
+          name="coden-glibc-review-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          cleanup() {
+            rc=$?
+            trap - EXIT
+            podman rm -f --ignore "$name" >/dev/null || rc=1
+            rm -rf "$work"
+            exit "$rc"
+          }
+          trap cleanup EXIT
+          printf '%s\n' '{"status":"incomplete","simulation_only":true,"package_installation":false,"base_replaced":false,"security_approved":false,"build_authorized":false,"release_authorized":false}' > evidence/scope.json
+          test "$(id -u)" -ne 0
+          podman info --format json | jq -e '.host.security.rootless == true and .host.cgroupVersion == "v2"' >/dev/null
+          podman pull --platform linux/amd64 "$BASE"
+          podman image inspect "$BASE" > evidence/base-image.json
+          jq -e '.[0].Architecture=="amd64"' evidence/base-image.json >/dev/null
+          podman create --name "$name" --pull=never --network none --read-only --cap-drop=all --security-opt=no-new-privileges --user 65534:65534 "$BASE" /bin/false >/dev/null
+          podman cp "$name:/var/lib/dpkg/status" "$work/status"
+          podman cp "$name:/usr/share/keyrings/ubuntu-archive-keyring.gpg" "$work/ubuntu.gpg"
+          test -f "$work/status" && test ! -L "$work/status"
+          test -f "$work/ubuntu.gpg" && test ! -L "$work/ubuntu.gpg"
+          (cd "$work"; sha256sum status ubuntu.gpg) > evidence/base-inputs.sha256
+          dpkg-query --admindir="$work" -W -f='${binary:Package}\t${Version}\n' libc6 libc-bin > evidence/installed.txt
+          mkdir -p "$work/lists/partial" "$work/cache/archives/partial" "$work/empty"
+          cat > "$work/sources.list" <<EOF
+          deb [arch=amd64 signed-by=$work/ubuntu.gpg] https://archive.ubuntu.com/ubuntu/ noble main
+          deb [arch=amd64 signed-by=$work/ubuntu.gpg] https://archive.ubuntu.com/ubuntu/ noble-updates main
+          deb [arch=amd64 signed-by=$work/ubuntu.gpg] https://security.ubuntu.com/ubuntu/ noble-security main
+          deb-src [signed-by=$work/ubuntu.gpg] https://archive.ubuntu.com/ubuntu/ noble-updates main
+          deb-src [signed-by=$work/ubuntu.gpg] https://security.ubuntu.com/ubuntu/ noble-security main
+          EOF
+          cat > "$work/apt.conf" <<EOF
+          Dir::Etc::main "/dev/null";
+          Dir::Etc::parts "$work/empty";
+          Dir::Etc::sourcelist "$work/sources.list";
+          Dir::Etc::sourceparts "$work/empty";
+          Dir::Etc::preferences "/dev/null";
+          Dir::Etc::preferencesparts "$work/empty";
+          Dir::State "$work";
+          Dir::State::status "$work/status";
+          Dir::State::lists "$work/lists";
+          Dir::Cache "$work/cache";
+          APT::Architecture "amd64";
+          APT::Architectures { "amd64"; };
+          APT::Get::AllowUnauthenticated "false";
+          Acquire::AllowInsecureRepositories "false";
+          Acquire::AllowDowngradeToInsecureRepositories "false";
+          Acquire::Check-Valid-Until "true";
+          Acquire::Check-Date "true";
+          Acquire::Retries "0";
+          Acquire::Languages "none";
+          Acquire::https::Timeout "30";
+          Acquire::http::Timeout "30";
+          APT::Update::Error-Mode "any";
+          EOF
+          export APT_CONFIG="$work/apt.conf" LC_ALL=C
+          apt-get --version > evidence/apt-version.txt
+          timeout 240s apt-get update 2>&1 | tee evidence/index-update.txt
+          (cd "$work/lists"; sha256sum -- *InRelease) > evidence/signed-indexes.sha256
+          apt-cache policy libc6 libc-bin > evidence/policy.txt
+          fixed='2.39-0ubuntu8.12'
+          libc=$(apt-cache policy libc6 | awk '/Candidate:/ {print $2; exit}')
+          bin=$(apt-cache policy libc-bin | awk '/Candidate:/ {print $2; exit}')
+          [[ "$libc" =~ ^[0-9][0-9A-Za-z.+:~-]*$ ]]
+          [[ "$bin" =~ ^[0-9][0-9A-Za-z.+:~-]*$ ]]
+          test "$libc" = "$bin"
+          dpkg --compare-versions "$libc" ge "$fixed"
+          apt-cache show "libc6=$libc" "libc-bin=$bin" > evidence/candidate-package-metadata.txt
+          apt-cache showsrc --only-source glibc > "$work/glibc-source-records.txt"
+          awk 'BEGIN {RS=""; ORS="\n\n"} {r="\n" $0 "\n"} index(r,"\nPackage: glibc\n") && index(r,"\nVersion: 2.39-0ubuntu8.12\n") && index(r,"\nChecksums-Sha256:\n") {print}' "$work/glibc-source-records.txt" > evidence/exact-glibc-source-records.txt
+          test -s evidence/exact-glibc-source-records.txt
+          grep -Fxq 'Version: 2.39-0ubuntu8.12' evidence/exact-glibc-source-records.txt
+          printf '%s\n' '{"exact_source_metadata_collected":true,"source_archive_downloaded":false,"binary_source_reproduction_verified":false,"legal_approved":false,"release_authorized":false}' > evidence/source-review.json
+          timeout 60s apt-get --simulate --no-install-recommends install "libc6=$libc" "libc-bin=$bin" 2>&1 | tee evidence/simulation.txt
+          jq -n --arg version "$libc" --arg minimum "$fixed" '{status:"simulation_collected",candidate_version:$version,scanner_reported_minimum:$minimum,simulation_only:true,package_installation:false,base_replaced:false,dependency_plan_approved:false,security_approved:false,build_authorized:false,release_authorized:false}' > evidence/scope.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-glibc-update-plan
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  glibc-artifact-review:
+    if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    permissions: {}
+    steps:
+      - name: Review exact signed-index-bound Debian artifacts without installing
+        run: |
+          set -euo pipefail
+          export LC_ALL=C
+          mkdir -m 0700 evidence
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          printf '%s\n' '{"source_plan_artifact":14974697509,"source_plan_zip_sha256":"0241d45e47c8ad063c79c5f20e5d58bb99f971d8663141383a3536460a889257","package_installation":false,"base_replaced":false,"security_approved":false,"build_authorized":false,"release_authorized":false}' > evidence/scope.json
+          cat > "$work/expected.tsv" <<'EOF'
+          libc6 3264258 d821b41fc59cb4978ecd53bc83e5c964ac15d305c8d2ac4c8a35aebe55010fb9
+          libc-bin 681714 22f0393621e72ed1b53d228ee332180269182b5445761c7d7b74f5cba75a1dd6
+          EOF
+          version=2.39-0ubuntu8.12
+          while read -r package size digest; do
+            file="${package}_${version}_amd64.deb"
+            url="https://security.ubuntu.com/ubuntu/pool/main/g/glibc/$file"
+            curl --fail --silent --show-error --proto '=https' --connect-timeout 15 --max-time 90 --max-filesize "$size" --output "$work/$file" "$url"
+            test "$(stat -c %s "$work/$file")" -eq "$size"
+            (cd "$work"; printf '%s  %s\n' "$digest" "$file" | sha256sum -c -)
+            test "$(dpkg-deb -f "$work/$file" Package)" = "$package"
+            test "$(dpkg-deb -f "$work/$file" Version)" = "$version"
+            test "$(dpkg-deb -f "$work/$file" Architecture)" = amd64
+            dpkg-deb -f "$work/$file" > "evidence/$package.control.txt"
+            timeout 60s dpkg-deb -c "$work/$file" > "evidence/$package.members.txt"
+            (ulimit -f 65536; timeout 60s dpkg-deb --fsys-tarfile "$work/$file" > "$work/$package.tar")
+            (ulimit -f 4096; timeout 30s dpkg-deb --ctrl-tarfile "$work/$file" > "$work/$package-control.tar")
+            member="./usr/share/doc/$package/copyright"
+            test "$(tar -tf "$work/$package.tar" | grep -Fxc "$member")" -eq 1
+            tar -xOf "$work/$package.tar" "$member" > "evidence/$package.copyright.txt"
+            test "$(stat -c %s "evidence/$package.copyright.txt")" -eq 26462
+            (cd evidence; sha256sum "$package.copyright.txt") >> evidence/copyright.sha256
+            tar -tvf "$work/$package-control.tar" > "evidence/$package.control-members.txt"
+            for script in preinst postinst prerm postrm triggers; do
+              if tar -tf "$work/$package-control.tar" | grep -Fxq "./$script"; then
+                tar -xOf "$work/$package-control.tar" "./$script" > "evidence/$package.$script.txt"
+              fi
+            done
+            printf '%s\t%s\t%s\t%s\n' "$package" "$size" "$digest" "$url" >> evidence/artifact-identities.tsv
+          done < "$work/expected.tsv"
+          mkdir -m 0700 evidence/provider-elf evidence/provider-dynsym
+          for file in ld-linux-x86-64.so.2 libc.so.6 libdl.so.2 libm.so.6 libpthread.so.0 librt.so.1 libutil.so.1; do
+            member="./usr/lib/x86_64-linux-gnu/$file"
+            test "$(tar -tf "$work/libc6.tar" | grep -Fxc "$member")" -eq 1
+            tar -xOf "$work/libc6.tar" "$member" > "$work/object"
+            test -s "$work/object"
+            printf '%s  %s\n' "$(sha256sum "$work/object" | cut -d ' ' -f1)" "$file" >> evidence/provider-files.sha256
+            timeout 30s readelf -W -h -d -V -l "$work/object" > "evidence/provider-elf/$file.txt"
+            timeout 30s readelf -W --dyn-syms "$work/object" > "evidence/provider-dynsym/$file.txt"
+            test "$(stat -c %s "evidence/provider-dynsym/$file.txt")" -le 8388608
+          done
+          readelf --version > evidence/readelf-version.txt
+          printf '%s\n' '{"status":"static_artifact_review_collected","exact_packages":2,"updated_provider_records":7,"package_installation":false,"maintainer_scripts_executed":false,"abi_approved":false,"security_approved":false,"build_authorized":false,"release_authorized":false}' > evidence/result.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-glibc-artifact-review
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  glibc-source-files:
+    if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    permissions: {}
+    steps:
+      - name: Preserve exact source files from signed-index-bound receipt
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence evidence/source
+          printf '%s\n' '{"source_metadata_artifact":14975760656,"source_metadata_zip_sha256":"6567417cd6214598f21da0f4d447e6b1cd77bc3103d51dad97a12a23fc7a4746","source_files_verified":false,"source_executed":false,"legal_approved":false,"release_authorized":false}' > evidence/scope.json
+          cat > evidence/expected.tsv <<'EOF'
+          glibc_2.39.orig.tar.xz 18520988 f77bd47cf8170c57365ae7bf86696c118adb3b120d3259c64c502d3dc1e2d926
+          glibc_2.39.orig.tar.xz.asc 833 2cce427ef7933c17379f5514e4f0ccf8dffae5bf8c72f0f7e0bf8b8401f34be5
+          glibc_2.39-0ubuntu8.12.debian.tar.xz 506308 cc7cf38a3060a282011e83c946b6cec1aebe9b04e21e133449abe28340a710f6
+          glibc_2.39-0ubuntu8.12.dsc 9391 2dd63e1aef4623627bd67c1b8479baa585a68e98f27d2d4fe60d7cde57bcf7fc
+          EOF
+          while read -r file size hash; do
+            url="https://security.ubuntu.com/ubuntu/pool/main/g/glibc/$file"
+            curl --fail --silent --show-error --proto '=https' --connect-timeout 15 --max-time 60 --max-filesize "$size" --output "evidence/source/$file" "$url"
+            test "$(stat -c %s "evidence/source/$file")" -eq "$size"
+            (cd evidence/source; printf '%s  %s\n' "$hash" "$file" | sha256sum -c -)
+          done < evidence/expected.tsv
+          (cd evidence/source; sha256sum -- *) > evidence/source.sha256
+          test "$(wc -l < evidence/source.sha256)" -eq 4
+          grep -Fxq 'Version: 2.39-0ubuntu8.12' evidence/source/glibc_2.39-0ubuntu8.12.dsc
+          printf '%s\n' '{"source_files_verified":4,"source_executed":false,"detached_signature_verified":false,"binary_reproduction_verified":false,"legal_approved":false,"release_authorized":false}' > evidence/result.json
+      - name: Verify source signatures against independently published signer fingerprints
+        run: |
+          set -euo pipefail
+          export LC_ALL=C
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          export GNUPGHOME="$work/gnupg"
+          mkdir -m 0700 "$GNUPGHOME" evidence/signatures
+          printf '%s\n' 'https://sourceware.org/glibc/security.html' 'https://wiki.ubuntu.com/Security/GPG_key_table' > evidence/signatures/fingerprint-sources.txt
+          upstream=7273542B39962DF7B299931416792B4EA25340F8
+          ubuntu=50C4A0DDCF31E452CEB19B516569D855A744BE93
+          for fp in "$upstream" "$ubuntu"; do
+            curl --fail --silent --show-error --proto '=https' --connect-timeout 15 --max-time 45 --max-filesize 1048576 --get --data-urlencode 'op=get' --data-urlencode "search=0x$fp" --output "evidence/signatures/$fp.asc" https://keyserver.ubuntu.com/pks/lookup
+            gpg --batch --no-options --with-colons --show-keys "evidence/signatures/$fp.asc" > "evidence/signatures/$fp.keys"
+            actual=$(awk -F: '$1=="pub"{p=1;next} p&&$1=="fpr"{print $10;p=0}' "evidence/signatures/$fp.keys")
+            test "$actual" = "$fp"
+            gpg --batch --no-options --import "evidence/signatures/$fp.asc" 2> "evidence/signatures/$fp.import.log"
+          done
+          # Independent project-published certificate, merged with keyserver data
+          # so revocations from either source are retained. Never alter the clock.
+          curl --fail --silent --show-error --proto '=https' --connect-timeout 15 --max-time 45 --max-filesize 1048576 --output evidence/signatures/glibc-security.html https://sourceware.org/glibc/security.html
+          python3 - "$work" <<'PY'
+          import html
+          import pathlib
+          import re
+          import sys
+          page = pathlib.Path("evidence/signatures/glibc-security.html").read_text()
+          blocks = re.findall(r"-----BEGIN PGP PUBLIC KEY BLOCK-----.*?-----END PGP PUBLIC KEY BLOCK-----", html.unescape(page), re.S)
+          if not 1 <= len(blocks) <= 20:
+              raise SystemExit("unexpected public key block count")
+          for i, block in enumerate(blocks):
+              lines = re.sub(r"<[^>]*>", "", block).splitlines()
+              pathlib.Path(sys.argv[1], f"official-{i}.asc").write_text("\n".join(line.strip() for line in lines) + "\n")
+          PY
+          matches=0
+          for key in "$work"/official-*.asc; do
+            gpg --batch --no-options --with-colons --show-keys "$key" > "$work/official.keys"
+            actual=$(awk -F: '$1=="pub"{p=1;next} p&&$1=="fpr"{print $10;p=0}' "$work/official.keys")
+            if [ "$actual" = "$upstream" ]; then
+              matches=$((matches+1))
+              cp "$key" evidence/signatures/upstream-official.asc
+              cp "$work/official.keys" evidence/signatures/upstream-official.keys
+            fi
+          done
+          test "$matches" -eq 1
+          gpg --batch --no-options --import evidence/signatures/upstream-official.asc 2> evidence/signatures/upstream-official.import.log
+          gpg --batch --no-options --with-colons --list-keys "$upstream" > evidence/signatures/upstream-merged.keys
+          # Compare Ubuntu's exact original archive to the independent GNU release.
+          curl --fail --silent --show-error --proto '=https' --connect-timeout 15 --max-time 90 --max-filesize 18520988 --output "$work/gnu-glibc-2.39.tar.xz" https://ftp.gnu.org/gnu/glibc/glibc-2.39.tar.xz
+          sha256sum "$work/gnu-glibc-2.39.tar.xz" | awk '{print $1}' > evidence/signatures/gnu-original.sha256
+          test "$(stat -c %s "$work/gnu-glibc-2.39.tar.xz")" -eq 18520988
+          cmp "$work/gnu-glibc-2.39.tar.xz" evidence/source/glibc_2.39.orig.tar.xz
+          printf '%s\n' '{"gnu_original_byte_match":true,"official_key_fingerprint_match":true,"current_signature_gate_unchanged":true,"legal_approved":false}' > evidence/signatures/independent-source-review.json
+          gpg --batch --no-options --no-auto-key-retrieve --status-fd 1 --verify evidence/source/glibc_2.39.orig.tar.xz.asc evidence/source/glibc_2.39.orig.tar.xz > evidence/signatures/upstream.status 2> evidence/signatures/upstream.log
+          gpg --batch --no-options --no-auto-key-retrieve --status-fd 1 --verify evidence/source/glibc_2.39-0ubuntu8.12.dsc > evidence/signatures/ubuntu.status 2> evidence/signatures/ubuntu.log
+          for entry in "upstream:$upstream" "ubuntu:$ubuntu"; do
+            name="$entry"; name="${name%%:*}"
+            fp="$entry"; fp="${fp#*:}"
+            awk -v expected="$fp" '$1=="[GNUPG:]" && $2=="VALIDSIG" {n++; if ($3!=expected || $NF!=expected) bad=1} END{exit !(n==1 && !bad)}' "evidence/signatures/$name.status"
+            if grep -Eq '^\[GNUPG:\] (BADSIG|ERRSIG|EXPSIG|EXPKEYSIG|REVKEYSIG|KEYREVOKED|KEYEXPIRED|SIGEXPIRED|NO_PUBKEY|NODATA|FAILURE)( |$)' "evidence/signatures/$name.status"; then exit 1; fi
+          done
+          printf '%s\n' '{"source_files_verified":4,"source_executed":false,"detached_signature_verified":true,"dsc_signature_verified":true,"signer_fingerprints_matched":true,"binary_reproduction_verified":false,"legal_approved":false,"release_authorized":false}' > evidence/result.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-glibc-exact-source-files
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
