@@ -372,3 +372,78 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+  official-minimal-config-review:
+    if: github.event.repository.private == false && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    permissions: {}
+    steps:
+      - name: Review only immutable OCI image config
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          python3 - <<'PY'
+          import hashlib,json,re,urllib.error,urllib.request
+          from urllib.parse import urlsplit
+          from pathlib import Path
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl): return None
+          opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+          root="https://ghcr.io/v2/openhands/agent-server/"
+          image="sha256:9a36355fa2baacaae1c6dd5a1a80492bba89d1dec5a536af572ba5fb3e96e22f"
+          config="sha256:132971a4abd0f0274f66045f4a6fd37d89b45c4a1029d3c17849a54a3dc3d9f1"
+          def fetch(url,headers=None,cap=1048576):
+              with opener.open(urllib.request.Request(url,headers=headers or {}),timeout=15) as res:
+                  data=res.read(cap+1)
+                  if len(data)>cap: raise ValueError("metadata too large")
+                  return data
+          def checked(raw,digest):
+              assert "sha256:"+hashlib.sha256(raw).hexdigest()==digest
+              return json.loads(raw)
+          token=json.loads(fetch("https://ghcr.io/token?service=ghcr.io&scope=repository%3Aopenhands%2Fagent-server%3Apull",cap=65536))["token"]
+          assert isinstance(token,str) and 0<len(token)<16384
+          auth={"Authorization":"Bearer "+token}
+          manifest=checked(fetch(root+"manifests/"+image,dict(auth,Accept="application/vnd.oci.image.manifest.v1+json")),image)
+          desc=manifest["config"]
+          assert desc["digest"]==config
+          assert desc["mediaType"] in ("application/vnd.oci.image.config.v1+json","application/vnd.docker.container.image.v1+json")
+          size=desc["size"]
+          assert type(size) is int and 0<size<=1048576
+          try: raw=fetch(root+"blobs/"+config,auth,cap=size)
+          except urllib.error.HTTPError as exc:
+              if exc.code not in (301,302,303,307,308): raise
+              target=exc.headers.get("Location","")
+              u=urlsplit(target)
+              assert u.scheme=="https" and u.hostname=="pkg-containers.githubusercontent.com" and not u.username and not u.password and u.port in (None,443)
+              raw=fetch(target,cap=size)
+          assert len(raw)==size
+          obj=checked(raw,config)
+          assert obj["os"]=="linux" and obj["architecture"]=="amd64"
+          diff_ids=obj["rootfs"]["diff_ids"]
+          assert obj["rootfs"]["type"]=="layers" and len(diff_ids)==len(manifest["layers"])==14
+          assert all(re.fullmatch(r"sha256:[0-9a-f]{64}",d) for d in diff_ids)
+          cfg=obj["config"]
+          env=cfg.get("Env") or []
+          assert isinstance(env,list) and all(isinstance(x,str) and "=" in x for x in env)
+          allowed={"PATH","LANG","LC_ALL","LOG_JSON","OH_ENABLE_VSCODE","OH_ACP_SKILL_SOURCING","OPENHANDS_BUILD_GIT_SHA","OPENHANDS_BUILD_GIT_REF","LD_LIBRARY_PATH","HOME"}
+          report=dict(status="CONFIG_DIGEST_VERIFIED",image_manifest_digest=image,config_digest=config,config_bytes=size,
+                      os=obj["os"],architecture=obj["architecture"],user=cfg.get("User"),entrypoint=cfg.get("Entrypoint"),
+                      cmd=cfg.get("Cmd"),working_dir=cfg.get("WorkingDir"),env_names=[x.split("=",1)[0] for x in env],
+                      reviewed_environment={k:v for k,v in (x.split("=",1) for x in env) if k in allowed},
+                      exposed_ports=sorted((cfg.get("ExposedPorts") or {}).keys()),volumes=sorted((cfg.get("Volumes") or {}).keys()),
+                      rootfs_diff_ids=diff_ids,layer_count=len(diff_ids),image_layers_downloaded=False,
+                      installed_inventory_verified=False,signature_identity_verified=False,license_approved=False,
+                      runtime_isolation_verified=False,build_authorized=False,release_authorized=False)
+          Path("evidence/config-review.json").write_text(json.dumps(report,indent=2)+"\n")
+          # Only selected public metadata is retained; unknown env values and
+          # raw registry authorization are never copied to evidence or logs.
+          print("CONFIG_DIGEST_VERIFIED",config,"layers",len(diff_ids))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-official-minimal-config-review
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
