@@ -528,7 +528,7 @@ jobs:
 
   official-minimal-authorized-offline-inspection:
     # Single operator-authorized transition from Sprint11. No automatic repeat.
-    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '11bca085077507f6379629e82aa69ce331a104f5' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '59e2f0bf81502c8a0bc58740a5ce730c06fb2efe' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -545,7 +545,9 @@ jobs:
           mkdir -m 0700 evidence
           ev="$PWD/evidence"
           store="$(mktemp -d "${RUNNER_TEMP}/coden-oci.XXXXXXXX")"
+          guard="$(mktemp "${RUNNER_TEMP}/coden-offline-guard.XXXXXXXX.py")"
           cleanup() {
+            rm -f -- "$guard"
             if mountpoint -q "$store"; then
               sudo umount "$store" || { printf '%s\n' 'CLEANUP_FAILED' > "$ev/cleanup.txt"; return 1; }
             fi
@@ -560,7 +562,30 @@ jobs:
           findmnt -n -o FSTYPE,OPTIONS --mountpoint "$store" > "$ev/store-mount.txt"
           # Prove network namespace and unprivileged execution before acquisition.
           uid="$(id -u)"; gid="$(id -g)"
-          sudo unshare --net -- setpriv --reuid "$uid" --regid "$gid" --clear-groups --no-new-privs env -i PATH=/usr/bin:/bin python3 -I -c 'import os; assert os.getuid()!=0; assert set(os.listdir("/sys/class/net"))=={"lo"}; print("OFFLINE_NAMESPACE_NONROOT")' > "$ev/network-preflight.txt"
+          host_ns="$(readlink /proc/self/ns/net)"
+          cat > "$guard" <<'PYGUARD'
+          import os,runpy,socket,sys
+          from pathlib import Path
+          host=sys.argv[1]
+          fields={k:v.strip() for k,v in (line.split(":",1) for line in Path("/proc/self/status").read_text().splitlines() if ":" in line)}
+          kernel=sorted(name for _,name in socket.if_nameindex())
+          proc_names=sorted(line.split(":",1)[0].strip() for line in Path("/proc/self/net/dev").read_text().splitlines()[2:] if ":" in line)
+          ipv4=Path("/proc/self/net/route").read_text().splitlines()[1:]
+          ipv6=Path("/proc/self/net/ipv6_route")
+          routes6=ipv6.read_text().splitlines() if ipv6.exists() else []
+          assert os.getuid()!=0 and os.geteuid()!=0
+          assert int(fields["CapEff"],16)==0 and fields["NoNewPrivs"]=="1"
+          assert os.readlink("/proc/self/ns/net")!=host
+          assert kernel==["lo"] and proc_names==["lo"]
+          assert not ipv4 and not any(line.split()[-1]!="lo" for line in routes6 if line.strip())
+          if len(sys.argv)==2:
+              print("OFFLINE_NAMESPACE_NONROOT_KERNEL_PROC_NO_EXTERNAL_ROUTES")
+          else:
+              print("ACTUAL_INSPECTION_NAMESPACE_VERIFIED",file=sys.stderr)
+              sys.argv=sys.argv[2:]
+              runpy.run_path(sys.argv[0],run_name="__main__")
+          PYGUARD
+          sudo unshare --net -- setpriv --reuid "$uid" --regid "$gid" --clear-groups --no-new-privs env -i PATH=/usr/bin:/bin python3 -I "$guard" "$host_ns" > "$ev/network-preflight.txt"
           timeout --kill-after=5s 300s env -i PATH=/usr/bin:/bin python3 -I - "$store" "$ev" <<'PY'
           import hashlib,json,os,re,sys,urllib.error,urllib.request
           from pathlib import Path
@@ -672,7 +697,8 @@ jobs:
           sudo mount -o remount,ro,nosuid,nodev,noexec "$store"
           findmnt -n -o FSTYPE,OPTIONS --mountpoint "$store" > "$ev/inspection-mount.txt"
           test "$(findmnt -n -o OPTIONS --mountpoint "$store" | cut -d, -f1)" = ro
-          timeout --kill-after=5s 180s sudo unshare --net -- setpriv --reuid "$uid" --regid "$gid" --clear-groups --no-new-privs env -i PATH=/usr/bin:/bin python3 -I "$PWD/ai_factory/oci_offline_evidence.py" "$store" --max-compressed-bytes 536870912 --max-expanded-bytes 2147483648 > "$ev/offline-layer-review.json"
+          # Reserve one byte for the verifier's overflow detection read.
+          timeout --kill-after=5s 180s sudo unshare --net -- setpriv --reuid "$uid" --regid "$gid" --clear-groups --no-new-privs env -i PATH=/usr/bin:/bin python3 -I "$guard" "$host_ns" "$PWD/ai_factory/oci_offline_evidence.py" "$store" --max-compressed-bytes 536870912 --max-expanded-bytes 2147483647 > "$ev/offline-layer-review.json"
           python3 -I - "$ev/offline-layer-review.json" <<'PY'
           import json,sys
           r=json.load(open(sys.argv[1]))
