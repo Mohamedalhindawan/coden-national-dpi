@@ -106,11 +106,23 @@ class _BoundedReader:
 
     def read(self, size):
         _require(0 <= size <= 8 * CHUNK, "archive read exceeds bound")
-        data = self.stream.read(min(size, self.limit - self.count + 1))
-        self.count += len(data)
-        _require(self.count <= self.limit, "expanded byte budget exceeded")
-        self.digest.update(data)
-        return data
+        # GzipFile.read() can prefetch decompressed output (e.g. 8192 bytes
+        # for a one-byte request). read1() requests only the remaining bytes
+        # from its underlying decompressor. Accumulate short reads without
+        # exceeding the requested amount or the caller's overflow sentinel.
+        wanted = min(size, self.limit - self.count + 1)
+        chunks = bytearray()
+        while len(chunks) < wanted:
+            remaining = wanted - len(chunks)
+            data = self.stream.read1(remaining)
+            _require(len(data) <= remaining, "gzip read exceeded requested bound")
+            if not data:
+                break
+            self.count += len(data)
+            _require(self.count <= self.limit, "expanded byte budget exceeded")
+            self.digest.update(data)
+            chunks.extend(data)
+        return bytes(chunks)
 
 
 def _safe_path(name):
