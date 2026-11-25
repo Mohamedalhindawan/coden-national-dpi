@@ -2404,3 +2404,170 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+  broker-cross-uid-ipc-integration:
+    # One-shot synthetic test of the pinned existing broker, not runtime admission.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '561a113cdc99b14d722cb6ecf02f99c7ef760651' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 561a113cdc99b14d722cb6ecf02f99c7ef760651
+          persist-credentials: false
+      - name: Exercise existing broker with independent unprivileged processes
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          test "$(git rev-parse HEAD)" = 561a113cdc99b14d722cb6ecf02f99c7ef760651
+          base="$(sudo mktemp -d /opt/coden-ipc-fixture.XXXXXXXX)"
+          cleanup() {
+            status=$?
+            trap - EXIT
+            sudo rm -rf -- "$base" || status=1
+            test ! -e "$base" || status=1
+            exit "$status"
+          }
+          trap cleanup EXIT
+          sudo chmod 0755 "$base"
+          sudo install -d -m 0755 "$base/source/ai_factory"
+          for name in factory_qwen_tool_benchmark factory_qwen_tool_schema openhands_sdk_operator openhands_multifile_review project review_queue intake; do
+            file="ai_factory/$name.py"
+            test -f "$file" && test ! -L "$file"
+            test "$(git hash-object "$file")" = "$(git rev-parse HEAD:"$file")"
+            sudo install -m 0444 "$file" "$base/source/$file"
+          done
+          unit="coden-broker-ipc-$GITHUB_RUN_ID"
+          timeout --kill-after=5s 45s sudo systemd-run --unit="$unit" --wait --pipe --quiet \
+            -p PrivateNetwork=yes -p NoNewPrivileges=yes -p PrivateDevices=yes \
+            -p ProtectHome=tmpfs -p ProtectSystem=strict -p "ReadWritePaths=$base" \
+            -p 'CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_CHOWN CAP_DAC_OVERRIDE CAP_KILL CAP_FSETID' \
+            -p CPUQuota=100% -p MemoryMax=536870912 -p TasksMax=32 \
+            -p RuntimeMaxSec=35 -p TimeoutStopSec=2 -p KillMode=control-group \
+            /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/python3 -I -B - "$base" \
+            > "$PWD/evidence/broker-cross-uid.json" <<'PY'
+          import json, os, pathlib, pwd, select, subprocess, sys
+          base=pathlib.Path(sys.argv[1])
+          bu,bg=pwd.getpwnam("daemon").pw_uid,pwd.getpwnam("daemon").pw_gid
+          tu,tg=pwd.getpwnam("nobody").pw_uid,pwd.getpwnam("nobody").pw_gid
+          assert bu and tu and bu!=tu and bg!=tg
+          private=base/"private"; private.mkdir(mode=0o700); os.chown(private,bu,bg)
+          channel=base/"channel"; channel.mkdir(); os.chown(channel,bu,tg); channel.chmod(0o2750)
+          broker_code=r'''
+          import hashlib,json,os,pathlib,socket,struct,sys,threading
+          sys.path.insert(0,sys.argv[1])
+          from ai_factory.factory_qwen_tool_benchmark import PreflightBroker
+          private,path=pathlib.Path(sys.argv[2]),sys.argv[3]
+          assert os.getuid()!=0 and sorted(n for _,n in socket.if_nameindex())==["lo"]
+          secret=private/"credential"; secret.write_bytes(b"synthetic-not-a-real-secret"); secret.chmod(0o600)
+          token=b"synthetic-one-shot-grant"
+          broker=PreflightBroker(token_sha256=hashlib.sha256(token).hexdigest(),case_id="count")
+          with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as listener:
+              listener.bind(path); os.chmod(path,0o660); listener.listen(1); listener.settimeout(6)
+              print("ready",flush=True)
+              for mode in ("wrong","success","replay","cancel","expiry"):
+                  expected=tuple(json.loads(sys.stdin.readline()))
+                  conn,_=listener.accept()
+                  actual=struct.unpack("3i",conn.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))
+                  event=None; timer=None
+                  if mode in ("cancel","expiry"):
+                      broker=PreflightBroker(token_sha256=hashlib.sha256(token).hexdigest(),
+                                             case_id="count",ttl_seconds=1 if mode=="expiry" else 30)
+                  if mode=="cancel":
+                      event=threading.Event(); timer=threading.Timer(.2,event.set); timer.start()
+                  try:
+                      result=broker.execute_ipc(token=token,channel=conn,expected_peer=expected,
+                                                fixture_only=True,deadline_seconds=3,cancel_event=event)
+                  finally:
+                      if timer: timer.cancel(); timer.join()
+                  assert conn.fileno()==-1
+                  assert result["qwen_connected"] is False and result["release_authorized"] is False
+                  print(json.dumps({"mode":mode,"peer":actual,"status":result["status"],
+                                    "closed":True,"broker_uid":os.getuid(),"broker_pid":os.getpid()}),flush=True)
+          '''
+          peer_code=r'''
+          import json,os,pathlib,socket,struct,sys,time
+          path,private,mode=sys.argv[1:4]
+          expected=tuple(map(int,sys.argv[4:7]))
+          assert os.getuid()!=0 and sorted(n for _,n in socket.if_nameindex())==["lo"]
+          try: (pathlib.Path(private)/"credential").read_bytes()
+          except PermissionError: pass
+          else: raise AssertionError("credential readable")
+          with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as s:
+              s.settimeout(5); s.connect(path)
+              actual=struct.unpack("3i",s.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))
+              assert actual==expected
+              if mode in ("wrong","replay"):
+                  assert s.recv(1)==b""
+              else:
+                  def receive(n):
+                      out=b""
+                      while len(out)<n:
+                          chunk=s.recv(n-len(out))
+                          if not chunk: raise AssertionError("truncated request")
+                          out+=chunk
+                      return out
+                  size=struct.unpack("!I",receive(4))[0]; assert 0<size<=16384
+                  raw=receive(size); req=json.loads(raw)
+                  assert req["model"]=="local-qwen" and req["stream"] is False
+                  assert b"synthetic-one-shot-grant" not in raw and b"synthetic-not-a-real-secret" not in raw
+                  assert s.recv(1)==b""
+                  if mode=="success":
+                      body=json.dumps({"model":"local-qwen","choices":[{"finish_reason":"tool_calls",
+                        "message":{"role":"assistant","content":None,"tool_calls":[{"id":"call_test",
+                        "type":"function","function":{"name":"count_flags",
+                        "arguments":json.dumps({"flags":["queued","ready","done"]})}}]}}],
+                        "usage":{"completion_tokens":22}}).encode()
+                      s.sendall(struct.pack("!HI",200,len(body))+body)
+                  else:
+                      time.sleep(1.3)
+          '''
+          env={"PATH":"/usr/bin:/bin","LC_ALL":"C"}
+          def launch(code,args,uid,gid,**extra):
+              return subprocess.Popen([sys.executable,"-I","-B","-c",code,*map(str,args)],
+                user=uid,group=gid,extra_groups=[],cwd="/",env=env,**extra)
+          def line(p):
+              assert select.select([p.stdout],[],[],8)[0],"broker output deadline"
+              raw=p.stdout.readline()
+              assert raw,"broker stopped without receipt"
+              return raw
+          path=channel/"socket"
+          children=[]
+          try:
+              broker=launch(broker_code,[base/"source",private,path],bu,bg,
+                  stdin=subprocess.PIPE,stdout=subprocess.PIPE,text=True)
+              children.append(broker)
+              assert line(broker).strip()=="ready"
+              rows=[]
+              for mode,status in (("wrong","fixture_peer_rejected"),("success","fixture_preflight_match"),
+                                  ("replay","grant_consumed"),("cancel","cancelled"),("expiry","timeout")):
+                  peer=launch(peer_code,[path,private,mode,broker.pid,bu,bg],tu,tg,stdin=subprocess.DEVNULL)
+                  children.append(peer)
+                  expected=[peer.pid,tu,tg]
+                  if mode=="wrong": expected[0]=broker.pid
+                  broker.stdin.write(json.dumps(expected)+"\n"); broker.stdin.flush()
+                  receipt=json.loads(line(broker))
+                  assert receipt["peer"]==[peer.pid,tu,tg] and receipt["status"]==status,receipt
+                  assert receipt["broker_pid"]==broker.pid and receipt["broker_uid"]==bu and receipt["closed"]
+                  assert peer.wait(timeout=6)==0
+                  rows.append(receipt)
+              assert broker.wait(timeout=5)==0
+              print(json.dumps({"status":"BROKER_CROSS_UID_INTEGRATION_TESTED","cases":rows,
+                                "credential_read_denied":True,"real_runtime_isolation_verified":False,
+                                "qwen_connected":False,"sdk_imported":False,"release_authorized":False}))
+          finally:
+              for child in reversed(children):
+                  if child.poll() is None: child.kill(); child.wait(timeout=3)
+          PY
+          python3 -c 'import json; d=json.load(open("evidence/broker-cross-uid.json")); assert len(d["cases"])==5 and d["release_authorized"] is False'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: sprint31-broker-cross-uid-integration
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
