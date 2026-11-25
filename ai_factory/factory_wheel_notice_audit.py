@@ -7,6 +7,7 @@ import json
 from pathlib import Path, PurePosixPath
 import stat
 import struct
+import tempfile
 import unicodedata
 import zlib
 import tomllib
@@ -226,7 +227,7 @@ def _member_blocks(raw, e, span, budget):
         raise ValueError("wheel member size or CRC mismatch")
 
 
-def _inspect_record(raw, digest, budget):
+def _inspect_record(raw, digest, budget, *, native_session=None):
     budget._admit(len(raw))
     if hashlib.sha256(raw).hexdigest() != digest:
         raise ValueError("wheel digest mismatch")
@@ -291,18 +292,38 @@ def _inspect_record(raw, digest, budget):
             verifier = hashlib.new(algo) if algo and algo != "sha256" else sha
             first = b""
             blocks = (record_bytes,) if name == record else _member_blocks(raw, e, spans[name], budget)
-            for block in blocks:
-                sha.update(block)
-                if verifier is not sha:
-                    verifier.update(block)
-                if len(first) < 8:
-                    first += block[:8-len(first)]
-            if algo and base64.urlsafe_b64encode(verifier.digest()).decode("ascii").rstrip("=") != encoded:
-                raise ValueError("RECORD content hash mismatch")
+            native_file = None
+            native = None
+            try:
+                for block in blocks:
+                    sha.update(block)
+                    if verifier is not sha:
+                        verifier.update(block)
+                    if native_file is not None:
+                        native_file.write(block)
+                    elif len(first) < 8:
+                        take = min(8-len(first), len(block))
+                        first += block[:take]
+                        if (native_session is not None and first.startswith(b"\x7fELF")
+                                and not e.is_dir()):
+                            native_file = native_session.open(e.file_size)
+                            native_file.write(first)
+                            native_file.write(block[take:])
+                if algo and base64.urlsafe_b64encode(verifier.digest()).decode("ascii").rstrip("=") != encoded:
+                    raise ValueError("RECORD content hash mismatch")
+                if native_file is not None:
+                    native_file.close()
+                    native = native_session.inspect()
+            finally:
+                if native_file is not None:
+                    native_file.close()
+                    native_session.remove()
             if not e.is_dir():
                 receipt[name] = {"sha256": sha.hexdigest(), "bytes": e.file_size,
                                  "record_hash_verified": algo is not None,
                                  "elf_magic": first.startswith(b"\x7fELF")}
+                if native is not None:
+                    receipt[name]["native"] = native
     return {"record_verified": True, "compressed_bytes": len(raw),
             "expanded_bytes": budget.expanded_bytes - before, "files": receipt,
             "legacy_signature_files": sorted(signatures & set(files)),
@@ -326,6 +347,65 @@ def inspect_wheel(raw, digest, *, budget=None):
         if isinstance(exc, (zipfile.BadZipFile, zlib.error, csv.Error, UnicodeError, struct.error)):
             raise ValueError("malformed wheel structure") from exc
         raise
+
+
+
+class _NativeSession:
+    """One private temporary ELF at a time, never an archive-provided path."""
+    def __init__(self, directory):
+        self.path = Path(directory) / "object"
+        self.count = self.output_bytes = 0
+
+    def open(self, size):
+        if not 0 < size <= 32 * 1024**2 or self.count >= 64:
+            raise ValueError("native member limits")
+        return self.path.open("xb")
+
+    def inspect(self):
+        from ai_factory.factory_python_elf import inspect_elf_file
+        result = inspect_elf_file(self.path)
+        # Per-command output is independently bounded by the ELF inspector.
+        encoded = len(json.dumps(result, ensure_ascii=False).encode("utf-8"))
+        if encoded > 16 * 1024**2 - self.output_bytes:
+            raise ValueError("aggregate native evidence limit")
+        self.output_bytes += encoded
+        self.count += 1
+        return result
+
+    def remove(self):
+        self.path.unlink()
+
+
+def inspect_wheel_batch(candidates, *, scratch, inspect_native=False):
+    """Strict three-wheel batch; bytes supplied by caller, no network access.
+
+    An unsuccessful inspection or cleanup raises without returning a receipt.
+    Caller must establish the independent OS sandbox and admission first.
+    """
+    if not isinstance(candidates, (list, tuple)) or len(candidates) != 3:
+        raise ValueError("exactly three wheel inputs required")
+    budget = WheelBudget()
+    receipts = []
+    try:
+        with tempfile.TemporaryDirectory(prefix="wheel-audit-", dir=scratch) as directory:
+            session = _NativeSession(directory) if inspect_native else None
+            seen = set()
+            for raw, digest in candidates:
+                if type(raw) is not bytes or digest in seen:
+                    raise ValueError("invalid or duplicate batch candidate")
+                seen.add(digest)
+                receipts.append(_inspect_record(raw, digest, budget, native_session=session))
+            native_count = session.count if session else 0
+            native_output_bytes = session.output_bytes if session else 0
+    except BaseException as exc:
+        budget._failed = True
+        if isinstance(exc, (zipfile.BadZipFile, zlib.error, csv.Error, UnicodeError, struct.error)):
+            raise ValueError("malformed wheel structure") from exc
+        raise
+    return {"wheels": receipts, "compressed_bytes": budget.compressed_bytes,
+            "expanded_bytes": budget.expanded_bytes, "native_count": native_count,
+            "native_output_bytes": native_output_bytes, "legacy_signatures_verified": False,
+            "record_verified": True, "release_authorized": False}
 
 
 class NoRedirect(HTTPRedirectHandler):
