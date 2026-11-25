@@ -197,25 +197,33 @@ def run_once(*, queue_db, journal, task_dir, output_root, worker_id,
                                     env=_minimal_environment(), stdin=subprocess.DEVNULL,
                                     stdout=stdout, stderr=subprocess.DEVNULL,
                                     start_new_session=True, close_fds=True)
-            if task_id is not None:
-                # NEW opt-in branch: actual SQLite cancellation is monitored
-                # while our single explicitly bound child is running.
-                monitored = _monitor_bound_task(
-                    proc, queue_db=db, journal=journals,
-                    task_id=task_id, timeout_seconds=timeout_seconds
-                )
-                if monitored is not None:
-                    return monitored
-            else:
-                # Preserve the proven old operator-only FIFO path.
-                try:
-                    proc.communicate(timeout=timeout_seconds)
-                except subprocess.TimeoutExpired:
+            try:
+                if task_id is not None:
+                    # NEW opt-in branch: actual SQLite cancellation is monitored
+                    # while our single explicitly bound child is running.
+                    monitored = _monitor_bound_task(
+                        proc, queue_db=db, journal=journals,
+                        task_id=task_id, timeout_seconds=timeout_seconds
+                    )
+                    if monitored is not None:
+                        return monitored
+                else:
+                    # Preserve the proven old operator-only FIFO path.
+                    try:
+                        proc.communicate(timeout=timeout_seconds)
+                    except subprocess.TimeoutExpired:
+                        _terminate_process_group(proc)
+                        return _result("timed_out_review_required")
+                    except OSError as exc:
+                        _terminate_process_group(proc)
+                        raise SupervisorError("worker communication failed; manual review required") from exc
+            except KeyboardInterrupt:
+                # The operator interrupt is not permission to leave our child
+                # running. Preserve the durable lease for manual reconciliation;
+                # leader reap still does not prove full process-tree absence.
+                if proc.returncode is None:
                     _terminate_process_group(proc)
-                    return _result("timed_out_review_required")
-                except OSError as exc:
-                    _terminate_process_group(proc)
-                    raise SupervisorError("worker communication failed; manual review required") from exc
+                raise
             if proc.returncode != 0:
                 return _result("worker_failed_review_required")
             stdout.seek(0)
