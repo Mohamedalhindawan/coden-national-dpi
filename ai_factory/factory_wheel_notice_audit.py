@@ -107,17 +107,20 @@ class WheelBudget:
     Limits are deliberately no larger than the proposed three-wheel scope.
     This is not an OS quota or a network acquisition authorization.
     """
-    __slots__ = ("_compressed_limit", "_expanded_limit", "_io_limit", "_compressed", "_expanded", "_archive_read", "_native_reserved", "_failed")
+    __slots__ = ("_compressed_limit", "_expanded_limit", "_io_limit", "_compressed", "_expanded", "_archive_read", "_native_reserved", "_evidence_limit", "_evidence", "_failed")
 
-    def __init__(self, compressed_limit=8 * 1024**2, expanded_limit=128 * 1024**2, io_limit=128 * 1024**2):
+    def __init__(self, compressed_limit=8 * 1024**2, expanded_limit=128 * 1024**2, io_limit=128 * 1024**2, evidence_limit=16 * 1024**2):
         if (type(compressed_limit) is not int or type(expanded_limit) is not int
                 or not 0 < compressed_limit <= 8 * 1024**2
                 or not 0 < expanded_limit <= 128 * 1024**2
-                or type(io_limit) is not int or not 0 < io_limit <= 128 * 1024**2):
+                or type(io_limit) is not int or not 0 < io_limit <= 128 * 1024**2
+                or type(evidence_limit) is not int or not 0 < evidence_limit <= 16 * 1024**2):
             raise ValueError("invalid wheel budget")
         self._compressed_limit = compressed_limit
         self._expanded_limit = expanded_limit
         self._io_limit = io_limit
+        self._evidence_limit = evidence_limit
+        self._evidence = 0
         self._compressed = self._expanded = self._archive_read = self._native_reserved = 0
         self._failed = False
 
@@ -165,6 +168,19 @@ class WheelBudget:
     def _reserve_native(self, count):
         self._require_io(count)
         self._native_reserved += count
+
+    @property
+    def evidence_bytes(self):
+        return self._evidence
+
+    def _retain_evidence(self, name, row):
+        # Bound serialized member receipts, not the entire Python heap.
+        # A single row is already bounded by pathname and native output limits.
+        count = len(json.dumps({name: row}, ensure_ascii=True, separators=(",", ":")).encode("ascii"))
+        if self.failed or count > self._evidence_limit-self._evidence:
+            self._failed = True
+            raise ValueError("aggregate wheel evidence limit exhausted")
+        self._evidence += count
 
     def _admit(self, count):
         if self.failed or count > self._compressed_limit - self._compressed:
@@ -336,6 +352,7 @@ def _inspect_record(raw, digest, budget, *, native_session=None):
     read_before = budget.archive_read_bytes
     io_before = budget.logical_io_bytes
     native_before = budget.native_input_reserved_bytes
+    evidence_before = budget.evidence_bytes
     hasher = hashlib.sha256()
     for offset in range(0,len(raw),CHUNK):
         hasher.update(reader.at(offset,min(CHUNK,len(raw)-offset)))
@@ -348,6 +365,11 @@ def _inspect_record(raw, digest, budget, *, native_session=None):
         if (len(entries) != expected_count or z.start_dir != expected_central
                 or sum(e.file_size for e in entries) > budget.remaining):
             raise ValueError("wheel member count or declared expansion budget")
+        # Bound depth before constructing path ancestors.
+        for e in entries:
+            name = e.filename.rstrip("/")
+            if e.volume != 0 or len(name.encode("utf-8")) > 4096 or len(name.split("/")) > 64:
+                raise ValueError("unsupported member disk or path extent")
         _validate_namespace(entries)
         aliases = {}
         for e in entries:
@@ -432,17 +454,20 @@ def _inspect_record(raw, digest, budget, *, native_session=None):
                     native_file.close()
                     native_session.remove()
             if not e.is_dir():
-                receipt[name] = {"sha256": sha.hexdigest(), "bytes": e.file_size,
-                                 "record_hash_verified": algo is not None,
-                                 "elf_magic": first.startswith(b"\x7fELF")}
+                row = {"sha256": sha.hexdigest(), "bytes": e.file_size,
+                       "record_hash_verified": algo is not None,
+                       "elf_magic": first.startswith(b"\x7fELF")}
                 if native is not None:
-                    receipt[name]["native"] = native
+                    row["native"] = native
+                budget._retain_evidence(name,row)
+                receipt[name] = row
     return {"record_verified": True, "compressed_bytes": len(raw),
             "expanded_bytes": budget.expanded_bytes - before, "files": receipt,
             "archive_read_bytes": budget.archive_read_bytes-read_before,
             "logical_io_bytes": budget.logical_io_bytes-io_before,
             "native_input_reserved_bytes": budget.native_input_reserved_bytes-native_before,
             "native_internal_io_verified": False,
+            "evidence_bytes": budget.evidence_bytes-evidence_before,
             "legacy_signature_files": sorted(signatures & set(files)),
             "legacy_signatures_verified": False, "release_authorized": False}
 
@@ -527,6 +552,7 @@ def inspect_wheel_batch(candidates, *, scratch, inspect_native=False, fixture_na
             "logical_io_bytes": budget.logical_io_bytes,
             "native_input_reserved_bytes": budget.native_input_reserved_bytes,
             "native_internal_io_verified": False, "fixture_native": bool(inspect_native),
+            "evidence_bytes": budget.evidence_bytes,
             "native_output_bytes": native_output_bytes, "legacy_signatures_verified": False,
             "record_verified": True, "release_authorized": False}
 
