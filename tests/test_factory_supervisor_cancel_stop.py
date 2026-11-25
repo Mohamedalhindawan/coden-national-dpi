@@ -317,5 +317,37 @@ class MonitoredSupervisorCancellationTests(unittest.TestCase):
         self.assertEqual(checkpoint.read(self.journal, "target")["next_action"], "inspect_cancel_stop")
 
 
+    def test_monitor_read_failure_stops_owned_child(self):
+        self.create()
+        proc = MagicMock()
+        proc.returncode = None
+        original_read = DurableQueue.read
+        launched = False
+
+        def begin(_cmd, **kwargs):
+            nonlocal launched
+            self.q.claim("fixture", task_id="target", lease_seconds=30)
+            launched = True
+            return proc
+
+        def read(queue, task_id):
+            if launched:
+                raise OSError("synthetic queue unavailable")
+            return original_read(queue, task_id)
+
+        def stop(child):
+            self.assertIs(child, proc)
+            child.returncode = -signal.SIGKILL
+
+        with patch.object(DurableQueue, "read", new=read):
+            with patch.object(worker_supervisor.subprocess, "Popen", side_effect=begin):
+                with patch.object(worker_supervisor, "_terminate_process_group", side_effect=stop) as kill:
+                    with self.assertRaises(worker_supervisor.SupervisorError):
+                        self.run_target()
+        kill.assert_called_once_with(proc)
+        self.assertEqual(self.q.read("target")["status"], "leased")
+        self.assertIsNone(self.q.claim("replacement"))
+
+
 if __name__ == "__main__":
     unittest.main()
