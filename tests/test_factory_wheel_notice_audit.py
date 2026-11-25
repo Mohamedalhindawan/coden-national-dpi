@@ -37,3 +37,18 @@ class WheelNoticeTests(unittest.TestCase):
     def test_reject_missing_candidate(self):
         with self.assertRaises(ValueError):
             select_candidates({'package': []}, {'demo': ('1', {'a' * 64})})
+
+    def test_reject_noncanonical_paths_and_file_ancestor_collisions(self):
+        for names in (("demo/./file.py",), ("demo//file.py",),
+                      ("./demo.py",), ("demo/\x1f.py",),
+                      ("demo", "demo/file.py"), ("demo/file.py", "demo"),
+                      ("demo/", "demo")):
+            with self.subTest(names=names):
+                buf = io.BytesIO()
+                with zipfile.ZipFile(buf, "w") as z:
+                    z.writestr("demo-1.dist-info/METADATA", "Name: demo\\nVersion: 1\\n")
+                    for name in names:
+                        z.writestr(name, b"" if name.endswith("/") else b"x")
+                raw = buf.getvalue()
+                with self.assertRaises(ValueError):
+                    inspect_wheel(raw, hashlib.sha256(raw).hexdigest())
