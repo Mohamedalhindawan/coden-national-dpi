@@ -1305,3 +1305,101 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+
+  sprint17-live-timeout-preflight:
+    # Synthetic process tree only. No OCI, image bytes, packages or model.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '5824bf414bd7d94456f943a52ffd7823b4a9d828' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions: {}
+    steps:
+      - name: Observe live service deadline and prove synthetic child tree cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          long="coden-s17-live-${GITHUB_RUN_ID}.service"
+          short="coden-s17-timeout-${GITHUB_RUN_ID}.service"
+          cleanup() {
+            status=$?
+            trap - EXIT
+            for unit in "$long" "$short"; do
+              sudo systemctl stop "$unit" >/dev/null 2>&1 || true
+              state="$(sudo systemctl show -p ActiveState --value "$unit" 2>/dev/null || true)"
+              case "$state" in inactive|failed) ;; *) status=1;; esac
+              printf '%s %s\n' "$unit" "$state"
+            done > "$ev/cleanup.txt"
+            exit "$status"
+          }
+          trap cleanup EXIT
+          uid="$(id -u nobody)"; gid="$(id -g nobody)"
+          test "$uid" != 0; test "$gid" != 0
+          start() {
+            sudo systemd-run --quiet --unit="$1" \
+              -p "User=$uid" -p "Group=$gid" -p CPUQuota=200% -p MemoryMax=4294967296 -p TasksMax=128 \
+              -p "RuntimeMaxSec=$2" -p TimeoutStopSec=2 -p KillMode=control-group \
+              -p NoNewPrivileges=yes -p CapabilityBoundingSet= -p AmbientCapabilities= \
+              -p PrivateNetwork=yes -p PrivateTmp=yes -p PrivateDevices=yes -p ProtectHome=tmpfs \
+              -p ProtectSystem=strict -p 'TemporaryFileSystem=/run:ro' -p RestrictSUIDSGID=yes \
+              /usr/bin/env -i PATH=/usr/bin:/bin HOME=/tmp TMPDIR=/tmp LC_ALL=C /usr/bin/python3 -I -B -c \
+              'import subprocess,sys,time; p=subprocess.Popen([sys.executable,"-I","-B","-c","import time; time.sleep(30)"]); time.sleep(30)'
+          }
+          observe() {
+            unit="$1"; label="$2"
+            for n in $(seq 1 30); do
+              cg="$(sudo systemctl show "$unit" -p ControlGroup --value)"
+              if [[ "$cg" == /system.slice/coden-s17-* && -r "/sys/fs/cgroup$cg/cgroup.procs" ]]; then
+                mapfile -t ps < "/sys/fs/cgroup$cg/cgroup.procs"
+                if [[ "${#ps[@]}" -ge 2 ]]; then
+                  printf '%s\n' "$cg" > "$ev/$label-cgroup.txt"
+                  printf '%s\n' "${ps[@]}" > "$ev/$label-pids.txt"
+                  sudo systemctl show "$unit" -p RuntimeMaxUSec -p KillMode -p ActiveState -p MainPID > "$ev/$label-live-properties.txt"
+                  return 0
+                fi
+              fi
+              sleep .1
+            done
+            return 1
+          }
+          gone() {
+            label="$1"
+            cg="$(cat "$ev/$label-cgroup.txt")"
+            for n in $(seq 1 30); do
+              if [[ ! -e "/sys/fs/cgroup$cg/cgroup.events" ]] || grep -Fxq 'populated 0' "/sys/fs/cgroup$cg/cgroup.events"; then
+                echo CGROUP_EMPTY_OR_REMOVED > "$ev/$label-tree-cleanup.txt"
+                return 0
+              fi
+              sleep .1
+            done
+            return 1
+          }
+          start "$long" 600
+          observe "$long" long
+          grep -Fx 'ActiveState=active' "$ev/long-live-properties.txt"
+          grep -Fx 'KillMode=control-group' "$ev/long-live-properties.txt"
+          grep -Fx 'RuntimeMaxUSec=10min' "$ev/long-live-properties.txt"
+          sudo systemctl stop "$long"
+          gone long
+          start "$short" 6
+          observe "$short" short
+          grep -Fx 'RuntimeMaxUSec=6s' "$ev/short-live-properties.txt"
+          for n in $(seq 1 35); do
+            state="$(sudo systemctl show "$short" -p ActiveState --value)"
+            [[ "$state" == failed ]] && break
+            sleep .3
+          done
+          sudo systemctl show "$short" -p ActiveState -p Result > "$ev/short-result.txt"
+          grep -Fx 'ActiveState=failed' "$ev/short-result.txt"
+          grep -Fx 'Result=timeout' "$ev/short-result.txt"
+          gone short
+          printf '%s\n' '{"status":"SYNTHETIC_TIMEOUT_AND_TREE_CLEANUP_VERIFIED","configured_candidate_seconds":600,"tested_short_timeout_seconds":6,"real_agent_tree_verified":false,"release_authorized":false}' > "$ev/timeout-receipt.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: sprint17-live-timeout-receipts
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
