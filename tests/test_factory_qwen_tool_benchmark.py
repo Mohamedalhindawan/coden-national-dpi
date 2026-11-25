@@ -188,6 +188,26 @@ class QwenPreflightBrokerTests(unittest.TestCase):
         send.assert_called_once()
 
 
+    def test_grant_expiring_during_transport_rejects_response_without_retry(self):
+        from unittest.mock import patch
+        from ai_factory import factory_qwen_tool_benchmark as bench
+        with patch.object(bench.time, "monotonic", return_value=100) as clock:
+            broker = self.make()
+            def late_response(**kwargs):
+                clock.return_value = 130
+                return self.transport(**kwargs)
+            result = broker.execute(token=self.TOKEN, fixture_only=True,
+                                    transport=late_response)
+            self.assertEqual(result["status"], "grant_expired")
+            self.assertNotIn("response_sha256", result)
+            self.assertFalse(result["execution_authorized"])
+            self.assertFalse(result["release_authorized"])
+            self.assertFalse(result["automatic_retry_allowed"])
+            self.assertEqual(broker.execute(token=self.TOKEN, fixture_only=True,
+                                             transport=self.transport)["status"],
+                             "grant_consumed")
+
+
 @unittest.skipUnless(__import__("sys").platform.startswith("linux"), "Linux Unix peer credentials")
 class BoundedQwenIpcTests(unittest.TestCase):
     TOKEN = QwenPreflightBrokerTests.TOKEN
