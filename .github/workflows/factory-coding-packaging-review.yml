@@ -2249,3 +2249,158 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+  split-identity-cgroup-preflight:
+    # New evidence only: cross-UID credential boundary and setsid descendant.
+    # Generated synthetic processes; no distribution acquisition, SDK or Qwen.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == 'cb2a23dd3fb2ac1436aba6138224ae0284de452a' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    permissions: {}
+    steps:
+      - name: Verify split synthetic identities and cgroup cleanup across process sessions
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          broker="coden-broker-fixture-${GITHUB_RUN_ID}.service"
+          tool="coden-tool-fixture-${GITHUB_RUN_ID}.service"
+          base=""
+          cleanup() {
+            status=$?
+            trap - EXIT
+            for unit in "$tool" "$broker"; do
+              sudo systemctl stop "$unit" >/dev/null 2>&1 || true
+              state="$(sudo systemctl show "$unit" -p ActiveState --value 2>/dev/null || true)"
+              case "$state" in inactive|failed) ;; *) status=1;; esac
+              printf '%s %s\n' "$unit" "$state"
+            done > "$ev/cleanup.txt"
+            if [[ -n "$base" ]]; then
+              sudo rm -f -- "$base/private/socket" "$base/private/credential" "$base/scratch/ready"
+              sudo rmdir "$base/private" "$base/scratch" "$base" || status=1
+              test ! -e "$base" && echo FIXTURE_DIRECTORY_REMOVED >> "$ev/cleanup.txt"
+            fi
+            exit "$status"
+          }
+          trap cleanup EXIT
+          bu="$(id -u daemon)"; bg="$(id -g daemon)"
+          tu="$(id -u nobody)"; tg="$(id -g nobody)"
+          test "$bu" != 0; test "$tu" != 0; test "$bu" != "$tu"; test "$bg" != "$tg"
+          base="$(sudo mktemp -d /opt/coden-split-fixture.XXXXXXXX)"
+          sudo chmod 0755 "$base"
+          sudo install -d -m 0700 -o "$bu" -g "$bg" "$base/private"
+          sudo install -d -m 0700 -o "$tu" -g "$tg" "$base/scratch"
+          # Each service receives half of the existing total limits; no heavy work.
+          common=(-p CPUQuota=100% -p MemoryMax=2147483648 -p TasksMax=64
+                  -p RuntimeMaxSec=60 -p TimeoutStopSec=2 -p KillMode=control-group
+                  -p NoNewPrivileges=yes -p CapabilityBoundingSet= -p AmbientCapabilities=
+                  -p PrivateNetwork=yes -p PrivateDevices=yes -p ProtectHome=tmpfs
+                  -p ProtectSystem=strict -p TemporaryFileSystem=/run:ro
+                  -p TemporaryFileSystem=/dev/shm:ro -p RestrictSUIDSGID=yes)
+          broker_code="$(cat <<'PY'
+          import os,socket,struct,sys,time
+          from pathlib import Path
+          private=Path(sys.argv[1])
+          assert os.getuid()!=0
+          (private/"credential").write_bytes(b"synthetic-not-a-real-secret")
+          os.chmod(private/"credential",0o600)
+          s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+          s.bind(str(private/"socket")); os.chmod(private/"socket",0o600); s.listen(1)
+          c=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+          c.connect(str(private/"socket")); a,_=s.accept()
+          pid,uid,gid=struct.unpack("3i",a.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))
+          assert uid==os.getuid() and gid==os.getgid()
+          assert (private/"credential").read_bytes()==b"synthetic-not-a-real-secret"
+          a.close();c.close()
+          time.sleep(50)
+          PY
+          )"
+          sudo systemd-run --quiet --unit="$broker" -p "User=$bu" -p "Group=$bg" \
+            -p "ReadWritePaths=$base/private" "${common[@]}" \
+            /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/python3 -I -B -c "$broker_code" "$base/private"
+          for n in $(seq 1 50); do
+            sudo test -S "$base/private/socket" && break
+            sleep .1
+          done
+          sudo test -S "$base/private/socket"
+          bp="$(sudo systemctl show "$broker" -p MainPID --value)"
+          test "$bp" -gt 1
+          tool_code="$(cat <<'PY'
+          import json,os,signal,socket,subprocess,sys,time
+          from pathlib import Path
+          private,scratch,bp=Path(sys.argv[1]),Path(sys.argv[2]),int(sys.argv[3])
+          assert os.getuid()!=0
+          st=dict(x.split(":",1) for x in Path("/proc/self/status").read_text().splitlines() if ":" in x)
+          assert int(st["CapEff"],16)==0 and st["NoNewPrivs"].strip()=="1"
+          assert sorted(n for _,n in socket.if_nameindex())==["lo"]
+          assert not any(os.path.lexists(p) for p in ("/run/docker.sock","/var/run/docker.sock"))
+          def denied(fn):
+              try: fn()
+              except PermissionError: return True
+              raise AssertionError("cross-identity access unexpectedly allowed")
+          checks={
+              "credential_read_denied":denied(lambda:(private/"credential").read_bytes()),
+              "broker_proc_environ_denied":denied(lambda:Path(f"/proc/{bp}/environ").read_bytes()),
+              "broker_signal_denied":denied(lambda:os.kill(bp,0)),
+          }
+          with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as s:
+              checks["broker_socket_denied"]=denied(lambda:s.connect(str(private/"socket")))
+          cg=next(x.split(":",2)[2] for x in Path("/proc/self/cgroup").read_text().splitlines() if x.startswith("0::"))
+          p=Path("/sys/fs/cgroup")/cg.lstrip("/")
+          cpu=(p/"cpu.max").read_text().split()
+          assert int(cpu[0])==int(cpu[1])
+          assert (p/"memory.max").read_text().strip()=="2147483648"
+          assert (p/"pids.max").read_text().strip()=="64"
+          # The child changes its session and ignores SIGTERM. Process-group
+          # cancellation alone cannot prove its absence.
+          child=subprocess.Popen([sys.executable,"-I","-B","-c",
+              "import os,signal,sys,time; from pathlib import Path; signal.signal(signal.SIGTERM,signal.SIG_IGN); Path(sys.argv[1]).write_text(str(os.getsid(0))); time.sleep(45)",
+              str(scratch/"ready")],start_new_session=True,stdin=subprocess.DEVNULL,
+              stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+          deadline=time.monotonic()+5
+          while not (scratch/"ready").is_file() and time.monotonic()<deadline:time.sleep(.05)
+          assert (scratch/"ready").read_text()==str(child.pid)
+          assert os.getsid(0)!=os.getsid(child.pid)
+          assert cg in Path(f"/proc/{child.pid}/cgroup").read_text()
+          assert int(child.pid) in [int(x) for x in (p/"cgroup.procs").read_text().split()]
+          print(json.dumps(dict(checks,tool_uid=os.getuid(),child_pid=child.pid,
+              separate_session=True,cgroup=cg,cpu_max=cpu,agent_ran=False,
+              real_qwen_connected=False,release_authorized=False),sort_keys=True),flush=True)
+          time.sleep(45)
+          PY
+          )"
+          sudo systemd-run --quiet --unit="$tool" -p "User=$tu" -p "Group=$tg" \
+            -p "ReadWritePaths=$base/scratch" "${common[@]}" \
+            /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/python3 -I -B -c "$tool_code" "$base/private" "$base/scratch" "$bp"
+          for n in $(seq 1 60); do
+            sudo journalctl -u "$tool" -o cat --no-pager | grep '^{' > "$ev/tool-receipt.json" || true
+            test -s "$ev/tool-receipt.json" && break
+            sleep .1
+          done
+          test -s "$ev/tool-receipt.json"
+          python3 - "$ev/tool-receipt.json" <<'PY'
+          import json,sys
+          d=json.load(open(sys.argv[1]))
+          assert all(d[k] is True for k in ("credential_read_denied","broker_proc_environ_denied","broker_signal_denied","broker_socket_denied","separate_session"))
+          assert d["agent_ran"] is False and d["real_qwen_connected"] is False
+          PY
+          cg="$(sudo systemctl show "$tool" -p ControlGroup --value)"
+          [[ "$cg" == /system.slice/coden-tool-fixture-* ]]
+          grep -Fxq 'populated 1' "/sys/fs/cgroup$cg/cgroup.events"
+          sudo systemctl stop "$tool"
+          if [[ -e "/sys/fs/cgroup$cg/cgroup.events" ]]; then
+            grep -Fxq 'populated 0' "/sys/fs/cgroup$cg/cgroup.events"
+          fi
+          # Broker survives stopping the tool service, proving distinct lifecycles.
+          test "$(sudo systemctl show "$broker" -p ActiveState --value)" = active
+          sudo systemctl stop "$broker"
+          printf '%s\n' '{"status":"SYNTHETIC_SPLIT_IDENTITY_AND_CGROUP_CLEANUP","tool_cgroup_empty_or_removed":true,"broker_survived_tool_stop":true,"real_runtime_isolation_verified":false,"release_authorized":false}' > "$ev/containment-receipt.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: split-identity-cgroup-preflight-receipts
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
