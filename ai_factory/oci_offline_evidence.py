@@ -13,6 +13,7 @@ import os
 from pathlib import PurePosixPath
 import re
 import stat
+import struct
 import tarfile
 
 PINNED_MANIFEST = "sha256:9a36355fa2baacaae1c6dd5a1a80492bba89d1dec5a536af572ba5fb3e96e22f"
@@ -113,6 +114,89 @@ def _safe_path(name):
     path = PurePosixPath(name)
     _require(".." not in path.parts, "unsafe archive member path")
     return path
+
+
+
+def inspect_carchive_toc(stream, *, max_declared_expanded_bytes):
+    """Review-only PyInstaller Linux ELF CArchive table, not a general extractor.
+
+    This deliberately accepts a narrow layout (EOF cookie and contiguous TOC).
+    No archive data decompression, marshal deserialization, filesystem writes,
+    module imports, or following of link targets. A TOC declaration is not an
+    actual decompressed size or proof of component completeness. Caller must
+    independently verify the exact binary hash and actual aggregate read budget.
+    """
+    _require(type(max_declared_expanded_bytes) is int and max_declared_expanded_bytes > 0,
+             "explicit positive nested declaration budget required")
+    cookie = struct.Struct("!8sIIII64s")
+    header = struct.Struct("!IIIIBc")
+    stream.seek(0, os.SEEK_END)
+    size = stream.tell()
+    _require(cookie.size + 4 < size <= 512 * CHUNK, "unsupported executable size")
+    stream.seek(0)
+    _require(stream.read(4) == b"\x7fELF", "expected ELF")
+    stream.seek(size-cookie.size)
+    raw = stream.read(cookie.size)
+    _require(len(raw) == cookie.size, "truncated archive cookie")
+    magic, length, offset, toc_size, pyvers, library = cookie.unpack(raw)
+    _require(magic == b"MEI\x0c\x0b\x0a\x0b\x0e", "expected EOF CArchive cookie")
+    _require(cookie.size < length <= size-4 and offset+toc_size+cookie.size == length,
+             "inconsistent archive bounds")
+    _require(0 < toc_size <= 8*CHUNK, "archive TOC budget exceeded")
+    lib = library.rstrip(b"\0")
+    _require(pyvers == 313 and re.fullmatch(rb"libpython3\.13\.so(?:\.[0-9]+)*",lib),
+             "unexpected archive Python library")
+    start = size-length
+    stream.seek(start+offset)
+    toc = stream.read(toc_size)
+    _require(len(toc) == toc_size, "truncated archive TOC")
+    rows, options, spans, seen = [], [], [], set()
+    pos = declared = 0
+    while pos < len(toc):
+        _require(len(rows)+len(options) < 50000, "archive entry budget exceeded")
+        _require(len(toc)-pos >= header.size, "truncated archive TOC entry")
+        n, begin, stored, expanded, compressed, kind = header.unpack_from(toc,pos)
+        _require(header.size < n <= 8192 and n%16 == 0 and pos+n <= len(toc),
+                 "invalid archive TOC entry size")
+        namebytes = toc[pos+header.size:pos+n]
+        name, sep, padding = namebytes.partition(b"\0")
+        _require(bool(name) and bool(sep) and not any(padding) and len(name)<=4096,
+                 "invalid archive entry name padding")
+        try:
+            name = name.decode("utf-8")
+        except UnicodeError as exc:
+            raise ValueError("invalid archive entry name encoding") from exc
+        _require(not any(ord(c)<32 or ord(c)==127 for c in name), "invalid archive entry name")
+        _require(kind in (b"b",b"z",b"Z",b"M",b"m",b"s",b"x",b"o",b"l",b"n"),
+                 "unsupported archive entry type; independent review required")
+        _require(compressed in (0,1) and begin+stored <= offset,
+                 "invalid archive member range or compression flag")
+        _require(compressed or stored == expanded, "inconsistent uncompressed member size")
+        if kind == b"o":
+            _require(stored == expanded == 0 and compressed == 0, "invalid runtime option")
+            options.append(name)
+        else:
+            normalized = str(_safe_path(name))
+            _require(normalized != "." and normalized not in seen, "ambiguous archive member path")
+            seen.add(normalized)
+            if stored:
+                spans.append((begin,begin+stored))
+            declared += expanded
+            _require(declared <= max_declared_expanded_bytes, "nested declaration budget exceeded")
+            rows.append({"name":name,"type":kind.decode("ascii"),"offset":begin,
+                         "stored_bytes":stored,"declared_expanded_bytes":expanded,
+                         "compressed":bool(compressed)})
+        pos += n
+    spans.sort()
+    _require(all(a[1]<=b[0] for a,b in zip(spans,spans[1:])), "overlapping archive member ranges")
+    return {"status":"carchive_toc_candidate_review_required","entries":rows,
+            "runtime_option_count":len(options),"python_version":pyvers,
+            "archive_bytes":length,"toc_bytes":toc_size,
+            "metadata_bytes_read":4+cookie.size+toc_size,
+            "declared_expanded_bytes":declared,"nested_payload_bytes_decompressed":0,
+            "pyz_toc_read":False,"symlink_targets_reviewed":False,
+            "embedded_inventory_verified":False,"execution_authorized":False,
+            "release_authorized":False}
 
 
 def _link_target(path, value):
