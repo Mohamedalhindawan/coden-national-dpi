@@ -186,3 +186,88 @@ class QwenPreflightBrokerTests(unittest.TestCase):
             results=list(pool.map(lambda _:broker.execute(token=self.TOKEN,fixture_only=True,transport=send),range(2)))
         self.assertEqual(sorted(r["status"] for r in results),["fixture_preflight_match","grant_consumed"])
         send.assert_called_once()
+
+
+@unittest.skipUnless(__import__("sys").platform.startswith("linux"), "Linux Unix peer credentials")
+class BoundedQwenIpcTests(unittest.TestCase):
+    TOKEN = QwenPreflightBrokerTests.TOKEN
+    make = QwenPreflightBrokerTests.make
+    # Real AF_UNIX socketpair, not an HTTP client or model.
+    def pair(self):
+        import socket, os
+        client, peer=socket.socketpair()
+        self.addCleanup(client.close)
+        self.addCleanup(peer.close)
+        return client,peer,(os.getpid(),os.getuid(),os.getgid())
+
+    def response(self):
+        body=json.loads(reply("count_flags",CASES["count"]["expected_args"]))
+        body["model"]="local-qwen"
+        return json.dumps(body).encode()
+
+    def test_ipc_success_fragmented_and_closed(self):
+        import struct, threading
+        client,peer,identity=self.pair()
+        seen=[]
+        def server():
+            with peer:
+                raw=b""
+                while len(raw)<4: raw+=peer.recv(4-len(raw))
+                size=struct.unpack("!I",raw)[0]
+                raw=b""
+                while len(raw)<size: raw+=peer.recv(size-len(raw))
+                seen.append(json.loads(raw))
+                body=self.response()
+                frame=struct.pack("!HI",200,len(body))+body
+                for offset in range(0,len(frame),7): peer.sendall(frame[offset:offset+7])
+        t=threading.Thread(target=server,daemon=True);t.start()
+        result=self.make().execute_ipc(token=self.TOKEN,channel=client,expected_peer=identity,fixture_only=True)
+        t.join(2)
+        self.assertFalse(t.is_alive())
+        self.assertEqual(result["status"],"fixture_preflight_match")
+        self.assertEqual(seen,[request_for("count")])
+        self.assertEqual(client.fileno(),-1)
+        self.assertFalse(result["qwen_connected"])
+
+    def test_ipc_identity_and_real_scope_fail_closed_without_writes(self):
+        import socket
+        for enabled,wrong,expected in ((False,False,"blocked_runtime_admission"),(True,True,"fixture_peer_rejected")):
+            client,peer,identity=self.pair()
+            if wrong: identity=(identity[0]+1,*identity[1:])
+            result=self.make().execute_ipc(token=self.TOKEN,channel=client,expected_peer=identity,fixture_only=enabled)
+            self.assertEqual(result["status"],expected)
+            self.assertEqual(client.fileno(),-1)
+            peer.settimeout(1)
+            self.assertEqual(peer.recv(1),b"")
+        client=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+        self.addCleanup(client.close)
+        self.assertEqual(self.make().execute_ipc(token=self.TOKEN,channel=client,expected_peer=(1,1,1),fixture_only=True)["status"],"fixture_peer_rejected")
+        self.assertEqual(client.fileno(),-1)
+
+    def test_ipc_deadline_and_cancellation_during_stalled_read(self):
+        import threading,time
+        for cancel in (False,True):
+            client,peer,identity=self.pair()
+            event=threading.Event()
+            timer=threading.Timer(.05,event.set)
+            if cancel: timer.start()
+            start=time.monotonic()
+            try:
+                result=self.make().execute_ipc(token=self.TOKEN,channel=client,expected_peer=identity,
+                    fixture_only=True,deadline_seconds=.25,cancel_event=event)
+            finally:
+                timer.cancel()
+            self.assertEqual(result["status"],"cancelled" if cancel else "timeout")
+            self.assertLess(time.monotonic()-start,2)
+            self.assertEqual(client.fileno(),-1)
+
+    def test_ipc_rejects_oversized_header_and_truncated_frame(self):
+        import struct
+        for frame in (struct.pack("!HI",200,262145),struct.pack("!HI",200,100)+b"partial"):
+            client,peer,identity=self.pair()
+            peer.sendall(frame)
+            peer.shutdown(1)
+            result=self.make().execute_ipc(token=self.TOKEN,channel=client,expected_peer=identity,fixture_only=True)
+            self.assertEqual(result["status"],"fixture_transport_failed")
+            self.assertFalse(result["release_authorized"])
+            self.assertEqual(client.fileno(),-1)
