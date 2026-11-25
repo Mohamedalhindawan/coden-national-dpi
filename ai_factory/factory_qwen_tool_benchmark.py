@@ -32,6 +32,41 @@ def audit_case(case_id, raw):
     return evaluate_response(raw, expected_tool=case["expected_tool"], expected_args=case["expected_args"])
 
 
+def audit_http_case(case_id, *, status_code=None, raw=b"", failure=None):
+    """Review a captured synthetic HTTP outcome; never perform a request.
+
+    The caller must obtain transport status from an independently confined
+    probe, not from model text. This classifier does not prove cancellation,
+    authentication, DNS isolation or SDK compatibility at runtime.
+    """
+    rejected = {"status": "schema_rejected", "tool_executed": False,
+                "sdk_conversation_ran": False, "release_authorized": False,
+                "production_authorized": False, "automatic_retry_allowed": False}
+    def reject(reason):
+        return {**rejected, "reason_code": reason}
+
+    if failure is not None:
+        if type(failure) is str and failure in ("timeout", "cancelled"):
+            return reject(failure)
+        return reject("invalid_transport_outcome")
+    if type(status_code) is not int:
+        return reject("invalid_transport_outcome")
+    if status_code in (401, 403):
+        return reject("authentication_failed")
+    if status_code != 200:
+        return reject("http_status_rejected")
+    if type(case_id) is not str or case_id not in CASES or type(raw) is not bytes:
+        return reject("invalid_transport_outcome")
+    verdict = audit_case(case_id, raw)
+    if verdict["status"] != "schema_match":
+        return {**verdict, "automatic_retry_allowed": False}
+    # audit_case already rejects oversized, duplicate-key or malformed JSON.
+    # Bind the response to the single reviewed alias before returning evidence.
+    if json.loads(raw).get("model") != "local-qwen":
+        return reject("model_identity_mismatch")
+    return {**verdict, "automatic_retry_allowed": False}
+
+
 def summarize(results):
     passed = sum(i in results and results[i].get("status") == "schema_match" for i in CASES)
     complete = set(results) == set(CASES) and passed == len(CASES)
