@@ -77,6 +77,29 @@ class OfflineWorkerTests(unittest.TestCase):
         runner.assert_not_called()
         self.assertEqual(result["status"], "blocked")
 
+    def test_submit_rejects_symlinked_task_directory_ancestor(self):
+        alias = self.root / "alias"
+        alias.symlink_to(self.root, target_is_directory=True)
+        with self.assertRaises((OSError, ValueError)):
+            offline_worker.submit(self.queue, self.logs, alias / "tasks",
+                                  self.id, branch="feat/demo", commit=SHA)
+        self.assertFalse(self.logs.exists())
+        with self.assertRaises(ValueError):
+            self.queue.read(self.id)
+
+    def test_worker_blocks_linked_ancestor_even_with_matching_task_bytes(self):
+        self.submit()
+        alias = self.root / "alias"
+        alias.symlink_to(self.root, target_is_directory=True)
+        with patch.object(project, "run") as runner:
+            result = offline_worker.work_once(
+                self.queue, self.logs, alias / "tasks", self.out,
+                worker_id="localworker", lease_seconds=60)
+        runner.assert_not_called()
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(self.queue.read(self.id)["status"], "blocked")
+        self.assertEqual(checkpoint.read(self.logs, self.id)["status"], "blocked")
+
     def test_duplicate_submission_denied(self):
         self.submit()
         with self.assertRaises((ValueError, FileExistsError)):
