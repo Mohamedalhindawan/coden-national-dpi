@@ -609,11 +609,12 @@ def _inventory_report(tree):
 
 class _StrictTarInfo(tarfile.TarInfo):
     @classmethod
-    def frombuf(cls, buf, encoding, errors):
-        # tarfile.TarFile.next silently stops after some invalid headers after
-        # the first member. Only a genuine all-zero block may terminate a layer.
+    def fromtarfile(cls, archive):
+        # Catch at the member boundary: newer 3.12 security updates use private
+        # _frombuf internally, bypassing a public frombuf override.
+        # Only a genuine all-zero header may terminate a layer.
         try:
-            return super().frombuf(buf, encoding, errors)
+            return super().fromtarfile(archive)
         except tarfile.EOFHeaderError:
             raise
         except tarfile.HeaderError as exc:
