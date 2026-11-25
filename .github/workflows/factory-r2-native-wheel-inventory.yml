@@ -261,29 +261,55 @@ jobs:
 
   staging-capacity-review:
     needs: [static-inventory, python-static-review]
-    if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    if: always() && !cancelled() && github.event.repository.private == false && github.event.pull_request.head.repo.full_name == github.repository && ((github.head_ref == 'feat/factory-acceleration-batch01-20261124' && needs.static-inventory.result == 'success' && needs.python-static-review.result == 'success') || (github.head_ref == 'fix/factory-staging-inventory-consistency-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && needs.static-inventory.result == 'skipped' && needs.python-static-review.result == 'skipped'))
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     permissions:
       contents: read
+      actions: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: github.head_ref == 'feat/factory-acceleration-batch01-20261124'
         with:
           name: r2-native-wheel-inventory
           path: wheels
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: github.head_ref == 'feat/factory-acceleration-batch01-20261124'
         with:
           name: r2-python-standalone-static-review
           path: interpreter
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: github.head_ref == 'fix/factory-staging-inventory-consistency-20261125'
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45524906341
+          name: r2-native-wheel-inventory
+          path: wheels
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: github.head_ref == 'fix/factory-staging-inventory-consistency-20261125'
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45524906341
+          name: r2-python-standalone-static-review
+          path: interpreter
+      - name: Verify archived replay receipts
+        if: github.head_ref == 'fix/factory-staging-inventory-consistency-20261125'
+        run: |
+          set -euo pipefail
+          sha256sum -c <<'SUMS'
+          51e2f26a5c2c14a786b7552189a718ef281e35811db698b40d75f7174f37ddcf  wheels/inventory.json
+          af68348be0590fc8de8be4c95153155e6f15eaf442cdea2974be0b6febdc6328  wheels/capacity.json
+          a478f6ff4e24dbfaf4a2d5243700e59d535f5629c0b19921546dd83159914ef4  interpreter/python-candidate.json
+          SUMS
       - name: Bind capacity estimate to exact reviewed inventory receipts
         run: |
           set -euo pipefail
           mkdir -m 0700 evidence
           python - <<'PY'
-          import copy, hashlib, json
+          import copy, hashlib, json, os
           from pathlib import Path
           from ai_factory.factory_staging_capacity import plan_staging
 
@@ -342,12 +368,17 @@ jobs:
           x=copy.deepcopy(p); x["compressed_bytes"]+=1; cases.append((w,x,c))
           x=copy.deepcopy(c); x["archive_member_count"]+=1; cases.append((w,p,x))
           x=copy.deepcopy(w); x["complete"]=False; cases.append((x,p,c))
+          x=copy.deepcopy(w)
+          x["records"][0]["expanded_member_bytes"]-=1
+          x["records"][1]["expanded_member_bytes"]+=1
+          cases.append((x,p,c))
           for case in cases:
               try: bind(*case)
               except ValueError: pass
               else: raise AssertionError("invalid receipt admitted")
           report=plan_staging(inputs,capacity_bytes=960*1024**2,reserve_bytes=128*1024**2)
           report.update(input_count=len(inputs),receipt_negative_checks=len(cases),
+                        archived_replay=os.environ.get('GITHUB_HEAD_REF')=='fix/factory-staging-inventory-consistency-20261125',
                         receipt_sha256={name:hashlib.sha256(Path(name).read_bytes()).hexdigest()
                                         for name in ("wheels/inventory.json","interpreter/python-candidate.json","wheels/capacity.json")},
                         reserve_is_provisional=True,actual_installation_allowed=False,
