@@ -584,7 +584,7 @@ class ModeBBridgeContractTests(unittest.TestCase):
 
     def test_modeb_exact_task_request_has_no_hidden_cases_or_secret(self):
         request = openhands_sdk_operator.prepare_modeb_request(self.task())
-        self.assertEqual(request["allowed_files"], ["app/logic.py","README.md","tests/test_logic.py"])
+        self.assertEqual(request["allowed_files"], sorted(["app/logic.py","README.md","tests/test_logic.py"]))
         self.assertEqual(request["workspace"], "/workspace/export")
         self.assertEqual(request["limits"], {"cpu":2,"ram_bytes":4294967296,"pids":128,"scratch_bytes":1006632960,"seconds":600})
         self.assertEqual(request["model"]["base_url"], "http://qwen3:11434/v1")
@@ -671,6 +671,30 @@ class ModeBBridgeContractTests(unittest.TestCase):
             raw=json.dumps(data).encode();p.write_bytes(raw)
             with patch.object(probe,"EXPECTED_CONTRACT_SHA",hashlib.sha256(raw).hexdigest()):
                 with self.assertRaises(ValueError): probe.validate_r2_contract(p)
+
+    def test_worker_prepares_exact_modeb_intent_without_queue_or_lease(self):
+        import hashlib
+        from ai_factory import offline_worker
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            path=root/"OPENHANDS_SYNTHETIC_1.json"
+            raw=json.dumps(self.task(),ensure_ascii=False).encode()
+            path.write_bytes(raw)
+            result=offline_worker.prepare_modeb_trial(root,"OPENHANDS_SYNTHETIC_1",branch="review/modeb",commit="a"*40)
+            self.assertEqual(result["task_file_sha256"],hashlib.sha256(raw).hexdigest())
+            self.assertEqual(result["branch"],"review/modeb")
+            self.assertEqual(result["commit"],"a"*40)
+            self.assertEqual(result["request"]["task_id"],"OPENHANDS_SYNTHETIC_1")
+            self.assertFalse(result["queue_enqueued"])
+            self.assertFalse(result["lease_claimed"])
+            self.assertFalse(result["execution_authorized"])
+            self.assertEqual(list(root.iterdir()),[path])
+            # The old synthetic worker must still refuse this recipe.
+            with self.assertRaises(ValueError):
+                offline_worker._load_task(root,"OPENHANDS_SYNTHETIC_1")
+            path.write_text(json.dumps(dict(self.task(),description="modified")))
+            with self.assertRaises(ValueError):
+                offline_worker.prepare_modeb_trial(root,"OPENHANDS_SYNTHETIC_1",branch="review/modeb",commit="a"*40)
 
 
 if __name__ == "__main__":
