@@ -32,6 +32,25 @@ def audit_case(case_id, raw):
     return evaluate_response(raw, expected_tool=case["expected_tool"], expected_args=case["expected_args"])
 
 
+def _reject_capture(reason):
+    return {"status": "schema_rejected", "reason_code": reason,
+            "tool_executed": False, "sdk_conversation_ran": False,
+            "release_authorized": False, "production_authorized": False,
+            "automatic_retry_allowed": False}
+
+
+def _audit_local_case(case_id, raw):
+    """Validate captured response content, without claiming a transport status."""
+    if type(case_id) is not str or case_id not in CASES or type(raw) is not bytes:
+        return _reject_capture("invalid_transport_outcome")
+    verdict = audit_case(case_id, raw)
+    if verdict["status"] == "schema_match":
+        # The schema audit rejects oversized, duplicate-key or malformed JSON.
+        if json.loads(raw).get("model") != "local-qwen":
+            return _reject_capture("model_identity_mismatch")
+    return {**verdict, "automatic_retry_allowed": False}
+
+
 def audit_http_case(case_id, *, status_code=None, raw=b"", failure=None):
     """Review a captured synthetic HTTP outcome; never perform a request.
 
@@ -39,32 +58,17 @@ def audit_http_case(case_id, *, status_code=None, raw=b"", failure=None):
     probe, not from model text. This classifier does not prove cancellation,
     authentication, DNS isolation or SDK compatibility at runtime.
     """
-    rejected = {"status": "schema_rejected", "tool_executed": False,
-                "sdk_conversation_ran": False, "release_authorized": False,
-                "production_authorized": False, "automatic_retry_allowed": False}
-    def reject(reason):
-        return {**rejected, "reason_code": reason}
-
     if failure is not None:
         if type(failure) is str and failure in ("timeout", "cancelled"):
-            return reject(failure)
-        return reject("invalid_transport_outcome")
+            return _reject_capture(failure)
+        return _reject_capture("invalid_transport_outcome")
     if type(status_code) is not int:
-        return reject("invalid_transport_outcome")
+        return _reject_capture("invalid_transport_outcome")
     if status_code in (401, 403):
-        return reject("authentication_failed")
+        return _reject_capture("authentication_failed")
     if status_code != 200:
-        return reject("http_status_rejected")
-    if type(case_id) is not str or case_id not in CASES or type(raw) is not bytes:
-        return reject("invalid_transport_outcome")
-    verdict = audit_case(case_id, raw)
-    if verdict["status"] != "schema_match":
-        return {**verdict, "automatic_retry_allowed": False}
-    # audit_case already rejects oversized, duplicate-key or malformed JSON.
-    # Bind the response to the single reviewed alias before returning evidence.
-    if json.loads(raw).get("model") != "local-qwen":
-        return reject("model_identity_mismatch")
-    return {**verdict, "automatic_retry_allowed": False}
+        return _reject_capture("http_status_rejected")
+    return _audit_local_case(case_id, raw)
 
 
 def summarize(results):
@@ -86,7 +90,7 @@ def main():
             path = folder / (case_id + ".json")
             if path.is_file():
                 with path.open("rb") as stream:
-                    results[case_id] = audit_case(case_id, stream.read(MAX_RESPONSE_BYTES + 1))
+                    results[case_id] = _audit_local_case(case_id, stream.read(MAX_RESPONSE_BYTES + 1))
         result = summarize(results)
         receipt.write_text(json.dumps(result, indent=2) + "\n")
         print("Benchmark:", result["status"], result["passed"], "/", result["total"])
