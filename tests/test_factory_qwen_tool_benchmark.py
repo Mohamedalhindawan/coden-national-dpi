@@ -108,3 +108,81 @@ class ToolBenchmarkTests(unittest.TestCase):
                 self.assertFalse(result["automatic_retry_allowed"])
                 self.assertFalse(result["release_authorized"])
                 self.assertNotIn("response_sha256", result)
+
+
+class QwenPreflightBrokerTests(unittest.TestCase):
+    TOKEN = b"synthetic-fixture-token-not-a-real-credential"
+    def make(self, **kwargs):
+        import hashlib
+        from ai_factory.factory_qwen_tool_benchmark import PreflightBroker
+        return PreflightBroker(token_sha256=hashlib.sha256(self.TOKEN).hexdigest(),
+                               case_id="count", ttl_seconds=30, **kwargs)
+
+    def transport(self, **kw):
+        self.assertEqual(kw["url"], "http://qwen3:11434/v1/chat/completions")
+        self.assertEqual(kw["timeout_seconds"], 35)
+        self.assertEqual(kw["max_response_bytes"], 256*1024)
+        self.assertEqual(kw["request"], request_for("count"))
+        self.assertNotIn("token", kw)
+        body=json.loads(reply("count_flags",CASES["count"]["expected_args"]))
+        body["model"]="local-qwen"
+        return 200,json.dumps(body).encode()
+
+    def test_one_shot_authenticated_fixture_rejects_wrong_token_and_replay(self):
+        from unittest.mock import Mock
+        broker=self.make()
+        send=Mock(side_effect=self.transport)
+        result=broker.execute(token=b"wrong",fixture_only=True,transport=send)
+        self.assertEqual(result["status"],"authentication_failed")
+        send.assert_not_called()
+        result=broker.execute(token=self.TOKEN,fixture_only=True,transport=send)
+        self.assertEqual(result["status"],"fixture_preflight_match")
+        self.assertFalse(result["qwen_connected"])
+        self.assertFalse(result["execution_authorized"])
+        self.assertNotIn(self.TOKEN.decode(),repr(result))
+        self.assertEqual(broker.execute(token=self.TOKEN,fixture_only=True,transport=send)["status"],"grant_consumed")
+        send.assert_called_once()
+
+    def test_real_transport_blocked_and_expiry_precedes_dispatch(self):
+        from unittest.mock import Mock,patch
+        from ai_factory import factory_qwen_tool_benchmark as bench
+        send=Mock(side_effect=self.transport)
+        with patch.object(bench.time,"monotonic",return_value=100):
+            broker=self.make()
+        with patch.object(bench.time,"monotonic",return_value=101):
+            self.assertEqual(broker.execute(token=self.TOKEN,transport=send)["status"],"blocked_runtime_admission")
+        with patch.object(bench.time,"monotonic",return_value=130):
+            self.assertEqual(broker.execute(token=self.TOKEN,fixture_only=True,transport=send)["status"],"grant_expired")
+        send.assert_not_called()
+
+    def test_failure_consumes_grant_without_leaking_transport_error(self):
+        from unittest.mock import Mock
+        for status in (401,403,429,500,302,200):
+            with self.subTest(status=status):
+                broker=self.make()
+                send=Mock(return_value=(status,b"private-response"*30000))
+                result=broker.execute(token=self.TOKEN,fixture_only=True,transport=send)
+                self.assertNotEqual(result["status"],"fixture_preflight_match")
+                self.assertNotIn("private-response",repr(result))
+                self.assertEqual(broker.execute(token=self.TOKEN,fixture_only=True,transport=send)["status"],"grant_consumed")
+                send.assert_called_once()
+        broker=self.make()
+        send=Mock(side_effect=RuntimeError("private-transport-error"))
+        result=broker.execute(token=self.TOKEN,fixture_only=True,transport=send)
+        self.assertEqual(result["status"],"fixture_transport_failed")
+        self.assertNotIn("private",repr(result))
+
+    def test_cancelled_and_concurrent_claim_cannot_dispatch_twice(self):
+        from unittest.mock import Mock
+        from concurrent.futures import ThreadPoolExecutor
+        broker=self.make()
+        send=Mock(side_effect=self.transport)
+        result=broker.execute(token=self.TOKEN,fixture_only=True,transport=send,cancelled=lambda:True)
+        self.assertEqual(result["status"],"cancelled")
+        send.assert_not_called()
+        self.assertEqual(broker.execute(token=self.TOKEN,fixture_only=True,transport=send)["status"],"grant_consumed")
+        broker=self.make()
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results=list(pool.map(lambda _:broker.execute(token=self.TOKEN,fixture_only=True,transport=send),range(2)))
+        self.assertEqual(sorted(r["status"] for r in results),["fixture_preflight_match","grant_consumed"])
+        send.assert_called_once()
