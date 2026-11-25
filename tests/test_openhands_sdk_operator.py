@@ -388,6 +388,24 @@ class OpenHandsManagedLaunchTests(OpenHandsSDKOperatorTests):
         ])
         verify.assert_called_once_with(self.task, self.export, self.output)
 
+    def test_review_only_after_managed_workspace_exit(self):
+        def verify(*args):
+            self.assertEqual(ManagedWorkspace.closed, 1)
+            return {"status": "awaiting_human_review"}
+        with patch.object(project, "supported_host", return_value=True), \
+             patch.object(openhands_multifile_review, "review", side_effect=verify):
+            result = self.launch()
+        self.assertEqual(result["status"], "awaiting_human_review")
+
+    def test_workspace_exit_failure_never_reviews_artifacts(self):
+        with patch.object(project, "supported_host", return_value=True), \
+             patch.object(ManagedWorkspace, "__exit__", side_effect=RuntimeError("cleanup")), \
+             patch.object(openhands_multifile_review, "review") as verify:
+            result = self.launch()
+        self.assertFalse(result["automatic_retry_allowed"])
+        self.assertFalse(result["release_authorized"])
+        verify.assert_not_called()
+
     def test_launch_crash_reports_manual_review_and_workspace_is_closed(self):
         FakeConversation.fail = True
         with patch.object(project, "supported_host", return_value=True):
