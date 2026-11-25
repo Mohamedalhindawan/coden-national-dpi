@@ -1,5 +1,10 @@
 """Bounded synthetic model benchmark. No tools or SDK are executed."""
+import hashlib
+import hmac
 import json
+import re
+import threading
+import time
 from pathlib import Path
 import sys
 from ai_factory.factory_qwen_tool_schema import evaluate_response, MAX_RESPONSE_BYTES
@@ -69,6 +74,85 @@ def audit_http_case(case_id, *, status_code=None, raw=b"", failure=None):
     if status_code != 200:
         return _reject_capture("http_status_rejected")
     return _audit_local_case(case_id, raw)
+
+
+class PreflightBroker:
+    """One-shot authorization policy for a trusted synthetic transport fixture.
+
+    No HTTP client, listener, credential store or SDK is started here. The
+    token is a test grant, never an upstream provider credential. This is
+    process-local replay protection, not a durable or cross-UID auth boundary.
+    The future admitted transport must independently enforce connection and
+    read limits, network isolation, interruptible deadlines and cleanup.
+    """
+
+    def __init__(self, *, token_sha256, case_id, ttl_seconds=30):
+        if (type(token_sha256) is not str or not re.fullmatch(r"[0-9a-f]{64}", token_sha256)
+                or type(case_id) is not str or case_id not in CASES
+                or type(ttl_seconds) is not int or not 1 <= ttl_seconds <= 60):
+            raise ValueError("invalid preflight grant scope")
+        self._token_sha256 = token_sha256
+        self._case_id = case_id
+        self._expires = time.monotonic() + ttl_seconds
+        self._lock = threading.Lock()
+        self._consumed = False
+
+    @staticmethod
+    def _receipt(status, **extra):
+        return {"status": status, "qwen_connected": False,
+                "fixture_only": True, "tool_executed": False,
+                "sdk_conversation_ran": False, "execution_authorized": False,
+                "release_authorized": False, "production_authorized": False,
+                "automatic_retry_allowed": False, **extra}
+
+    def execute(self, *, token, transport=None, fixture_only=False, cancelled=None):
+        if fixture_only is not True:
+            return self._receipt("blocked_runtime_admission")
+        if not callable(transport):
+            return self._receipt("invalid_fixture_transport")
+        if (type(token) is not bytes or not 1 <= len(token) <= 128
+                or not hmac.compare_digest(hashlib.sha256(token).hexdigest(), self._token_sha256)):
+            return self._receipt("authentication_failed")
+        with self._lock:
+            if self._consumed:
+                return self._receipt("grant_consumed")
+            if time.monotonic() >= self._expires:
+                return self._receipt("grant_expired")
+            self._consumed = True
+
+        # Never send the grant token or its digest to the transport.
+        # No caller-selected endpoint, payload, model, redirects or fallback.
+        from ai_factory.openhands_sdk_operator import review_qwen_route
+        route = review_qwen_route(model="openai/local-qwen",
+                                  base_url="http://qwen3:11434/v1")["llm_options"]
+        try:
+            if cancelled is not None and cancelled():
+                return self._receipt("cancelled")
+            if time.monotonic() >= self._expires:
+                return self._receipt("grant_expired")
+            started = time.monotonic()
+            outcome = transport(url=route["base_url"] + "/chat/completions",
+                                request=request_for(self._case_id),
+                                timeout_seconds=route["timeout"],
+                                max_response_bytes=MAX_RESPONSE_BYTES)
+            if cancelled is not None and cancelled():
+                return self._receipt("cancelled")
+            if time.monotonic() - started >= route["timeout"]:
+                return self._receipt("timeout")
+            if type(outcome) is not tuple or len(outcome) != 2:
+                return self._receipt("invalid_fixture_transport")
+            code, raw = outcome
+            if type(raw) is not bytes or len(raw) > MAX_RESPONSE_BYTES:
+                return self._receipt("fixture_response_rejected", reason_code="oversized_or_invalid_response")
+            verdict = audit_http_case(self._case_id, status_code=code, raw=raw)
+            if verdict["status"] != "schema_match":
+                return self._receipt("fixture_response_rejected", reason_code=verdict["reason_code"])
+            return self._receipt("fixture_preflight_match",
+                                 response_sha256=verdict["response_sha256"],
+                                 completion_tokens=verdict["completion_tokens"])
+        except Exception:
+            # Never include provider/transport exception text or raw response.
+            return self._receipt("fixture_transport_failed")
 
 
 def summarize(results):
