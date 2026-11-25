@@ -93,3 +93,18 @@ class ToolBenchmarkTests(unittest.TestCase):
                 if alias != "local-qwen":
                     self.assertTrue(all(v["reason_code"] == "model_identity_mismatch" for v in result["cases"].values()))
                     self.assertNotIn("unexpected-model", repr(result))
+
+    def test_http_capture_rejects_nonstandard_json_constants(self):
+        from ai_factory import factory_qwen_tool_benchmark as bench
+        response = json.loads(reply("count_flags", CASES["count"]["expected_args"]))
+        response["model"] = "local-qwen"
+        for constant in (float("nan"), float("inf"), -float("inf")):
+            with self.subTest(constant=constant):
+                response["untrusted_extra"] = constant
+                result = bench.audit_http_case("count", status_code=200,
+                                              raw=json.dumps(response).encode())
+                self.assertEqual(result["status"], "schema_rejected")
+                self.assertEqual(result["reason_code"], "invalid_json")
+                self.assertFalse(result["automatic_retry_allowed"])
+                self.assertFalse(result["release_authorized"])
+                self.assertNotIn("response_sha256", result)
