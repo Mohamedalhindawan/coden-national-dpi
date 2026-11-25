@@ -1106,3 +1106,102 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+
+  sprint17-offline-containment-preflight:
+    # Synthetic host containment probe only. Never acquire image data or install a tool.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '8e941ed3faf31121eaba1aa939361de97439cf30' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions: {}
+    steps:
+      - name: Verify actual kernel caps for a nonroot offline synthetic process
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          unit="coden-s17-probe-${GITHUB_RUN_ID}.service"
+          store=""
+          cleanup() {
+            status=$?
+            trap - EXIT
+            sudo systemctl stop "$unit" >/dev/null 2>&1 || true
+            active="$(sudo systemctl show -p ActiveState --value "$unit" 2>/dev/null || true)"
+            if [[ "$active" != inactive && "$active" != failed ]]; then
+              printf '%s\n' 'SERVICE_CLEANUP_UNCERTAIN' > "$ev/cleanup.txt"
+              status=1
+            else
+              printf 'SERVICE_%s\n' "$active" > "$ev/cleanup.txt"
+            fi
+            if [[ -n "$store" ]]; then
+              if mountpoint -q "$store"; then
+                sudo umount "$store" || { echo STORE_UNMOUNT_FAILED >> "$ev/cleanup.txt"; exit 1; }
+              fi
+              sudo rmdir "$store" || exit 1
+              echo STORE_UNMOUNTED_AND_REMOVED >> "$ev/cleanup.txt"
+            fi
+            exit "$status"
+          }
+          trap cleanup EXIT
+          test "$(id -u)" != 0
+          uid="$(id -u)"; gid="$(id -g)"
+          host_ns="$(readlink /proc/self/ns/net)"
+          store="$(sudo mktemp -d /run/coden-s17.XXXXXXXX)"
+          sudo mount -t tmpfs -o "size=512m,nosuid,nodev,noexec,mode=0700,uid=$uid,gid=$gid" tmpfs "$store"
+          printf 'synthetic-only\n' > "$store/probe.txt"
+          sudo mount -o remount,ro,nosuid,nodev,noexec "$store"
+          findmnt -n -o FSTYPE,OPTIONS --mountpoint "$store" > "$ev/store-mount.txt"
+          script="$(cat <<'PY'
+          import json,os,pathlib,socket,stat,subprocess,sys
+          from pathlib import Path
+          host,store=sys.argv[1:]
+          p=Path(store)
+          assert (p/"probe.txt").read_bytes()==b"synthetic-only\n"
+          v=os.statvfs(p)
+          assert v.f_frsize*v.f_blocks==536870912 and v.f_flag & os.ST_RDONLY
+          def cgroup():
+              return next(x.split(":",2)[2] for x in Path("/proc/self/cgroup").read_text().splitlines() if x.startswith("0::"))
+          cg=cgroup()
+          root=Path("/sys/fs/cgroup")/cg.lstrip("/")
+          cpu=(root/"cpu.max").read_text().split()
+          mem=int((root/"memory.max").read_text())
+          pids=int((root/"pids.max").read_text())
+          assert int(cpu[0])==2*int(cpu[1]) and mem==4294967296 and pids==128
+          st=dict(line.split(":",1) for line in Path("/proc/self/status").read_text().splitlines() if ":" in line)
+          assert os.getuid()!=0 and os.geteuid()!=0 and int(st["CapEff"],16)==0 and st["NoNewPrivs"].strip()=="1"
+          assert os.readlink("/proc/self/ns/net")!=host
+          assert sorted(n for _,n in socket.if_nameindex())==["lo"]
+          assert len(Path("/proc/self/net/route").read_text().splitlines())==1
+          v6=Path("/proc/self/net/ipv6_route")
+          assert not v6.exists() or all(x.split()[-1]=="lo" for x in v6.read_text().splitlines() if x.strip())
+          for name in ("/run/docker.sock","/var/run/docker.sock"):
+              try: mode=os.stat(name).st_mode
+              except OSError: continue
+              assert not stat.S_ISSOCK(mode)
+          assert set(os.environ)<= {"PATH","HOME","TMPDIR","LC_ALL"}
+          child=subprocess.check_output([sys.executable,"-I","-B","-c","from pathlib import Path; print(next(x.split(':',2)[2] for x in Path('/proc/self/cgroup').read_text().splitlines() if x.startswith('0::')))"],text=True).strip()
+          assert child==cg
+          print(json.dumps(dict(status="SYNTHETIC_SCAN_CONTAINMENT_PREFLIGHT",cpu_max=cpu,memory_max=mem,pids_max=pids,child_same_cgroup=True,uid=os.getuid(),cap_eff=0,no_new_privs=True,network_interfaces=["lo"],no_external_routes=True,store_capacity=v.f_frsize*v.f_blocks,store_readonly=True,docker_socket_not_visible=True,environment_keys=sorted(os.environ),real_binary_scanned=False,real_agent_tree_verified=False,timeout_kill_verified=False,release_authorized=False),sort_keys=True))
+          PY
+          )"
+          # Host systemd only establishes the restrictive sandbox; the probe
+          # and its child run unprivileged. No actual scanner or image supplied.
+          timeout --kill-after=5s 60s sudo systemd-run --unit="$unit" --wait --pipe --quiet \
+            -p "User=$uid" -p "Group=$gid" -p CPUQuota=200% -p MemoryMax=4294967296 -p TasksMax=128 \
+            -p RuntimeMaxSec=600 -p KillMode=control-group -p NoNewPrivileges=yes \
+            -p CapabilityBoundingSet= -p AmbientCapabilities= -p PrivateNetwork=yes \
+            -p PrivateTmp=yes -p PrivateDevices=yes -p ProtectHome=tmpfs -p ProtectSystem=strict \
+            -p 'InaccessiblePaths=-/run/docker.sock -/var/run/docker.sock' -p RestrictSUIDSGID=yes \
+            /usr/bin/env -i PATH=/usr/bin:/bin HOME=/tmp TMPDIR=/tmp LC_ALL=C /usr/bin/python3 -I -B -c "$script" "$host_ns" "$store" > "$ev/containment.json"
+          sudo systemctl show "$unit" -p RuntimeMaxUSec -p KillMode -p Result -p ActiveState > "$ev/service-properties.txt"
+          grep -Fx 'KillMode=control-group' "$ev/service-properties.txt"
+          grep -Fx 'RuntimeMaxUSec=10min' "$ev/service-properties.txt"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: sprint17-synthetic-scan-containment-receipts
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
