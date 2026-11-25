@@ -248,6 +248,37 @@ class OpenHandsSDKOperatorTests(unittest.TestCase):
         self.assertNotIn("private_fixture", repr(result))
         self.assertEqual(list(self.output.iterdir()), [])
 
+    def test_qwen_pilot_uses_reviewed_options_with_fixture_only(self):
+        with patch.object(project, "supported_host", return_value=True), \
+             patch.object(openhands_multifile_review, "review",
+                          return_value={"status": "awaiting_human_review"}):
+            result = self.run_pilot(allow_agent=True, model="openai/local-qwen",
+                                    base_url="http://qwen3:11434/v1")
+        self.assertEqual(result["status"], "awaiting_human_review")
+        expected = openhands_sdk_operator.review_qwen_route(
+            model="openai/local-qwen", base_url="http://qwen3:11434/v1")["llm_options"]
+        self.assertEqual(FakeLLM.seen, [dict(expected, api_key="fixture-only")])
+        self.assertFalse(result["release_authorized"])
+        self.assertFalse(result["execution_authorized"])
+        self.assertFalse(result["automatic_retry_allowed"])
+
+    def test_qwen_fixture_rejects_mixed_routes_and_preserves_real_gate(self):
+        for model, url in (
+            ("openai/local-qwen", "http://ollama:11434"),
+            (MODEL, "http://qwen3:11434/v1"),
+            ("openai/local-qwen", "http://qwen3:11434/v1/"),
+            ("openai/local-qwen", "https://api.openai.com/v1"),
+        ):
+            with self.subTest(model=model,url=url), self.assertRaises(ValueError):
+                self.run_pilot(allow_agent=True, model=model, base_url=url)
+        with patch.object(openhands_sdk_operator, "_official_sdk") as official:
+            result=self.run_pilot(allow_agent=True, sdk=None,
+                                  model="openai/local-qwen",base_url="http://qwen3:11434/v1")
+            self.assertEqual(result["status"], "blocked_runtime_admission")
+            official.assert_not_called()
+        self.assertFalse(FakeLLM.seen)
+        self.assertFalse(FakeConversation.seen)
+
     def test_qwen_route_review_has_no_secret_or_execution(self):
         result = openhands_sdk_operator.review_qwen_route(
             model="openai/local-qwen", base_url="http://qwen3:11434/v1")
