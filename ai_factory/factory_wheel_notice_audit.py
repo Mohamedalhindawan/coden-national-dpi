@@ -1,10 +1,14 @@
 """Static, review-only license evidence; never install or execute a wheel."""
 import base64
+import csv
 import hashlib
 import io
 import json
 from pathlib import Path, PurePosixPath
 import stat
+import struct
+import unicodedata
+import zlib
 import tomllib
 from urllib.parse import urlsplit
 from urllib.request import build_opener, HTTPRedirectHandler
@@ -44,7 +48,28 @@ def select_candidates(lock, targets):
     return result
 
 
-def inspect_wheel(raw, digest):
+def _validate_namespace(entries):
+    # Validate the complete namespace before decompressing any notice.
+    # ZipInfo.filename can truncate at NUL; compare the original spelling.
+    seen = {}
+    for e in entries:
+        spelling = e.filename[:-1] if e.is_dir() else e.filename
+        p = PurePosixPath(spelling)
+        if (not spelling or e.orig_filename != e.filename
+                or p.is_absolute() or '..' in p.parts
+                or any(part in ('', '.', '..') for part in spelling.split('/'))
+                or any(ord(c) < 32 or ord(c) == 127 for c in spelling)
+                or '\\' in spelling or ':' in spelling or p in seen
+                or stat.S_ISLNK(e.external_attr >> 16) or e.flag_bits & 1):
+            raise ValueError('unsafe wheel member')
+        seen[p] = e.is_dir()
+    for p in seen:
+        if any(parent in seen and not seen[parent] for parent in p.parents):
+            raise ValueError('wheel file ancestor collision')
+
+
+def _inspect_legacy_notices(raw, digest):
+    """Historical notice inventory only; not a RECORD or shared-budget admission."""
     if len(raw) > CAP or hashlib.sha256(raw).hexdigest() != digest:
         raise ValueError('wheel size or digest mismatch')
     evidence = {}
@@ -52,23 +77,7 @@ def inspect_wheel(raw, digest):
         entries = z.infolist()
         if len(entries) > 50000 or sum(e.file_size for e in entries) > 4 * CAP:
             raise ValueError('wheel expansion limit')
-        # Validate the complete namespace before decompressing any notice.
-        # ZipInfo.filename can truncate at NUL; compare the original spelling.
-        seen = {}
-        for e in entries:
-            spelling = e.filename[:-1] if e.is_dir() else e.filename
-            p = PurePosixPath(spelling)
-            if (not spelling or e.orig_filename != e.filename
-                    or p.is_absolute() or '..' in p.parts
-                    or any(part in ('', '.', '..') for part in spelling.split('/'))
-                    or any(ord(c) < 32 or ord(c) == 127 for c in spelling)
-                    or '\\' in spelling or ':' in spelling or p in seen
-                    or stat.S_ISLNK(e.external_attr >> 16) or e.flag_bits & 1):
-                raise ValueError('unsafe wheel member')
-            seen[p] = e.is_dir()
-        for p in seen:
-            if any(parent in seen and not seen[parent] for parent in p.parents):
-                raise ValueError('wheel file ancestor collision')
+        _validate_namespace(entries)
         for e in entries:
             if e.is_dir():
                 continue
@@ -83,6 +92,240 @@ def inspect_wheel(raw, digest):
     if not any(p.endswith('.dist-info/METADATA') for p in evidence):
         raise ValueError('missing distribution metadata')
     return evidence
+
+
+CHUNK = 64 * 1024
+MAX_RECORD = 2 * 1024 * 1024
+
+
+class WheelBudget:
+    """Single-use-on-failure accounting for a serial, trusted batch caller.
+
+    Compressed bytes count each admitted archive once; expanded bytes count
+    all emitted member bytes, including RECORD and permitted signature files.
+    Limits are deliberately no larger than the proposed three-wheel scope.
+    This is not an OS quota or a network acquisition authorization.
+    """
+    __slots__ = ("_compressed_limit", "_expanded_limit", "_compressed", "_expanded", "_failed")
+
+    def __init__(self, compressed_limit=8 * 1024**2, expanded_limit=128 * 1024**2):
+        if (type(compressed_limit) is not int or type(expanded_limit) is not int
+                or not 0 < compressed_limit <= 8 * 1024**2
+                or not 0 < expanded_limit <= 128 * 1024**2):
+            raise ValueError("invalid wheel budget")
+        self._compressed_limit = compressed_limit
+        self._expanded_limit = expanded_limit
+        self._compressed = self._expanded = 0
+        self._failed = False
+
+    @property
+    def compressed_bytes(self):
+        return self._compressed
+
+    @property
+    def expanded_bytes(self):
+        return self._expanded
+
+    @property
+    def failed(self):
+        return self._failed
+
+    @property
+    def remaining(self):
+        return self._expanded_limit - self._expanded
+
+    def _admit(self, count):
+        if self.failed or count > self._compressed_limit - self._compressed:
+            self._failed = True
+            raise ValueError("compressed wheel budget exhausted or failed")
+        self._compressed += count
+
+    def _charge(self, count):
+        if self.failed or count > self.remaining:
+            self._failed = True
+            raise ValueError("expanded wheel budget exhausted or failed")
+        self._expanded += count
+
+
+def _strict_ranges(raw, z, entries):
+    """Resolve bounded local records without extracting any file.
+
+    Conservative profile: stored/deflate, ordinary local sizes, no data
+    descriptor, no ambiguous padding or overlapping ranges. Other valid
+    ZIP variants require review, not a fallback to the legacy reader.
+    """
+    ranges = {}
+    end = 0
+    for e in sorted(entries, key=lambda item: item.header_offset):
+        offset = e.header_offset
+        if offset != end or offset + 30 > z.start_dir:
+            raise ValueError("noncontiguous or overlapping local records")
+        (magic, _, flags, method, _, _, crc, compressed, expanded,
+         nlen, xlen) = struct.unpack_from("<4s5H3I2H", raw, offset)
+        if (magic != b"PK\x03\x04" or flags != e.flag_bits
+                or flags & ~0x806 or method not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)
+                or method != e.compress_type
+                or (crc, compressed, expanded) != (e.CRC, e.compress_size, e.file_size)):
+            raise ValueError("unsupported or inconsistent local wheel header")
+        begin = offset + 30 + nlen + xlen
+        end = begin + compressed
+        if begin > z.start_dir or end > z.start_dir:
+            raise ValueError("wheel local record bounds")
+        name = raw[offset + 30:offset + 30 + nlen].decode("utf-8" if flags & 0x800 else "cp437")
+        if name != e.orig_filename:
+            raise ValueError("wheel local name mismatch")
+        ranges[e.filename] = (begin, end)
+    if end != z.start_dir:
+        raise ValueError("unaccounted local ZIP bytes")
+    return ranges
+
+
+def _member_blocks(raw, e, span, budget):
+    """Bound actual emitted bytes, even for a forged central directory.
+
+    A one-byte overflow probe is never retained or accepted as evidence.
+    No unbounded flush, no ZipExtFile read-ahead/truncation.
+    """
+    count = crc = 0
+    decoder = zlib.decompressobj(-15) if e.compress_type == zipfile.ZIP_DEFLATED else None
+    begin, end = span
+    def account(block):
+        nonlocal count, crc
+        budget._charge(len(block))
+        count += len(block)
+        if count > e.file_size:
+            raise ValueError("actual wheel member size exceeds declaration")
+        crc = zlib.crc32(block, crc)
+        return block
+
+    for offset in range(begin, end, CHUNK):
+        pending = raw[offset:min(offset + CHUNK, end)]
+        if decoder is None:
+            yield account(pending)
+            continue
+        if decoder.eof:
+            raise ValueError("trailing compressed member bytes")
+        while pending:
+            limit = min(CHUNK, budget.remaining + 1, e.file_size - count + 1)
+            block = decoder.decompress(pending, limit)
+            tail = decoder.unconsumed_tail
+            if decoder.unused_data or (not block and tail == pending):
+                raise ValueError("invalid compressed member boundary")
+            if block:
+                yield account(block)
+            pending = tail
+    if decoder is not None and not decoder.eof:
+        # Drain bounded output from decoder state, never use flush().
+        while not decoder.eof:
+            block = decoder.decompress(b"", min(CHUNK, budget.remaining + 1, e.file_size - count + 1))
+            if not block and not decoder.eof:
+                raise ValueError("incomplete deflate member")
+            if block:
+                yield account(block)
+    if count != e.file_size or crc != e.CRC:
+        raise ValueError("wheel member size or CRC mismatch")
+
+
+def _inspect_record(raw, digest, budget):
+    budget._admit(len(raw))
+    if hashlib.sha256(raw).hexdigest() != digest:
+        raise ValueError("wheel digest mismatch")
+    before = budget.expanded_bytes
+    with zipfile.ZipFile(io.BytesIO(raw)) as z:
+        entries = z.infolist()
+        if len(entries) > 50000 or sum(e.file_size for e in entries) > budget.remaining:
+            raise ValueError("wheel member count or declared expansion budget")
+        _validate_namespace(entries)
+        aliases = {}
+        for e in entries:
+            name = e.filename.rstrip("/")
+            if (len(name.encode("utf-8")) > 4096 or len(name.split("/")) > 64
+                    or unicodedata.normalize("NFC", name) != name
+                    or any(unicodedata.category(c).startswith("C") for c in name)):
+                raise ValueError("noncanonical Unicode wheel path")
+            mode = stat.S_IFMT(e.external_attr >> 16)
+            if mode not in (0, stat.S_IFDIR if e.is_dir() else stat.S_IFREG):
+                raise ValueError("unsupported wheel member type")
+            if e.is_dir() and e.file_size != 0:
+                raise ValueError("nonempty directory entry")
+            for p in (PurePosixPath(name), *PurePosixPath(name).parents):
+                spelling = str(p)
+                key = unicodedata.normalize("NFC", spelling.casefold())
+                if aliases.setdefault(key, spelling) != spelling:
+                    raise ValueError("Unicode or casefold wheel path collision")
+        spans = _strict_ranges(raw, z, entries)
+        files = {e.filename: e for e in entries if not e.is_dir()}
+        roots = {p.split("/")[0] for p in files if p.split("/")[0].endswith(".dist-info")}
+        if len(roots) != 1:
+            raise ValueError("expected one top-level dist-info directory")
+        prefix = next(iter(roots)) + "/"
+        record = prefix + "RECORD"
+        if any(prefix + suffix not in files for suffix in ("METADATA", "WHEEL", "RECORD")):
+            raise ValueError("missing wheel distribution metadata or RECORD")
+        if files[record].file_size > MAX_RECORD:
+            raise ValueError("RECORD size limit")
+        record_bytes = b"".join(_member_blocks(raw, files[record], spans[record], budget))
+        signatures = {record + ".jws", record + ".p7s"}
+        rows = {}
+        for row in csv.reader(io.StringIO(record_bytes.decode("utf-8"), newline=""), strict=True):
+            if len(row) != 3 or row[0] in rows or row[0] not in files or row[0] in signatures:
+                raise ValueError("unexpected or duplicate RECORD row")
+            name, digest_field, size = row
+            if name == record:
+                if digest_field or size:
+                    raise ValueError("RECORD self row must be empty")
+                rows[name] = (None, None)
+                continue
+            algo, sep, encoded = digest_field.partition("=")
+            if (not sep or algo not in ("sha256", "sha384", "sha512")
+                    or not encoded or size != str(files[name].file_size)):
+                raise ValueError("invalid RECORD hash algorithm or size")
+            rows[name] = (algo, encoded)
+        if set(rows) != set(files) - signatures:
+            raise ValueError("RECORD member coverage mismatch")
+        receipt = {}
+        for e in entries:
+            name = e.filename
+            algo, encoded = rows.get(name, (None, None))
+            sha = hashlib.sha256()
+            verifier = hashlib.new(algo) if algo and algo != "sha256" else sha
+            first = b""
+            blocks = (record_bytes,) if name == record else _member_blocks(raw, e, spans[name], budget)
+            for block in blocks:
+                sha.update(block)
+                if verifier is not sha:
+                    verifier.update(block)
+                if len(first) < 8:
+                    first += block[:8-len(first)]
+            if algo and base64.urlsafe_b64encode(verifier.digest()).decode("ascii").rstrip("=") != encoded:
+                raise ValueError("RECORD content hash mismatch")
+            if not e.is_dir():
+                receipt[name] = {"sha256": sha.hexdigest(), "bytes": e.file_size,
+                                 "record_hash_verified": algo is not None,
+                                 "elf_magic": first.startswith(b"\x7fELF")}
+    return {"record_verified": True, "compressed_bytes": len(raw),
+            "expanded_bytes": budget.expanded_bytes - before, "files": receipt,
+            "legacy_signature_files": sorted(signatures & set(files)),
+            "legacy_signatures_verified": False, "release_authorized": False}
+
+
+def inspect_wheel(raw, digest, *, budget=None):
+    """Use explicit shared budget for strict RECORD evidence; never install.
+
+    No-budget callers retain the historical notice-only interface. Those
+    receipts cannot satisfy the new R2 admission gate.
+    """
+    if budget is None:
+        return _inspect_legacy_notices(raw, digest)
+    if type(budget) is not WheelBudget or type(raw) is not bytes:
+        raise ValueError("strict wheel audit requires bytes and WheelBudget")
+    try:
+        return _inspect_record(raw, digest, budget)
+    except BaseException as exc:
+        budget._failed = True
+        if isinstance(exc, (zipfile.BadZipFile, zlib.error, csv.Error, UnicodeError, struct.error)):
+            raise ValueError("malformed wheel structure") from exc
+        raise
 
 
 class NoRedirect(HTTPRedirectHandler):
