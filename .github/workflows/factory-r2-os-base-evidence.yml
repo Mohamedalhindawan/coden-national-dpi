@@ -467,3 +467,53 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+  gnu-distribution-keyring-review:
+    if: github.event.repository.private == false && github.head_ref == 'fix/factory-staging-inventory-consistency-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    permissions:
+      actions: read
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45524906336
+          name: r2-glibc-exact-source-files
+          path: archived
+      - name: Check alternate official GNU distribution keyring, preserving strict signature policy
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          fp=7273542B39962DF7B299931416792B4EA25340F8
+          printf '%s\n' '{"status":"BLOCKED","source_signature_gate_pass":false,"legal_approved":false,"build_authorized":false,"release_authorized":false}' > evidence/review.json
+          (cd archived/source; sha256sum -c <<'SUMS'
+          f77bd47cf8170c57365ae7bf86696c118adb3b120d3259c64c502d3dc1e2d926  glibc_2.39.orig.tar.xz
+          2cce427ef7933c17379f5514e4f0ccf8dffae5bf8c72f0f7e0bf8b8401f34be5  glibc_2.39.orig.tar.xz.asc
+          SUMS
+          )
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 --max-filesize 33554432 -o "$work/gnu-keyring.gpg" https://ftp.gnu.org/gnu/gnu-keyring.gpg
+          sha256sum "$work/gnu-keyring.gpg" | awk '{print $1}' > evidence/gnu-keyring.sha256
+          mkdir -m 0700 "$work/import" "$work/verify"
+          gpg --homedir "$work/import" --batch --import "$work/gnu-keyring.gpg" > evidence/import.log 2>&1
+          gpg --homedir "$work/import" --batch --export "$fp" > "$work/selected.gpg"
+          test -s "$work/selected.gpg"
+          gpg --homedir "$work/verify" --batch --import "$work/selected.gpg" > evidence/selected-import.log 2>&1
+          gpg --homedir "$work/verify" --batch --with-colons --fingerprint --list-keys > evidence/selected.keys
+          awk -F: -v fp="$fp" '$1=="pub"{n++} $1=="fpr" && !first{first=$10} END{exit !(n==1 && first==fp)}' evidence/selected.keys
+          rc=0
+          gpg --homedir "$work/verify" --batch --no-auto-key-retrieve --status-fd 1 --verify archived/source/glibc_2.39.orig.tar.xz.asc archived/source/glibc_2.39.orig.tar.xz > evidence/verify.status 2> evidence/verify.log || rc=$?
+          status=BLOCKED
+          if [ "$rc" -eq 0 ] && awk -v fp="$fp" '$1=="[GNUPG:]" && $2=="VALIDSIG" {n++; if ($3!=fp || $NF!=fp) bad=1} END{exit !(n==1 && !bad)}' evidence/verify.status && grep -q '^\[GNUPG:\] GOODSIG ' evidence/verify.status && ! grep -Eq '^\[GNUPG:\] (BADSIG|ERRSIG|EXPSIG|EXPKEYSIG|REVKEYSIG|KEYREVOKED|KEYEXPIRED|SIGEXPIRED|NO_PUBKEY|NODATA|FAILURE)( |$)' evidence/verify.status; then status=PASS; fi
+          jq -n --arg status "$status" --arg fp "$fp" --argjson rc "$rc" '{status:$status,key_fingerprint:$fp,gpg_exit:$rc,source_signature_gate_pass:($status=="PASS"),official_keyring:"https://ftp.gnu.org/gnu/gnu-keyring.gpg",current_policy_unchanged:true,legal_approved:false,build_authorized:false,release_authorized:false}' > evidence/review.json
+          cat evidence/verify.status
+          test "$status" = PASS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-gnu-official-keyring-review
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
