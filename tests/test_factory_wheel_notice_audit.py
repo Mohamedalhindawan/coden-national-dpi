@@ -52,3 +52,138 @@ class WheelNoticeTests(unittest.TestCase):
                 raw = buf.getvalue()
                 with self.assertRaises(ValueError):
                     inspect_wheel(raw, hashlib.sha256(raw).hexdigest())
+
+
+def recorded_wheel(name="demo", payload=b"fixture" * 100, alter=None, extras=()):
+    import base64
+    import csv
+    prefix = name + "-1.dist-info/"
+    files = {name + "/__init__.py": payload,
+             prefix + "METADATA": b"Name: demo\nVersion: 1\n",
+             prefix + "WHEEL": b"Wheel-Version: 1.0\nTag: py3-none-any\n",
+             prefix + "LICENSE": b"MIT fixture"}
+    rows = [[p, "sha256=" + base64.urlsafe_b64encode(hashlib.sha256(b).digest()).decode().rstrip("="), str(len(b))]
+            for p, b in files.items()]
+    rows.append([prefix + "RECORD", "", ""])
+    if alter is not None:
+        alter(rows)
+    record = io.StringIO(newline="")
+    csv.writer(record, lineterminator="\n").writerows(rows)
+    files[prefix + "RECORD"] = record.getvalue().encode()
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as z:
+        for p, b in [*files.items(), *extras]:
+            z.writestr(p, b)
+    return buf.getvalue(), sum(map(len, files.values()))
+
+
+class StrictWheelIntegrityTests(unittest.TestCase):
+    def test_three_wheels_share_one_nonresetting_budget(self):
+        from ai_factory.factory_wheel_notice_audit import WheelBudget
+        pairs = [recorded_wheel(name) for name in ("one", "two", "three")]
+        cap = sum(size for _, size in pairs[:2])
+        budget = WheelBudget(compressed_limit=sum(len(raw) for raw, _ in pairs), expanded_limit=cap)
+        for raw, size in pairs[:2]:
+            result = inspect_wheel(raw, hashlib.sha256(raw).hexdigest(), budget=budget)
+            self.assertTrue(result["record_verified"])
+            self.assertEqual(result["expanded_bytes"], size)
+            self.assertNotIn("base64", str(result))
+        self.assertEqual(budget.expanded_bytes, cap)
+        with self.assertRaises(ValueError):
+            inspect_wheel(pairs[2][0], hashlib.sha256(pairs[2][0]).hexdigest(), budget=budget)
+        self.assertTrue(budget.failed)
+        with self.assertRaises(ValueError):
+            inspect_wheel(pairs[0][0], hashlib.sha256(pairs[0][0]).hexdigest(), budget=budget)
+        self.assertEqual(budget.expanded_bytes, cap)
+
+    def test_complete_record_and_reject_hash_size_missing_duplicate_and_unlisted(self):
+        from ai_factory.factory_wheel_notice_audit import WheelBudget
+        cases = (
+            (lambda rows: rows[0].__setitem__(1, "sha256=" + "A"*43), ()),
+            (lambda rows: rows[0].__setitem__(2, "999"), ()),
+            (lambda rows: rows.pop(0), ()),
+            (lambda rows: rows.append(rows[0][:]), ()),
+            (lambda rows: rows[0].__setitem__(1, ""), ()),
+            (lambda rows: rows[-1].__setitem__(1, "sha256="+"A"*43), ()),
+            (lambda rows: rows.append(["ghost", "", ""]), ()),
+            (None, (("unlisted.py", b"x"),)),
+            (None, (("demo-1.dist-info/RECORD.jws", b"signature"),)),
+        )
+        for n, (alter, extras) in enumerate(cases):
+            raw, _ = recorded_wheel(alter=alter, extras=extras)
+            budget = WheelBudget(compressed_limit=1024**2, expanded_limit=1024**2)
+            if n == len(cases)-1:
+                self.assertTrue(inspect_wheel(raw, hashlib.sha256(raw).hexdigest(), budget=budget)["record_verified"])
+            else:
+                with self.subTest(n=n), self.assertRaises(ValueError):
+                    inspect_wheel(raw, hashlib.sha256(raw).hexdigest(), budget=budget)
+                self.assertTrue(budget.failed)
+
+    def test_missing_record_and_unicode_collision_fail_closed(self):
+        from ai_factory.factory_wheel_notice_audit import WheelBudget
+        for raw in (wheel(), recorded_wheel(extras=(("caf\u00e9/a", b"x"), ("cafe\u0301/b", b"x")))[0]):
+            with self.assertRaises(ValueError):
+                inspect_wheel(raw, hashlib.sha256(raw).hexdigest(), budget=WheelBudget())
+
+    def test_deflate_overrun_even_with_forged_declared_size_and_crc(self):
+        import struct
+        import zlib
+        from ai_factory.factory_wheel_notice_audit import WheelBudget
+        raw, _ = recorded_wheel(payload=b"x"*20000)
+        b = bytearray(raw)
+        # First local and central file entry. Forge both declared size and CRC
+        # of the prefix. Actual compressed stream still expands to 20,000 bytes.
+        central = b.index(b"PK\x01\x02")
+        crc = zlib.crc32(b"x")
+        struct.pack_into("<I", b, 14, crc)
+        struct.pack_into("<I", b, 22, 1)
+        struct.pack_into("<I", b, central+16, crc)
+        struct.pack_into("<I", b, central+24, 1)
+        budget = WheelBudget()
+        with self.assertRaises(ValueError):
+            inspect_wheel(bytes(b), hashlib.sha256(b).hexdigest(), budget=budget)
+        self.assertTrue(budget.failed)
+
+    def test_compressed_budget_cannot_be_reset_after_failure(self):
+        from ai_factory.factory_wheel_notice_audit import WheelBudget
+        raw, _ = recorded_wheel()
+        budget = WheelBudget(compressed_limit=len(raw)-1, expanded_limit=1024**2)
+        with self.assertRaises(ValueError):
+            inspect_wheel(raw, hashlib.sha256(raw).hexdigest(), budget=budget)
+        self.assertTrue(budget.failed)
+        with self.assertRaises(ValueError):
+            inspect_wheel(raw, hashlib.sha256(raw).hexdigest(), budget=budget)
+
+
+class BoundedElfOutputTests(unittest.TestCase):
+    def test_bounded_subprocess_output_and_timeout_cleanup(self):
+        import sys
+        import tempfile
+        import os
+        from pathlib import Path
+        from ai_factory.factory_python_elf import _bounded_command
+        ok = _bounded_command([sys.executable, "-I", "-c", "print('ok')"], stdout_limit=16, stderr_limit=16, timeout=5)
+        self.assertEqual(ok, "ok\n")
+        for code in ("import sys; sys.stdout.write('x'*1000000)",
+                     "import sys; sys.stderr.write('x'*1000000)",
+                     "raise SystemExit(2)"):
+            with self.subTest(code=code), self.assertRaises(ValueError):
+                _bounded_command([sys.executable, "-I", "-c", code], stdout_limit=1024, stderr_limit=1024, timeout=5)
+        with tempfile.TemporaryDirectory() as tmp:
+            marker = Path(tmp)/"pid"
+            code = "import os,time,pathlib; pathlib.Path(%r).write_text(str(os.getpid())); time.sleep(60)" % str(marker)
+            with self.assertRaises(ValueError):
+                _bounded_command([sys.executable, "-I", "-c", code], stdout_limit=1024, stderr_limit=1024, timeout=1)
+            self.assertTrue(marker.exists())
+            with self.assertRaises(ProcessLookupError):
+                os.kill(int(marker.read_text()), 0)
+
+    def test_readelf_malformed_input_rejected(self):
+        import tempfile
+        from pathlib import Path
+        from ai_factory.factory_python_elf import inspect_elf_file
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp)/"malformed"
+            p.write_bytes(b"\x7fELF"+b"\0"*16)
+            with self.assertRaises(ValueError):
+                inspect_elf_file(p)
