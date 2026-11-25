@@ -56,7 +56,23 @@ def _review_paths(candidate_root, output_root):
 def _read_regular(path, max_bytes):
     # The upstream SDK export is not a trust source. Do not follow symlinks,
     # FIFOs/devices or unexpectedly large files.
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    # O_NOFOLLOW on the leaf alone does not protect intermediate directories.
+    # Walk from the filesystem root through directory descriptors so a parent
+    # replaced with a symlink after export inspection cannot redirect reads.
+    path = Path(path).absolute()
+    if ".." in path.parts:
+        raise ValueError("unexpected parent traversal in generated file")
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    parent_fd = os.open(path.anchor, directory_flags)
+    try:
+        for part in path.parts[1:-1]:
+            next_fd = os.open(part, directory_flags, dir_fd=parent_fd)
+            os.close(parent_fd)
+            parent_fd = next_fd
+        fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                     dir_fd=parent_fd)
+    finally:
+        os.close(parent_fd)
     try:
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > max_bytes:
