@@ -95,6 +95,28 @@ class OpenHandsMultiFileReviewTests(unittest.TestCase):
             self.assess()
         self.assertEqual(list(self.outputs.iterdir()), [])
 
+    def test_hardlinked_export_is_rejected_before_review(self):
+        outside = self.root / "operator-fixture.txt"
+        outside.write_text("synthetic external fixture")
+        target = self.source / "README.md"
+        target.unlink()
+        os.link(outside, target)
+        with patch.object(project, "lint") as lint, \
+             patch.object(project, "verify") as verify, self.assertRaises(ValueError):
+            self.assess()
+        lint.assert_not_called()
+        verify.assert_not_called()
+        self.assertEqual(list(self.outputs.iterdir()), [])
+
+    def test_review_output_must_be_disjoint_from_agent_export(self):
+        with patch.object(project, "supported_host", return_value=True), \
+             patch.object(project, "lint"), \
+             patch.object(project, "verify", return_value=1) as verify:
+            with self.assertRaises(ValueError):
+                openhands_multifile_review.review(self.task, self.source, self.source)
+        verify.assert_not_called()
+        self.assertEqual({p.name for p in self.source.iterdir()}, {"app", "tests", "README.md"})
+
     def test_rejects_unsafe_generated_python_without_executing_it(self):
         (self.source / "app" / "logic.py").write_text(
             "import os\ndef transform(value):\n    os.system('true')\n    return {}\n")
