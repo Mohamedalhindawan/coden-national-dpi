@@ -148,6 +148,10 @@ def _monitor_bound_task(proc, *, queue_db, journal, task_id, timeout_seconds):
             proc.wait(timeout=min(0.10, remaining))
         except subprocess.TimeoutExpired:
             continue
+        except OSError as exc:
+            if proc.returncode is None:
+                _terminate_process_group(proc)
+            raise SupervisorError("worker wait failed; operator review required") from exc
         # Exit can race with a cancel request. Re-read at least once so a
         # successful child exit never masks an already registered cancel.
         final_state = monitor_read(lambda: queue.read(task_id)["status"])
