@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 
-def fixture(root, member=".wh.old", size=0, repeated=False, wrong_diff=False):
+def fixture(root, member=".wh.old", size=0, repeated=False, wrong_diff=False, bad_end=None):
     store = root / "blobs" / "sha256"
     store.mkdir(parents=True)
     def put(raw):
@@ -22,6 +22,10 @@ def fixture(root, member=".wh.old", size=0, repeated=False, wrong_diff=False):
         entry = tarfile.TarInfo(member)
         entry.size = size
         tar.addfile(entry, io.BytesIO(b"x" * size))
+    if bad_end=="invalid_header":
+        raw=io.BytesIO(raw.getvalue()[:512]+b"x"*512+raw.getvalue()[1024:])
+    elif bad_end=="single_zero":
+        raw=io.BytesIO(raw.getvalue()[:1024])
     layer = put(gzip.compress(raw.getvalue(), mtime=0))
     layer["mediaType"] = "application/vnd.oci.image.layer.v1.tar+gzip"
     diff = "sha256:" + hashlib.sha256(raw.getvalue()).hexdigest()
@@ -118,7 +122,7 @@ class OfflineOCIReviewTests(unittest.TestCase):
             self.assertEqual(result["max_compressed_bytes"], total)
             self.assertFalse(result["release_authorized"])
 
-    def inventory(self, root, layers):
+    def inventory(self, root, layers, *, embedded_binary=None, max_read=100000):
         from ai_factory.oci_offline_evidence import verify
         store = root / "blobs/sha256"
         store.mkdir(parents=True)
@@ -145,8 +149,16 @@ class OfflineOCIReviewTests(unittest.TestCase):
             "type":"layers","diff_ids":diffs}}).encode(), "application/vnd.oci.image.config.v1+json")
         manifest = put(json.dumps({"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json",
                                    "config":cfg,"layers":descs}).encode())
+        if embedded_binary is not None:
+            from ai_factory import oci_offline_evidence as audit
+            from unittest.mock import patch
+            with patch.multiple(audit,PINNED_MANIFEST=manifest["digest"],
+                                PINNED_BINARY_SIZE=len(embedded_binary),
+                                PINNED_BINARY_SHA256=hashlib.sha256(embedded_binary).hexdigest()):
+                return verify(root,manifest["digest"],max_compressed_bytes=100000,
+                              max_expanded_bytes=max_read,logical_inventory=True,embedded_inventory=True)
         return verify(root, manifest["digest"], max_compressed_bytes=100000,
-                      max_expanded_bytes=100000, logical_inventory=True)
+                      max_expanded_bytes=max_read, logical_inventory=True)
 
     def test_inventory_whiteouts_lower_only_and_opaque_order(self):
         R, D = tarfile.REGTYPE, tarfile.DIRTYPE
@@ -361,3 +373,33 @@ class OfflineOCIReviewTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,"pinned.*inventory"):
                 verify(Path(d),digest,max_expanded_bytes=100000,max_compressed_bytes=100000,
                        logical_inventory=True,embedded_inventory=True)
+
+    def test_invalid_or_incomplete_tar_end_is_not_verified(self):
+        for end in ("invalid_header","single_zero"):
+            with self.subTest(end=end), tempfile.TemporaryDirectory() as d:
+                digest,_=fixture(Path(d),bad_end=end)
+                with self.assertRaises(ValueError):
+                    self.review(Path(d),digest)
+
+    def test_pinned_embedded_inventory_full_oci_path_and_overlay_budget(self):
+        R=tarfile.REGTYPE
+        pyz=self.pyz_fixture()
+        binary=self.carchive_fixture([("PYZ.pyz",0,len(pyz),len(pyz),0,b"z")],payload=pyz)
+        path="usr/local/bin/openhands-agent-server"
+        layers=[[] for _ in range(12)]+[[(path,R,binary,0o755)]]
+        with tempfile.TemporaryDirectory() as d:
+            report=self.inventory(Path(d),layers,embedded_binary=binary,max_read=250000)
+            embedded=report["embedded_archive_review"]
+            self.assertEqual(embedded["binary_sha256"],hashlib.sha256(binary).hexdigest())
+            self.assertEqual(embedded["pyz_archives"][0]["entries"][0]["name"],"demo")
+            self.assertEqual(report["aggregate_expanded_and_nested_read_bytes"],
+                             report["expanded_bytes"]+embedded["aggregate_read_bytes"])
+            self.assertFalse(report["release_authorized"])
+        with tempfile.TemporaryDirectory() as d:
+            with self.assertRaises(ValueError):
+                self.inventory(Path(d),layers,embedded_binary=binary,
+                               max_read=report["aggregate_expanded_and_nested_read_bytes"]-1)
+        with tempfile.TemporaryDirectory() as d:
+            with self.assertRaisesRegex(ValueError,"final pinned binary"):
+                self.inventory(Path(d),layers+[[("usr/local/bin/.wh.openhands-agent-server",R,b"",0)]],
+                               embedded_binary=binary,max_read=250000)
