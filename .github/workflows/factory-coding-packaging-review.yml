@@ -690,3 +690,59 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+  offline-inspection-network-preflight-diagnosis:
+    # Diagnostic only. This job cannot fetch, install or execute image content.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '5489fa3ac4506f71717e62141f829666c32af324' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions: {}
+    steps:
+      - name: Diagnose namespace guard using independent kernel views (no network requests)
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          uid="$(id -u)"; gid="$(id -g)"
+          test "$uid" != 0
+          host_ns="$(readlink /proc/self/ns/net)"
+          sudo unshare --net -- setpriv --reuid "$uid" --regid "$gid" --clear-groups --no-new-privs env -i PATH=/usr/bin:/bin python3 -I - "$host_ns" > evidence/namespace-diagnosis.json <<'PY'
+          import json,os,socket,sys
+          from pathlib import Path
+          host=sys.argv[1]
+          proc=Path("/proc/self/status").read_text()
+          fields={k:v.strip() for k,v in (line.split(":",1) for line in proc.splitlines() if ":" in line)}
+          # if_nameindex queries the current network namespace via the kernel;
+          # /proc/self/net/dev also follows the current task's namespace.
+          kernel=sorted(name for _,name in socket.if_nameindex())
+          proc_names=sorted(line.split(":",1)[0].strip() for line in Path("/proc/self/net/dev").read_text().splitlines()[2:] if ":" in line)
+          sysfs=sorted(os.listdir("/sys/class/net"))
+          ipv4=Path("/proc/self/net/route").read_text().splitlines()[1:]
+          ipv6=Path("/proc/self/net/ipv6_route")
+          routes6=ipv6.read_text().splitlines() if ipv6.exists() else []
+          # Linux may expose a reject-all IPv6 route associated with lo; it
+          # is not an external route. Any route on another interface blocks.
+          external6=any(line.split()[-1]!="lo" for line in routes6 if line.strip())
+          changed=os.readlink("/proc/self/ns/net")!=host
+          report=dict(uid_nonroot=os.getuid()!=0 and os.geteuid()!=0,
+                      effective_capabilities_zero=int(fields["CapEff"],16)==0,
+                      no_new_privileges=fields["NoNewPrivs"]=="1",
+                      namespace_changed=changed,
+                      kernel_interfaces=kernel,proc_interfaces=proc_names,sysfs_interfaces=sysfs,
+                      ipv4_route_count=len(ipv4),ipv6_external_interface_route=external6,
+                      previous_guard_would_pass=os.getuid()!=0 and sysfs==["lo"],
+                      image_acquisition_attempted=False,network_requests_sent=False,
+                      execution_authorized=False,release_authorized=False)
+          independent=all((report["uid_nonroot"],report["effective_capabilities_zero"],report["no_new_privileges"],changed,kernel==["lo"],proc_names==["lo"],not ipv4,not external6))
+          report["independent_namespace_check_passed"]=independent
+          report["status"]="DIAGNOSTIC_ISOLATION_PASS" if independent else "DIAGNOSTIC_ISOLATION_BLOCKED"
+          print(json.dumps(report,indent=2),flush=True)
+          if not independent: sys.exit(1)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-offline-network-namespace-diagnosis
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
