@@ -129,7 +129,11 @@ class StrictWheelIntegrityTests(unittest.TestCase):
         import struct
         import zlib
         from ai_factory.factory_wheel_notice_audit import WheelBudget
-        raw, _ = recorded_wheel(payload=b"x"*20000)
+        import base64
+        def forge_record(rows):
+            rows[0][1] = "sha256=" + base64.urlsafe_b64encode(hashlib.sha256(b"x").digest()).decode().rstrip("=")
+            rows[0][2] = "1"
+        raw, _ = recorded_wheel(payload=b"x"*20000, alter=forge_record)
         b = bytearray(raw)
         # First local and central file entry. Forge both declared size and CRC
         # of the prefix. Actual compressed stream still expands to 20,000 bytes.
@@ -140,7 +144,7 @@ class StrictWheelIntegrityTests(unittest.TestCase):
         struct.pack_into("<I", b, central+16, crc)
         struct.pack_into("<I", b, central+24, 1)
         budget = WheelBudget()
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, "actual wheel member size exceeds declaration"):
             inspect_wheel(bytes(b), hashlib.sha256(b).hexdigest(), budget=budget)
         self.assertTrue(budget.failed)
 
@@ -187,3 +191,36 @@ class BoundedElfOutputTests(unittest.TestCase):
             p.write_bytes(b"\x7fELF"+b"\0"*16)
             with self.assertRaises(ValueError):
                 inspect_elf_file(p)
+
+
+class IntegratedWheelBatchTests(unittest.TestCase):
+    def test_three_wheels_one_budget_actual_native_metadata_and_cleanup(self):
+        import tempfile
+        from pathlib import Path
+        from ai_factory.factory_wheel_notice_audit import inspect_wheel_batch
+        pairs = [recorded_wheel("first"), recorded_wheel("second", payload=Path("/bin/true").read_bytes()),
+                 recorded_wheel("third")]
+        candidates = [(raw, hashlib.sha256(raw).hexdigest()) for raw, _ in pairs]
+        with tempfile.TemporaryDirectory() as tmp:
+            receipt = inspect_wheel_batch(candidates, scratch=Path(tmp), inspect_native=True)
+            self.assertEqual(list(Path(tmp).iterdir()), [])
+        self.assertEqual(receipt["compressed_bytes"], sum(len(raw) for raw, _ in pairs))
+        self.assertEqual(receipt["expanded_bytes"], sum(size for _, size in pairs))
+        self.assertEqual(len(receipt["wheels"]), 3)
+        self.assertEqual(receipt["native_count"], 1)
+        self.assertTrue(receipt["wheels"][1]["files"]["second/__init__.py"]["native"]["machine"])
+        self.assertFalse(receipt["release_authorized"])
+        self.assertFalse(receipt["legacy_signatures_verified"])
+        self.assertNotIn("base64", str(receipt))
+
+    def test_batch_native_failure_removes_temp_and_rejects_whole_batch(self):
+        import tempfile
+        from pathlib import Path
+        from ai_factory.factory_wheel_notice_audit import inspect_wheel_batch
+        pairs = [recorded_wheel("first"), recorded_wheel("broken", payload=b"\x7fELF"+b"\0"*16),
+                 recorded_wheel("third")]
+        candidates = [(raw, hashlib.sha256(raw).hexdigest()) for raw, _ in pairs]
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                inspect_wheel_batch(candidates, scratch=Path(tmp), inspect_native=True)
+            self.assertEqual(list(Path(tmp).iterdir()), [])
