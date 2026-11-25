@@ -117,6 +117,33 @@ class OpenHandsMultiFileReviewTests(unittest.TestCase):
         verify.assert_not_called()
         self.assertEqual({p.name for p in self.source.iterdir()}, {"app", "tests", "README.md"})
 
+    def test_export_parent_swap_never_reads_external_fixture(self):
+        outside = self.root / "outside"
+        outside.mkdir()
+        (outside / "logic.py").write_text(SOURCE)
+        app = self.source / "app"
+        original = openhands_multifile_review._read_regular
+        called = False
+
+        def swap(*args, **kwargs):
+            nonlocal called
+            if not called:
+                called = True
+                app.rename(self.source / "old-app")
+                app.symlink_to(outside, target_is_directory=True)
+            return original(*args, **kwargs)
+
+        with patch.object(openhands_multifile_review, "_read_regular", side_effect=swap), \
+             patch.object(project, "supported_host", return_value=True), \
+             patch.object(project, "lint") as lint, \
+             patch.object(project, "verify", return_value=1) as verify:
+            with self.assertRaises((ValueError, OSError)):
+                self.assess()
+        self.assertTrue(called)
+        lint.assert_not_called()
+        verify.assert_not_called()
+        self.assertEqual(list(self.outputs.iterdir()), [])
+
     def test_rejects_unsafe_generated_python_without_executing_it(self):
         (self.source / "app" / "logic.py").write_text(
             "import os\ndef transform(value):\n    os.system('true')\n    return {}\n")
