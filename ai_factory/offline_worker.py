@@ -36,7 +36,7 @@ def _task_file(tasks_dir, task_id):
     return folder / (task_id + ".json")
 
 
-def _load_task(tasks_dir, task_id):
+def _read_task(tasks_dir, task_id):
     path = _task_file(tasks_dir, task_id)
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
@@ -51,9 +51,43 @@ def _load_task(tasks_dir, task_id):
         os.close(fd)
     digest = hashlib.sha256(data).hexdigest()
     task = json.loads(data.decode("utf-8"), object_pairs_hook=_unique_keys)
+    return task, digest
+
+
+def _load_task(tasks_dir, task_id):
+    task, digest = _read_task(tasks_dir, task_id)
     if not project.valid(task) or task["id"] != task_id or task["recipe"] != "status-counts":
         raise ValueError("only approved synthetic status-counts pilot tasks supported")
     return task, digest
+
+
+def prepare_modeb_trial(tasks_dir, task_id, *, branch, commit):
+    """Bind existing worker task bytes to the reviewed Mode B request.
+
+    This deliberately has no queue or lease side effect. The existing
+    synthetic worker cannot claim this recipe; an independently admitted
+    one-shot execution supervisor must later own that transition.
+    """
+    from . import openhands_sdk_operator
+
+    checkpoint._branch(branch)
+    checkpoint._commit(commit)
+    if not branch or not commit or task_id != "OPENHANDS_SYNTHETIC_1":
+        raise ValueError("explicit first Mode B task and source identity required")
+    task, digest = _read_task(tasks_dir, task_id)
+    request = openhands_sdk_operator.prepare_modeb_request(task)
+    return {
+        "status": "modeb_intent_prepared_review_required",
+        "branch": branch,
+        "commit": commit,
+        "task_file_sha256": digest,
+        "request": request,
+        "queue_enqueued": False,
+        "lease_claimed": False,
+        "execution_authorized": False,
+        "release_authorized": False,
+        "automatic_retry_allowed": False,
+    }
 
 
 def submit(queue, checkpoint_root, tasks_dir, task_id, *, branch, commit):
