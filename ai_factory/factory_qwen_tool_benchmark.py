@@ -3,6 +3,9 @@ import hashlib
 import hmac
 import json
 import re
+import select
+import socket
+import struct
 import threading
 import time
 from pathlib import Path
@@ -74,6 +77,10 @@ def audit_http_case(case_id, *, status_code=None, raw=b"", failure=None):
     if status_code != 200:
         return _reject_capture("http_status_rejected")
     return _audit_local_case(case_id, raw)
+
+
+class _IpcCancelled(Exception):
+    pass
 
 
 class PreflightBroker:
@@ -150,9 +157,123 @@ class PreflightBroker:
             return self._receipt("fixture_preflight_match",
                                  response_sha256=verdict["response_sha256"],
                                  completion_tokens=verdict["completion_tokens"])
+        except _IpcCancelled:
+            return self._receipt("cancelled")
+        except TimeoutError:
+            return self._receipt("timeout")
         except Exception:
             # Never include provider/transport exception text or raw response.
             return self._receipt("fixture_transport_failed")
+
+
+    def execute_ipc(self, *, token, channel, expected_peer, fixture_only=False,
+                    deadline_seconds=35, cancel_event=None):
+        """Own one preconnected trusted AF_UNIX fixture stream until close.
+
+        Wire protocol: request uint32 length + generated JSON, response
+        uint16 captured HTTP status + uint32 length + bytes, then EOF.
+        No endpoint lookup, connect(), HTTP, listener, provider or SDK here.
+        Peer tuple must come from a trusted launcher, not the remote data;
+        SO_PEERCRED describes connection-time identity, not proof of a
+        separate live service (socketpair can share a creator).
+        """
+        if type(channel) is not socket.socket:
+            return self._receipt("invalid_fixture_transport")
+        with channel:
+            if fixture_only is not True:
+                return self._receipt("blocked_runtime_admission")
+            if (type(expected_peer) is not tuple or len(expected_peer) != 3
+                    or any(type(n) is not int or n < 0 for n in expected_peer)
+                    or expected_peer[0] == 0
+                    or channel.family != socket.AF_UNIX
+                    or channel.type != socket.SOCK_STREAM
+                    or not hasattr(socket, "SO_PEERCRED")):
+                return self._receipt("fixture_peer_rejected")
+            try:
+                channel.getpeername()
+                peer = struct.unpack("3i", channel.getsockopt(socket.SOL_SOCKET,
+                                                            socket.SO_PEERCRED, 12))
+                if peer != expected_peer:
+                    return self._receipt("fixture_peer_rejected")
+            except (OSError, struct.error):
+                return self._receipt("fixture_peer_rejected")
+            if (type(deadline_seconds) not in (float, int)
+                    or not 0 < deadline_seconds <= 35
+                    or (cancel_event is not None and type(cancel_event) is not threading.Event)):
+                return self._receipt("invalid_fixture_transport")
+            end = min(time.monotonic() + deadline_seconds, self._expires)
+            channel.setblocking(False)
+
+            def check():
+                if cancel_event is not None and cancel_event.is_set():
+                    raise _IpcCancelled()
+                remaining = end - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError()
+                return remaining
+
+            def ready(write):
+                while True:
+                    interval = min(check(), .05)
+                    rd, wr, _ = select.select([] if write else [channel],
+                                              [channel] if write else [], [], interval)
+                    check()
+                    if wr if write else rd:
+                        return
+
+            def send_all(data):
+                view = memoryview(data)
+                while view:
+                    ready(True)
+                    try:
+                        n = channel.send(view)
+                    except BlockingIOError:
+                        continue
+                    if not n:
+                        raise ValueError("fixture stream closed")
+                    view = view[n:]
+
+            def receive(size):
+                data = bytearray()
+                while len(data) < size:
+                    ready(False)
+                    try:
+                        block = channel.recv(min(4096, size - len(data)))
+                    except BlockingIOError:
+                        continue
+                    if not block:
+                        raise ValueError("truncated fixture frame")
+                    data.extend(block)
+                return bytes(data)
+
+            def exchange(*, url, request, timeout_seconds, max_response_bytes):
+                if (url != "http://qwen3:11434/v1/chat/completions"
+                        or request != request_for(self._case_id)
+                        or timeout_seconds != 35 or max_response_bytes != MAX_RESPONSE_BYTES):
+                    raise ValueError("fixture request outside scope")
+                raw = json.dumps(request, separators=(",", ":"), allow_nan=False).encode("utf-8")
+                if not 0 < len(raw) <= 16 * 1024:
+                    raise ValueError("fixture request too large")
+                send_all(struct.pack("!I", len(raw)) + raw)
+                channel.shutdown(socket.SHUT_WR)
+                code, length = struct.unpack("!HI", receive(6))
+                if length > MAX_RESPONSE_BYTES:
+                    raise ValueError("fixture response too large")
+                response = receive(length)
+                # One frame only, no unsolicited bytes or second response.
+                while True:
+                    ready(False)
+                    try:
+                        tail = channel.recv(1)
+                    except BlockingIOError:
+                        continue
+                    if tail:
+                        raise ValueError("trailing fixture data")
+                    break
+                return code, response
+
+            return self.execute(token=token, transport=exchange, fixture_only=True,
+                                cancelled=None if cancel_event is None else cancel_event.is_set)
 
 
 def summarize(results):
