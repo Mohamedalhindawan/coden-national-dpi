@@ -50,7 +50,7 @@ def _read_regular(path, max_bytes):
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         info = os.fstat(fd)
-        if not stat.S_ISREG(info.st_mode) or info.st_size > max_bytes:
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > max_bytes:
             raise ValueError("invalid generated file")
         with os.fdopen(os.dup(fd), "rb") as stream:
             data = stream.read(max_bytes + 1)
@@ -105,8 +105,11 @@ def review(task, candidate_root, output_root):
     """Operator-controlled review; this does not invoke OpenHands itself."""
     if not project.valid(task) or task.get("recipe") != "python-transform":
         raise ValueError("only approved synthetic transform task allowed")
-    outputs = _trusted_dir(output_root)
-    source = _read_export(candidate_root)
+    outputs = _trusted_dir(output_root).resolve()
+    export = _trusted_dir(candidate_root).resolve()
+    if (outputs == export or outputs in export.parents or export in outputs.parents):
+        raise ValueError("review output must be disjoint from agent export")
+    source = _read_export(export)
 
     # Only app/logic.py is executable source in the zipapp. The generated
     # tests are treated as evidence for human inspection, NOT as CI scripts.
