@@ -139,6 +139,39 @@ jobs:
               case "$rc" in 0|1|2) ;; *) exit 21;; esac
               printf "OCI_ISCHROOT_EXIT=%s\n" "$rc"
               for path in /sbin/init /sbin/telinit /run/systemd/system; do if test -e "$path" || test -L "$path"; then printf "INIT_PATH_PRESENT %s\n" "$path"; else printf "INIT_PATH_ABSENT %s\n" "$path"; fi; done
+              # Synthetic package lifecycle on this actual OCI root, not the old nested chroot.
+              # Every package, staging directory, cache, and generated file stays on the root tmpfs.
+              stage=$(mktemp -d /tmp/coden-oci-dpkg.XXXXXX)
+              trap "rm -rf -- \"$stage\"" EXIT
+              mkdir -p "$stage/pkg/DEBIAN" "$stage/pkg/usr/share/coden-oci-preflight"
+              mkdir "$stage/build-tmp"
+              for path in "$stage" "$stage/build-tmp" /var/lib/dpkg /tmp /run; do
+                test "$(stat -c %d "$path")" = "$(stat -c %d /)"
+              done
+              test "$(dpkg-query -W -f="\${Version}" libc6)" = 2.39-0ubuntu8.9
+              test "$(dpkg-query -W -f="\${Version}" libc-bin)" = 2.39-0ubuntu8.9
+              dpkg-query -W -f="\${Package} \${Version} \${db:Status-Abbrev}\n" | sort > "$stage/packages.before"
+              for v in 1 2; do
+                printf "Package: coden-oci-preflight\nVersion: %s\nArchitecture: all\nMaintainer: CODEN Test <test@example.invalid>\nDescription: harmless synthetic OCI lifecycle probe\n" "$v" > "$stage/pkg/DEBIAN/control"
+                printf "%s\n" "$v" > "$stage/pkg/usr/share/coden-oci-preflight/version"
+                printf "#!/bin/sh\nset -eu\ntest -c /dev/null\nprintf synthetic > /dev/null\ntest -r /proc/1/stat\ntest ! -e /sbin/init\ntest ! -e /sbin/telinit\nprintf configured > /tmp/coden-oci-maintainer-probe\n" > "$stage/pkg/DEBIAN/postinst"
+                chmod 0755 "$stage/pkg/DEBIAN/postinst"
+                TMPDIR="$stage/build-tmp" dpkg-deb --build --root-owner-group "$stage/pkg" "$stage/probe-$v.deb"
+                TMPDIR=/tmp dpkg -i "$stage/probe-$v.deb"
+                test "$(dpkg-query -W -f="\${Version}" coden-oci-preflight)" = "$v"
+                test "$(cat /usr/share/coden-oci-preflight/version)" = "$v"
+                test "$(cat /tmp/coden-oci-maintainer-probe)" = configured
+                rm /tmp/coden-oci-maintainer-probe
+              done
+              dpkg --purge coden-oci-preflight
+              test ! -e /usr/share/coden-oci-preflight/version
+              test -z "$(dpkg --audit)"
+              dpkg-query -W -f="\${Package} \${Version} \${db:Status-Abbrev}\n" | sort > "$stage/packages.after"
+              cmp "$stage/packages.before" "$stage/packages.after"
+              printf "OCI_SYNTHETIC_DPKG_LIFECYCLE_PASS\n"
+              printf "OCI_PACKAGE_INVENTORY_UNCHANGED_PASS\n"
+              rm -rf -- "$stage"
+              trap - EXIT
               printf "EXTERNAL_ROOTFS_SYNTHETIC_PASS\n"
             ' >/dev/null
           podman inspect "$name" | jq -e '.[0] | .HostConfig.Privileged==false and .HostConfig.ReadonlyRootfs==false and .HostConfig.NetworkMode=="none" and ([.Mounts[]? | select(.Type=="bind")]|length==0)' >/dev/null
@@ -148,6 +181,8 @@ jobs:
           podman logs "$name" > "$evidence/probe.log" 2>&1
           test "$(cat "$evidence/container-exit.txt")" = 0
           grep -qx EXTERNAL_ROOTFS_SYNTHETIC_PASS "$evidence/probe.log"
+          grep -qx OCI_SYNTHETIC_DPKG_LIFECYCLE_PASS "$evidence/probe.log"
+          grep -qx OCI_PACKAGE_INVENTORY_UNCHANGED_PASS "$evidence/probe.log"
           grep -qx AUXILIARY_WRITES_RESTRICTED_PASS "$evidence/probe.log"
           grep -qx GENERATED_METADATA_QUOTA_OR_READONLY_PASS "$evidence/probe.log"
           # Reject any extra writable ordinary-file mount, including generated single-file binds.
@@ -203,10 +238,11 @@ jobs:
           done
           test "$(cat "$root/tmp/coden-rootfs-probe")" = synthetic
           sha256sum "$root/var/lib/dpkg/status" | awk '{print $1}' > "$evidence/status.after"
-          cmp "$evidence/status.before" "$evidence/status.after"
+          # Physical dpkg status may be reserialized; the complete package inventory is compared inside OCI.
+          if cmp -s "$evidence/status.before" "$evidence/status.after"; then echo identical > "$evidence/status-comparison.txt"; else echo reserialized_or_changed > "$evidence/status-comparison.txt"; fi
           test -f "$logpath" && test ! -L "$logpath"
           test "$(stat -c %s "$logpath")" -le 1048576
-          printf '%s\n' '{"external_rootfs_feasibility_pass":true,"rootfs_tmpfs_bytes":805306368,"rootfs_tmpfs_inodes":49152,"private_proc_and_dev_observed":true,"namespace_identity_checks":5,"actual_installation_allowed":false,"aggregate_writable_budget_proven":false,"real_glibc_scripts_executed":false,"release_authorized":false}' > "$evidence/review.json"
+          printf '%s\n' '{"external_rootfs_feasibility_pass":true,"synthetic_dpkg_lifecycle_verified":true,"package_inventory_unchanged":true,"real_glibc_installation":false,"rootfs_tmpfs_bytes":805306368,"rootfs_tmpfs_inodes":49152,"private_proc_and_dev_observed":true,"namespace_identity_checks":5,"actual_installation_allowed":false,"aggregate_writable_budget_proven":false,"real_glibc_scripts_executed":false,"release_authorized":false}' > "$evidence/review.json"
           SH
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
