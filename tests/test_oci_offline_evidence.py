@@ -99,3 +99,20 @@ class OfflineOCIReviewTests(unittest.TestCase):
             layer.symlink_to(target)
             with self.assertRaises(ValueError):
                 self.review(root, digest)
+
+    def test_compressed_budget_preflight_counts_unique_blobs_and_metadata(self):
+        from ai_factory import oci_offline_evidence as audit
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            digest, _ = fixture(root, repeated=True)
+            total = sum(p.stat().st_size for p in (root / "blobs/sha256").iterdir())
+            with patch.object(audit, "_scan_layer", side_effect=AssertionError("must not read layers")):
+                with self.assertRaisesRegex(ValueError, "compressed.*budget"):
+                    audit.verify(root, digest, max_expanded_bytes=100000,
+                                 max_compressed_bytes=total - 1)
+            result = audit.verify(root, digest, max_expanded_bytes=100000,
+                                  max_compressed_bytes=total)
+            self.assertEqual(result["required_unique_payload_bytes"], total)
+            self.assertEqual(result["max_compressed_bytes"], total)
+            self.assertFalse(result["release_authorized"])
