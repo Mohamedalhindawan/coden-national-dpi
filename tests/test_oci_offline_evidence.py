@@ -206,3 +206,24 @@ class OfflineOCIReviewTests(unittest.TestCase):
             self.assertEqual([(x["name"],x["version"]) for x in rows],[("foo","1"),("new","2")])
             self.assertFalse(report["license_approved"])
             self.assertFalse(report["embedded_inventory_verified"])
+
+    def test_package_metadata_hardlink_alias_does_not_duplicate_installed_packages(self):
+        R,H=tarfile.REGTYPE,tarfile.LNKTYPE
+        status="var/lib/dpkg/status"
+        with tempfile.TemporaryDirectory() as d:
+            report=self.inventory(Path(d), [[
+                (status,R,b"Package: demo\nStatus: install ok installed\nVersion: 1\nArchitecture: amd64\n",0o644),
+                ("backup/status",H,status,0o644),
+            ]])
+            rows=report["logical_inventory"]["package_metadata"]
+            self.assertEqual([(x["name"],x["metadata_path"]) for x in rows],
+                             [("demo",status)])
+
+    def test_package_metadata_hardlink_without_matching_parse_is_rejected(self):
+        R,H=tarfile.REGTYPE,tarfile.LNKTYPE
+        with tempfile.TemporaryDirectory() as d:
+            with self.assertRaisesRegex(ValueError,"package metadata"):
+                self.inventory(Path(d), [[
+                    ("backup/status",R,b"Package: demo\nStatus: install ok installed\nVersion: 1\nArchitecture: amd64\n",0o644),
+                    ("var/lib/dpkg/status",H,"backup/status",0o644),
+                ]])
