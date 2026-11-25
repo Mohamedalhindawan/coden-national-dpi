@@ -128,6 +128,13 @@ class OpenHandsSDKOperatorTests(unittest.TestCase):
         self.assertFalse(FakeLLM.seen)
         self.assertFalse(FakeConversation.seen)
 
+    def test_overlapping_review_path_rejected_before_conversation(self):
+        with self.assertRaises(ValueError):
+            self.run_pilot(allow_agent=True, output_root=self.export)
+        self.assertFalse(FakeConversation.seen)
+        self.assertFalse(FakeLLM.seen)
+        self.assertEqual(list(self.export.iterdir()), [])
+
     def test_invalid_workspace_security_fields_fail_closed(self):
         invalid = [
             {"volumes": []}, {"volumes": ["/host/secrets:/workspace:rw"]},
@@ -361,6 +368,15 @@ class OpenHandsManagedLaunchTests(OpenHandsSDKOperatorTests):
                 self.launch(**params)
         self.assertEqual(ManagedWorkspace.started, 0)
         self.assertEqual(self.inspector_calls, [])
+
+    def test_overlapping_review_path_rejected_before_docker_inspection(self):
+        for path in (self.export, self.root):
+            with self.subTest(path=path), self.assertRaises(ValueError):
+                self.launch(output_root=path)
+        self.assertEqual(self.inspector_calls, [])
+        self.assertEqual(ManagedWorkspace.started, 0)
+        self.assertFalse(FakeConversation.seen)
+        self.assertEqual(list(self.export.iterdir()), [])
 
     def test_remote_docker_context_blocked_before_workspace(self):
         invalid_hosts = (
