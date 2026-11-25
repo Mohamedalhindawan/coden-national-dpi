@@ -466,3 +466,24 @@ class OfflineOCIReviewTests(unittest.TestCase):
         self.assertEqual(report["uninspected_nested_archives"],["opaque"])
         self.assertFalse(report["embedded_inventory_verified"])
         self.assertFalse(report["release_authorized"])
+
+    def test_gzip_output_does_not_prefetch_past_reader_budget(self):
+        from ai_factory.oci_offline_evidence import _BoundedReader
+        # CPython gzip._GzipReader output position is an independent oracle
+        # for bytes emitted by the decompressor, including buffered output.
+        # Private API is used only in this diagnostic test, never production.
+        for raw in (gzip.compress(b"x"*65536),
+                    gzip.compress(b"x"*8)+gzip.compress(b"y"*65536)):
+            with self.subTest(compressed_size=len(raw)):
+                with gzip.GzipFile(fileobj=io.BytesIO(raw)) as g:
+                    reader=_BoundedReader(g,17)
+                    self.assertEqual(reader.read(1),b"x")
+                    self.assertEqual(g._buffer.raw._pos,1)
+                    self.assertEqual(len(reader.read(16)),16)
+                    self.assertEqual(reader.count,17)
+                    with self.assertRaisesRegex(ValueError,"expanded byte budget"):
+                        reader.read(1)
+                    # One byte reserved by the caller for overflow detection.
+                    # For concatenated streams _pos resets per gzip member.
+                    self.assertLessEqual(g._buffer.raw._pos,18)
+                    self.assertEqual(g.tell(),18)
