@@ -37,8 +37,24 @@ def _task_file(tasks_dir, task_id):
 
 
 def _read_task(tasks_dir, task_id):
-    path = _task_file(tasks_dir, task_id)
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    path = _task_file(tasks_dir, task_id).absolute()
+    if ".." in path.parts:
+        raise ValueError("unexpected parent traversal in task path")
+    # O_NOFOLLOW on only the leaf cannot prevent an intermediate symlink.
+    # Pin every directory with a descriptor, as in the multifile reviewer,
+    # and read relative to the last pinned directory rather than re-resolving
+    # a mutable pathname between validation and use.
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    parent_fd = os.open(path.anchor, flags)
+    try:
+        for part in path.parts[1:-1]:
+            next_fd = os.open(part, flags, dir_fd=parent_fd)
+            os.close(parent_fd)
+            parent_fd = next_fd
+        fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                     dir_fd=parent_fd)
+    finally:
+        os.close(parent_fd)
     try:
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_TASK_BYTES:
