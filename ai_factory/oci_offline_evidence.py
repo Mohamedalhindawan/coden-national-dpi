@@ -77,14 +77,15 @@ def _no_constant(_):
     raise ValueError("invalid JSON constant")
 
 
-def _json_blob(store, digest, size=None):
+def _json_blob(store, digest, size=None, *, budget):
     with _blob(store, digest, size) as (stream, n):
+        _require(n <= budget, "compressed metadata budget exceeded")
         _require(n <= MAX_METADATA, "metadata exceeds bound")
         raw = stream.read(MAX_METADATA + 1)
         _require(hashlib.sha256(raw).hexdigest() == _hex(digest), "metadata digest mismatch")
         obj = json.loads(raw, object_pairs_hook=_unique_pairs, parse_constant=_no_constant)
         _require(isinstance(obj, dict), "invalid metadata")
-        return obj
+        return obj, n
 
 
 class _BoundedReader:
@@ -167,18 +168,21 @@ def _scan_layer(store, desc, expected_diff, remaining, member_budget):
                     "candidate_paths": markers}
 
 
-def verify(root, manifest_digest, *, max_expanded_bytes):
+def verify(root, manifest_digest, *, max_expanded_bytes, max_compressed_bytes):
     """Return review-only evidence from local blobs; fail closed on malformed inputs."""
     _require(type(max_expanded_bytes) is int and max_expanded_bytes > 0,
              "explicit positive inspection budget required")
+    _require(type(max_compressed_bytes) is int and max_compressed_bytes > 0,
+             "explicit positive compressed budget required")
     try:
         with _store(root) as store:
-            manifest = _json_blob(store, manifest_digest)
+            manifest, manifest_bytes = _json_blob(store, manifest_digest, budget=max_compressed_bytes)
             _require(manifest["schemaVersion"] == 2 and manifest["mediaType"] == MANIFEST_TYPE,
                      "invalid image manifest")
             config_desc = manifest["config"]
             _require(config_desc["mediaType"] == CONFIG_TYPE, "invalid config media type")
-            config = _json_blob(store, config_desc["digest"], config_desc["size"])
+            config, config_bytes = _json_blob(store, config_desc["digest"], config_desc["size"],
+                                              budget=max_compressed_bytes - manifest_bytes)
             _require(config["os"] == "linux" and config["architecture"] == "amd64",
                      "unexpected image platform")
             rootfs = config["rootfs"]
@@ -186,6 +190,30 @@ def verify(root, manifest_digest, *, max_expanded_bytes):
             _require(rootfs["type"] == "layers" and isinstance(descs, list) and
                      isinstance(diffs, list) and 0 < len(descs) == len(diffs) <= 128,
                      "layer count mismatch")
+            # Count distinct immutable objects before reading any layer payload.
+            payloads = {manifest_digest: manifest_bytes}
+            config_digest = config_desc["digest"]
+            _require(config_digest not in payloads, "descriptor role collision")
+            payloads[config_digest] = config_bytes
+            unique = {}
+            for desc, diff in zip(descs, diffs):
+                digest, size = desc["digest"], desc["size"]
+                _hex(digest)
+                _hex(diff)
+                _require(desc["mediaType"] == LAYER_TYPE and type(size) is int and size > 0,
+                         "invalid layer descriptor")
+                _require(digest not in payloads or digest in unique,
+                         "descriptor role collision")
+                _require(digest not in unique or unique[digest] == (size, diff),
+                         "inconsistent repeated descriptor")
+                unique[digest] = (size, diff)
+                payloads[digest] = size
+            required_bytes = sum(payloads.values())
+            _require(required_bytes <= max_compressed_bytes, "compressed payload budget exceeded")
+            # Confirm required file sizes without reading compressed layer contents.
+            for digest, (size, _) in unique.items():
+                with _blob(store, digest, size):
+                    pass
             layers = []
             expanded = members = 0
             unique = {}
@@ -200,6 +228,9 @@ def verify(root, manifest_digest, *, max_expanded_bytes):
                     "config_digest": config_desc["digest"], "layer_count": len(layers),
                     "unique_layer_count": len(unique), "unique_compressed_bytes": sum(unique.values()),
                     "logical_compressed_bytes": sum(x["compressed_bytes"] for x in layers),
+                    "required_unique_payload_bytes": required_bytes,
+                    "max_compressed_bytes": max_compressed_bytes,
+                    "store_quota_verified": False,
                     "expanded_bytes": expanded, "layers": layers,
                     "whiteout_semantics_applied": False, "final_inventory_verified": False,
                     "embedded_inventory_verified": False, "signature_verified": False,
@@ -214,10 +245,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("oci_store")
     parser.add_argument("--max-expanded-bytes", required=True, type=int)
+    parser.add_argument("--max-compressed-bytes", required=True, type=int)
     args = parser.parse_args()
     try:
         result = verify(args.oci_store, PINNED_MANIFEST,
-                        max_expanded_bytes=args.max_expanded_bytes)
+                        max_expanded_bytes=args.max_expanded_bytes,
+                        max_compressed_bytes=args.max_compressed_bytes)
     except ValueError:
         parser.exit(1, "Offline review rejected; no admission granted.\n")
     print(json.dumps(result, sort_keys=True, indent=2))
