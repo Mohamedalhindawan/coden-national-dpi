@@ -51,6 +51,32 @@ class MonitoredSupervisorCancellationTests(unittest.TestCase):
         args.update(kwargs)
         return worker_supervisor.run_once(**args)
 
+    def test_interrupt_after_launch_stops_owned_child_in_both_modes(self):
+        self.create()
+        for selected in ("target", None):
+            with self.subTest(selected=selected):
+                proc = MagicMock()
+                proc.returncode = None
+                proc.wait.side_effect = KeyboardInterrupt
+                proc.communicate.side_effect = KeyboardInterrupt
+                with patch.object(worker_supervisor.subprocess, "Popen", return_value=proc), \
+                     patch.object(worker_supervisor, "_terminate_process_group") as stop:
+                    with self.assertRaises(KeyboardInterrupt):
+                        self.run_target(task_id=selected)
+                    stop.assert_called_once_with(proc)
+                self.assertEqual(self.q.read("target")["status"], "queued")
+
+    def test_interrupt_does_not_hide_unverified_cleanup(self):
+        self.create()
+        proc = MagicMock()
+        proc.returncode = None
+        proc.wait.side_effect = KeyboardInterrupt
+        with patch.object(worker_supervisor.subprocess, "Popen", return_value=proc), \
+             patch.object(worker_supervisor, "_terminate_process_group",
+                          side_effect=worker_supervisor.SupervisorError("cleanup unverified")):
+            with self.assertRaises(worker_supervisor.SupervisorError):
+                self.run_target()
+
     def test_exact_queue_claim_does_not_steal_another_task(self):
         self.create("first")
         self.create("second")
