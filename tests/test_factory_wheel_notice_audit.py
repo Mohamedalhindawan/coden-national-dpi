@@ -202,7 +202,7 @@ class IntegratedWheelBatchTests(unittest.TestCase):
                  recorded_wheel("third")]
         candidates = [(raw, hashlib.sha256(raw).hexdigest()) for raw, _ in pairs]
         with tempfile.TemporaryDirectory() as tmp:
-            receipt = inspect_wheel_batch(candidates, scratch=Path(tmp), inspect_native=True)
+            receipt = inspect_wheel_batch(candidates, scratch=Path(tmp), inspect_native=True, fixture_native=True)
             self.assertEqual(list(Path(tmp).iterdir()), [])
         self.assertEqual(receipt["compressed_bytes"], sum(len(raw) for raw, _ in pairs))
         self.assertEqual(receipt["expanded_bytes"], sum(size for _, size in pairs))
@@ -222,7 +222,7 @@ class IntegratedWheelBatchTests(unittest.TestCase):
         candidates = [(raw, hashlib.sha256(raw).hexdigest()) for raw, _ in pairs]
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(ValueError):
-                inspect_wheel_batch(candidates, scratch=Path(tmp), inspect_native=True)
+                inspect_wheel_batch(candidates, scratch=Path(tmp), inspect_native=True, fixture_native=True)
             self.assertEqual(list(Path(tmp).iterdir()), [])
 
 
