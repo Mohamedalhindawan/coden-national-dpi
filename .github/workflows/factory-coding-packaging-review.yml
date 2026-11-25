@@ -1403,3 +1403,105 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+
+  sprint18-synthetic-aggregate-scratch:
+    # Synthetic quota proof only; no OCI acquisition, SDK, dependencies or model.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == 'e6f2ac415c1b317da2b4ef9871546b03e3a642e9' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions: {}
+    steps:
+      - name: Prove aggregate 960 MiB quota across synthetic workspace and child
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          unit="coden-s18-scratch-${GITHUB_RUN_ID}.service"
+          store=""
+          cleanup() {
+            status=$?
+            trap - EXIT
+            sudo systemctl stop "$unit" >/dev/null 2>&1 || true
+            state="$(sudo systemctl show "$unit" -p ActiveState --value 2>/dev/null || true)"
+            case "$state" in inactive|failed) ;; *) status=1;; esac
+            printf 'SERVICE_%s\n' "$state" > "$ev/cleanup.txt"
+            if [[ -n "$store" ]]; then
+              if mountpoint -q "$store"; then
+                sudo umount "$store" || { echo STORE_UNMOUNT_FAILED >> "$ev/cleanup.txt"; exit 1; }
+              fi
+              sudo rmdir "$store" || exit 1
+              echo STORE_UNMOUNTED_AND_REMOVED >> "$ev/cleanup.txt"
+            fi
+            exit "$status"
+          }
+          trap cleanup EXIT
+          uid="$(id -u nobody)"; gid="$(id -g nobody)"
+          test "$uid" != 0; test "$gid" != 0
+          host_ns="$(readlink /proc/self/ns/net)"
+          store="$(sudo mktemp -d /opt/coden-s18.XXXXXXXX)"
+          sudo mount -t tmpfs -o "size=960m,nosuid,nodev,noexec,mode=0700,uid=$uid,gid=$gid" tmpfs "$store"
+          sudo mkdir "$store/workspace" "$store/home" "$store/tmp"
+          sudo chown "$uid:$gid" "$store/workspace" "$store/home" "$store/tmp"
+          sudo chmod 0700 "$store/workspace" "$store/home" "$store/tmp"
+          findmnt -n -o FSTYPE,OPTIONS --mountpoint "$store" > "$ev/store-mount.txt"
+          script="$(cat <<'PY'
+          import errno,json,os,socket,subprocess,sys
+          from pathlib import Path
+          root=Path(sys.argv[1]); host=sys.argv[2]
+          cap=960*1024**2
+          v=os.statvfs(root)
+          assert v.f_frsize*v.f_blocks==cap
+          assert all(os.stat(p).st_dev==os.stat(root).st_dev for p in (root/"workspace",root/"home",root/"tmp",Path("/tmp"),Path("/var/tmp")))
+          assert os.getuid()!=0 and set(os.getgroups())<={os.getgid()}
+          status=dict(x.split(":",1) for x in Path("/proc/self/status").read_text().splitlines() if ":" in x)
+          assert int(status["CapEff"],16)==0 and status["NoNewPrivs"].strip()=="1"
+          assert os.readlink("/proc/self/ns/net")!=host and sorted(n for _,n in socket.if_nameindex())==["lo"]
+          assert not any(os.path.lexists(x) for x in ("/run/docker.sock","/var/run/docker.sock"))
+          assert not os.path.exists("/dev/shm") or not os.access("/dev/shm",os.W_OK)
+          cg=next(x.split(":",2)[2] for x in Path("/proc/self/cgroup").read_text().splitlines() if x.startswith("0::"))
+          p=Path("/sys/fs/cgroup")/cg.lstrip("/")
+          cpu=(p/"cpu.max").read_text().split()
+          assert int(cpu[0])==2*int(cpu[1]) and (p/"memory.max").read_text().strip()=="4294967296" and (p/"pids.max").read_text().strip()=="128"
+          def alloc(path,size):
+              fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+              try: os.posix_fallocate(fd,0,size)
+              finally: os.close(fd)
+          alloc(root/"workspace"/"a",480*1024**2)
+          child="""import os,sys,pathlib
+          cg=next(x.split(':',2)[2] for x in pathlib.Path('/proc/self/cgroup').read_text().splitlines() if x.startswith('0::'))
+          assert cg==sys.argv[2]
+          fd=os.open(sys.argv[1],os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+          try: os.posix_fallocate(fd,0,480*1024**2)
+          finally: os.close(fd)
+          """
+          subprocess.run([sys.executable,"-I","-B","-c",child,str(root/"home"/"b"),cg],check=True,timeout=30)
+          assert os.statvfs(root).f_bavail==0
+          try:
+              alloc(Path("/tmp")/"overflow",4096)
+          except OSError as e:
+              assert e.errno==errno.ENOSPC
+          else:
+              raise AssertionError("aggregate quota failed")
+          assert os.stat(root/"workspace"/"a").st_size+os.stat(root/"home"/"b").st_size==cap
+          print(json.dumps(dict(status="SYNTHETIC_SHARED_SCRATCH_QUOTA_VERIFIED",capacity_bytes=cap,allocated_bytes=cap,overflow_errno=errno.ENOSPC,same_filesystem_workspace_home_tmp=True,child_same_cgroup=True,uid=os.getuid(),cpu_max=cpu,memory_max=4294967296,pids_max=128,real_agent_tree_verified=False,release_authorized=False),sort_keys=True))
+          PY
+          )"
+          timeout --kill-after=5s 90s sudo systemd-run --unit="$unit" --wait --pipe --quiet \
+            -p "User=$uid" -p "Group=$gid" -p CPUQuota=200% -p MemoryMax=4294967296 -p TasksMax=128 \
+            -p RuntimeMaxSec=600 -p KillMode=control-group -p NoNewPrivileges=yes \
+            -p CapabilityBoundingSet= -p AmbientCapabilities= -p PrivateNetwork=yes \
+            -p PrivateDevices=yes -p ProtectHome=tmpfs -p ProtectSystem=strict \
+            -p 'TemporaryFileSystem=/run:ro' -p 'TemporaryFileSystem=/dev/shm:ro' \
+            -p "BindPaths=$store/tmp:/tmp $store/tmp:/var/tmp" -p "ReadWritePaths=$store /tmp /var/tmp" \
+            -p RestrictSUIDSGID=yes \
+            /usr/bin/env -i PATH=/usr/bin:/bin "HOME=$store/home" TMPDIR=/tmp LC_ALL=C /usr/bin/python3 -I -B -c "$script" "$store" "$host_ns" > "$ev/scratch.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: sprint18-synthetic-scratch-receipts
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
