@@ -246,7 +246,12 @@ def run_once(*, queue_db, journal, task_dir, output_root, worker_id,
                 return _result("untrusted_worker_result")
             if task_id is not None:
                 from .durable_queue import DurableQueue
-                state = DurableQueue(db).read(task_id)["status"]
+                try:
+                    state = DurableQueue(db).read(task_id)["status"]
+                except (OSError, sqlite3.Error, ValueError, TypeError, KeyError) as exc:
+                    # The child has already exited; do not approve its receipt
+                    # when the final durable state cannot be independently read.
+                    raise SupervisorError("final worker state unverified; operator review required") from exc
                 expected = {
                     "awaiting_human_review": "awaiting_human_review",
                     "blocked": "blocked",
