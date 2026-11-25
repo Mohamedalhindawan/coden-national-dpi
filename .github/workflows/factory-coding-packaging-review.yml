@@ -2407,7 +2407,7 @@ jobs:
 
   broker-cross-uid-ipc-integration:
     # One-shot synthetic test of the pinned existing broker, not runtime admission.
-    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '561a113cdc99b14d722cb6ecf02f99c7ef760651' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '6412a5b005c15e3148eb0010f0517938c4de8ff2' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     permissions:
@@ -2445,7 +2445,7 @@ jobs:
           timeout --kill-after=5s 45s sudo systemd-run --unit="$unit" --wait --pipe --quiet \
             -p PrivateNetwork=yes -p NoNewPrivileges=yes -p PrivateDevices=yes \
             -p ProtectHome=tmpfs -p ProtectSystem=strict -p "ReadWritePaths=$base" \
-            -p 'CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_CHOWN CAP_DAC_OVERRIDE CAP_KILL CAP_FSETID' \
+            -p 'CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_CHOWN CAP_DAC_OVERRIDE CAP_KILL CAP_FSETID CAP_FOWNER' \
             -p CPUQuota=100% -p MemoryMax=536870912 -p TasksMax=32 \
             -p RuntimeMaxSec=35 -p TimeoutStopSec=2 -p KillMode=control-group \
             /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/python3 -I -B - "$base" \
