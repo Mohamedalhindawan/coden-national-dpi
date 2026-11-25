@@ -1,6 +1,7 @@
 """Official OpenHands SDK wiring contract: never run a host-local agent in CI."""
 import json
 import os
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 import tempfile
@@ -213,6 +214,46 @@ class OpenHandsSDKOperatorTests(unittest.TestCase):
         self.assertFalse(result["release_authorized"])
         self.assertNotIn("private cleanup detail", repr(result))
         verifier.assert_not_called()
+
+    def test_independent_lint_timeout_requires_manual_review(self):
+        with patch.object(project, "supported_host", return_value=True), \
+             patch.object(project, "lint", side_effect=subprocess.TimeoutExpired("private lint", 8)):
+            result = self.run_pilot(allow_agent=True)
+        self.assertEqual(result["status"], "artifact_review_required")
+        self.assertTrue(result["agent_session_attempted"])
+        self.assertFalse(result["automatic_retry_allowed"])
+        self.assertFalse(result["release_authorized"])
+        self.assertEqual(list(self.output.iterdir()), [])
+        self.assertNotIn("private lint", repr(result))
+
+    def test_qwen_route_review_has_no_secret_or_execution(self):
+        result = openhands_sdk_operator.review_qwen_route(
+            model="openai/local-qwen", base_url="http://qwen3:11434/v1")
+        options = result["llm_options"]
+        self.assertEqual(options["model"], "openai/local-qwen")
+        self.assertEqual(options["base_url"], "http://qwen3:11434/v1")
+        self.assertEqual(options["api_mode"], "chat")
+        self.assertEqual(options["num_retries"], 1)
+        self.assertEqual(options["timeout"], 35)
+        self.assertFalse(options["drop_params"])
+        self.assertIsNone(options["fallback_strategy"])
+        self.assertNotIn("api_key", options)
+        self.assertFalse(result["credentials_bound"])
+        self.assertFalse(result["execution_authorized"])
+        self.assertFalse(result["release_authorized"])
+        self.assertFalse(FakeLLM.seen)
+
+    def test_qwen_route_review_rejects_unapproved_endpoints(self):
+        for model, url in (
+            ("openai/gpt-5.6", "http://qwen3:11434/v1"),
+            ("openai/local-qwen", "https://api.openai.com/v1"),
+            ("openai/local-qwen", "http://qwen3:11434/v1?proxy=cloud"),
+            ("openai/local-qwen", "http://qwen3:11434@external.example/v1"),
+            ("openai/local-qwen", "http://127.0.0.1:11434/v1"),
+        ):
+            with self.subTest(model=model, url=url), self.assertRaises(ValueError):
+                openhands_sdk_operator.review_qwen_route(model=model, base_url=url)
+        self.assertFalse(FakeLLM.seen)
 
     def test_fake_sdk_to_real_multifile_sandbox_acceptance(self):
         if not project.supported_host():
