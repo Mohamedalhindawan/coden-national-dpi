@@ -275,3 +275,89 @@ class OfflineOCIReviewTests(unittest.TestCase):
         for raw in (valid[:-1],valid+b"x",b"not archive"):
             with self.assertRaises(ValueError):
                 inspect_carchive_toc(io.BytesIO(raw),max_declared_expanded_bytes=20)
+
+    @staticmethod
+    def pyz_fixture(rows=None, toc=None, payload=None):
+        # Trusted fixture generation only. Production reader must never unmarshal.
+        import marshal,struct,zlib
+        data=zlib.compress(b"not executable code") if payload is None else payload
+        if toc is None:
+            toc=marshal.dumps(rows if rows is not None else
+                              [("demo",(0,17,len(data))),("namespace",(3,17+len(data),0))],4)
+        return b"PYZ\0\xf3\x0d\x0d\x0a"+struct.pack("!i",17+len(data))+b"\0"*5+data+toc
+
+    def test_pyz_metadata_grammar_and_hash_without_code_loading(self):
+        from ai_factory.oci_offline_evidence import inspect_pyz_toc
+        result=inspect_pyz_toc(io.BytesIO(self.pyz_fixture()),max_read_bytes=4096)
+        self.assertEqual([x["name"] for x in result["entries"]],["demo","namespace"])
+        self.assertEqual(result["entries"][0]["sha256"],hashlib.sha256(b"not executable code").hexdigest())
+        self.assertIsNone(result["entries"][1]["sha256"])
+        self.assertFalse(result["embedded_inventory_verified"])
+        self.assertFalse(result["release_authorized"])
+
+    def test_pyz_rejects_unsafe_grammar_ranges_and_decompression(self):
+        import marshal,struct,zlib
+        from ai_factory.oci_offline_evidence import inspect_pyz_toc
+        data=zlib.compress(b"not executable code")
+        n=len(data)
+        invalid=[
+            self.pyz_fixture(rows=[("../escape",(0,17,n))]),
+            self.pyz_fixture(rows=[("demo",(0,17,n)),("demo",(0,17,n))]),
+            self.pyz_fixture(rows=[("demo",(0,17,n)),("other",(0,17,n))]),
+            self.pyz_fixture(rows=[("demo",(0,16,n))]),
+            self.pyz_fixture(rows=[("demo",(0,17,n+1))]),
+            self.pyz_fixture(rows=[("demo",(3,17,n))]),
+            self.pyz_fixture(rows=[("demo",(7,17,n))]),
+            self.pyz_fixture(toc=marshal.dumps(compile("pass","fixture","exec"),4)),
+            self.pyz_fixture(toc=b"\\x00"),
+            self.pyz_fixture(toc=b"l"+struct.pack("<i",2147483647)),
+            self.pyz_fixture(toc=b"["+struct.pack("<i",50001)),
+            self.pyz_fixture(toc=b"r"+struct.pack("<i",0)),
+            self.pyz_fixture()+b"x",
+            self.pyz_fixture(payload=data[:-1]),
+            self.pyz_fixture(payload=data+b"trailing"),
+        ]
+        for raw in invalid:
+            with self.subTest(raw=raw[-20:]):
+                with self.assertRaises(ValueError):
+                    inspect_pyz_toc(io.BytesIO(raw),max_read_bytes=4096)
+        with self.assertRaises(ValueError):
+            inspect_pyz_toc(io.BytesIO(self.pyz_fixture(payload=zlib.compress(b"x"*10000))),
+                            max_read_bytes=1000)
+
+    def test_embedded_inventory_recurses_pyz_once_and_uses_aggregate_budget(self):
+        import zlib
+        from ai_factory.oci_offline_evidence import inspect_embedded_binary
+        pyz=self.pyz_fixture()
+        compressed=zlib.compress(pyz)
+        raw=self.carchive_fixture([("PYZ.pyz",0,len(compressed),len(pyz),1,b"z"),
+                                   ("base_library.zip",len(compressed),4,4,0,b"x")],
+                                  payload=compressed+b"PK\x03\x04")
+        report=inspect_embedded_binary(io.BytesIO(raw),max_read_bytes=8192)
+        self.assertEqual(report["pyz_archives"][0]["entries"][0]["name"],"demo")
+        self.assertEqual(report["entries"][0]["sha256"],hashlib.sha256(pyz).hexdigest())
+        self.assertIn("base_library.zip",report["uninspected_nested_archives"])
+        self.assertFalse(report["embedded_inventory_verified"])
+        with self.assertRaises(ValueError):
+            inspect_embedded_binary(io.BytesIO(raw),max_read_bytes=report["aggregate_read_bytes"]-1)
+
+    def test_embedded_inventory_rejects_escape_link_and_corrupt_member(self):
+        import zlib
+        from ai_factory.oci_offline_evidence import inspect_embedded_binary
+        for kind,payload,declared,flag in [(b"n",b"../../outside\0",14,0),
+                                            (b"b",zlib.compress(b"demo")[:-1],4,1),
+                                            (b"b",zlib.compress(b"demo"),3,1)]:
+            with self.subTest(kind=kind,payload=payload):
+                if flag==0:
+                    declared=len(payload)
+                raw=self.carchive_fixture([("member",0,len(payload),declared,flag,kind)],payload=payload)
+                with self.assertRaises(ValueError):
+                    inspect_embedded_binary(io.BytesIO(raw),max_read_bytes=8192)
+
+    def test_embedded_mode_requires_pinned_manifest_and_logical_inventory(self):
+        from ai_factory.oci_offline_evidence import verify
+        with tempfile.TemporaryDirectory() as d:
+            digest,_=fixture(Path(d))
+            with self.assertRaisesRegex(ValueError,"pinned.*inventory"):
+                verify(Path(d),digest,max_expanded_bytes=100000,max_compressed_bytes=100000,
+                       logical_inventory=True,embedded_inventory=True)
