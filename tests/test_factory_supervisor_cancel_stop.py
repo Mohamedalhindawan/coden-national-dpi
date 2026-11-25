@@ -516,5 +516,26 @@ class MonitoredSupervisorCancellationTests(unittest.TestCase):
         self.assertEqual(self.q.read("target")["status"], "blocked")
         self.assertIsNone(self.q.claim("replacement"))
 
+    def test_bound_null_receipt_after_claim_requires_reconciliation(self):
+        self.create()
+        proc = MagicMock()
+        proc.returncode = 0
+        proc.wait.return_value = 0
+        def begin(_cmd, **kwargs):
+            self.q.claim("fixture", task_id="target", lease_seconds=30)
+            kwargs["stdout"].write(b"null")
+            return proc
+        with patch.object(worker_supervisor.subprocess, "Popen", side_effect=begin) as spawn:
+            outcome = self.run_target()
+        self.assertEqual(outcome["status"], "untrusted_worker_result")
+        self.assertFalse(outcome["execution_authorized"])
+        self.assertFalse(outcome["automatic_retry_allowed"])
+        spawn.assert_called_once()
+        self.assertEqual(self.q.read("target")["status"], "leased")
+        self.assertEqual(self.q.recover_expired(now=10**12), 1)
+        self.assertEqual(self.q.read("target")["status"], "needs_review")
+        self.assertIsNone(self.q.claim("replacement"))
+
+
 if __name__ == "__main__":
     unittest.main()
