@@ -8,6 +8,7 @@ from contextlib import contextmanager
 import gzip
 from email.parser import BytesHeaderParser
 import hashlib
+import io
 import json
 import os
 from pathlib import PurePosixPath
@@ -15,6 +16,7 @@ import re
 import stat
 import struct
 import tarfile
+import zlib
 
 PINNED_MANIFEST = "sha256:9a36355fa2baacaae1c6dd5a1a80492bba89d1dec5a536af572ba5fb3e96e22f"
 MANIFEST_TYPE = "application/vnd.oci.image.manifest.v1+json"
@@ -24,6 +26,11 @@ CHUNK = 1024 * 1024
 MAX_METADATA = 2 * CHUNK
 MAX_MEMBERS = 200000
 MAX_MARKERS = 4096
+PINNED_BINARY_PATH = "usr/local/bin/openhands-agent-server"
+PINNED_BINARY_SIZE = 186275024
+PINNED_BINARY_SHA256 = "e1c78a2ad4eccb34c14253eb3a13d15b6ab8c74588c8df9f308eeb579651b002"
+MAX_PYZ_BYTES = 128 * CHUNK
+MAX_EMBEDDED_ENTRIES = 50000
 
 
 def _require(ok, message):
@@ -199,6 +206,238 @@ def inspect_carchive_toc(stream, *, max_declared_expanded_bytes):
             "release_authorized":False}
 
 
+
+class _InspectionBudget:
+    """Count every nested stream read and every decompressed output byte."""
+    def __init__(self, limit):
+        _require(type(limit) is int and limit > 0, "explicit nested read budget required")
+        self.limit = limit
+        self.used = 0
+        self.decompressed = 0
+        self.entries = 0
+
+    def take(self, n, *, output=False):
+        _require(0 <= n <= self.limit-self.used, "aggregate nested read budget exceeded")
+        self.used += n
+        if output:
+            self.decompressed += n
+
+    def count_entries(self, n):
+        self.entries += n
+        _require(self.entries <= MAX_EMBEDDED_ENTRIES, "aggregate embedded entry budget exceeded")
+
+
+class _BudgetStream:
+    def __init__(self, stream, budget):
+        self.stream, self.budget = stream, budget
+
+    def seek(self, *args):
+        return self.stream.seek(*args)
+
+    def tell(self):
+        return self.stream.tell()
+
+    def read(self, n):
+        _require(type(n) is int and 0 <= n <= 8*CHUNK, "nested stream read exceeds bound")
+        self.budget.take(n)
+        raw = self.stream.read(n)
+        _require(len(raw) == n, "truncated nested archive")
+        return raw
+
+
+class _PYZMetadata:
+    """Narrow data grammar for the v6.22.3 writer's list of (name,(type,offset,size)).
+    Reject arbitrary types, code, cycles and container references. Never invoke marshal.
+    """
+    def __init__(self, raw):
+        self.raw, self.pos, self.refs, self.nodes = raw, 0, [], 0
+
+    def take(self, n):
+        _require(0 <= n <= len(self.raw)-self.pos, "truncated PYZ metadata")
+        part = self.raw[self.pos:self.pos+n]
+        self.pos += n
+        return part
+
+    def integer(self):
+        return struct.unpack("<i", self.take(4))[0]
+
+    def read(self, depth=0):
+        self.nodes += 1
+        _require(depth <= 3 and self.nodes <= 6*MAX_EMBEDDED_ENTRIES+1,
+                 "PYZ metadata complexity exceeded")
+        tag = self.take(1)[0]
+        flagged, tag = bool(tag & 128), chr(tag & 127)
+        slot = None
+        if flagged:
+            _require(tag != "r", "invalid PYZ reference flags")
+            slot = len(self.refs)
+            self.refs.append(None)
+        if tag == "r":
+            idx = self.integer()
+            _require(0 <= idx < len(self.refs) and type(self.refs[idx]) in (int,str),
+                     "unsafe PYZ reference")
+            return self.refs[idx]
+        if tag == "i":
+            val = self.integer()
+        elif tag in ("z","Z","a","A","u","t"):
+            n = self.take(1)[0] if tag in ("z","Z") else self.integer()
+            _require(0 < n <= 4096, "PYZ name length exceeded")
+            try:
+                val = self.take(n).decode("ascii" if tag in ("z","Z","a","A") else "utf-8")
+            except UnicodeError as exc:
+                raise ValueError("invalid PYZ name encoding") from exc
+        elif tag == "[":
+            n = self.integer()
+            _require(depth == 0 and 0 < n <= MAX_EMBEDDED_ENTRIES, "invalid PYZ root list")
+            val = [self.read(depth+1) for _ in range(n)]
+        elif tag in ("(",")"):
+            n = self.take(1)[0] if tag == ")" else self.integer()
+            _require((depth,n) in ((1,2),(2,3)), "unexpected PYZ tuple shape")
+            val = tuple(self.read(depth+1) for _ in range(n))
+        else:
+            raise ValueError("unsupported PYZ metadata type")
+        # Container references are deliberately not resolved.
+        if slot is not None and type(val) in (int,str):
+            self.refs[slot] = val
+        return val
+
+
+def _hash_member(stream, offset, stored, compressed, budget, *, expected=None, capture_limit=0):
+    """Stream raw or zlib bytes; never materialize code objects or execute payloads."""
+    stream.seek(offset)
+    decoder = zlib.decompressobj() if compressed else None
+    h, size, prefix = hashlib.sha256(), 0, b""
+    captured = bytearray() if capture_limit else None
+
+    def consume(data):
+        nonlocal size,prefix
+        size += len(data)
+        _require(expected is None or size <= expected, "embedded member exceeds declared size")
+        h.update(data)
+        prefix = (prefix+data[:8])[:8]
+        if captured is not None:
+            _require(size <= capture_limit, "embedded capture exceeds memory bound")
+            captured.extend(data)
+
+    left = stored
+    try:
+        while left:
+            data = stream.read(min(CHUNK,left))
+            left -= len(data)
+            if decoder is None:
+                consume(data)
+                continue
+            while data:
+                limit = min(CHUNK,budget.limit-budget.used)
+                if expected is not None:
+                    limit = min(limit,expected-size+1)
+                _require(limit>0, "aggregate decompression budget exhausted")
+                out = decoder.decompress(data,limit)
+                budget.take(len(out),output=True)
+                consume(out)
+                _require(not decoder.unused_data, "trailing compressed member data")
+                tail = decoder.unconsumed_tail
+                _require(len(tail)<len(data) or bool(out), "stalled embedded decompressor")
+                data = tail
+            _require(not decoder.eof or left==0, "trailing compressed member bytes")
+        if decoder is not None:
+            _require(decoder.eof and not decoder.unused_data and not decoder.unconsumed_tail,
+                     "incomplete compressed embedded member")
+    except zlib.error as exc:
+        raise ValueError("invalid compressed embedded member") from exc
+    _require(expected is None or size==expected, "embedded member size mismatch")
+    return {"sha256":h.hexdigest(),"actual_bytes":size,"prefix":prefix},captured
+
+
+def _inspect_pyz(stream, budget):
+    source = _BudgetStream(stream,budget)
+    source.seek(0,os.SEEK_END)
+    size=source.tell()
+    _require(17<size<=MAX_PYZ_BYTES, "unsupported PYZ size")
+    source.seek(0)
+    header=source.read(17)
+    _require(header[:8]==b"PYZ\\0\\xf3\\x0d\\x0d\\x0a" and header[12:]==b"\\0"*5,
+             "unexpected PYZ header or Python bytecode version")
+    toc_offset=struct.unpack("!i",header[8:12])[0]
+    _require(17<=toc_offset<size and size-toc_offset<=8*CHUNK, "invalid PYZ TOC bounds")
+    source.seek(toc_offset)
+    raw=source.read(size-toc_offset)
+    reader=_PYZMetadata(raw)
+    toc=reader.read()
+    _require(type(toc) is list and reader.pos==len(raw), "invalid or trailing PYZ metadata")
+    budget.count_entries(len(toc))
+    rows,spans,seen=[],[],set()
+    for row in toc:
+        _require(type(row) is tuple and len(row)==2 and type(row[0]) is str and
+                 type(row[1]) is tuple and len(row[1])==3, "invalid PYZ entry")
+        name,(kind,offset,stored)=row
+        _require(all(part.isidentifier() for part in name.split(".")) and name not in seen,
+                 "unsafe or duplicate PYZ module name")
+        seen.add(name)
+        _require(all(type(v) is int for v in (kind,offset,stored)) and kind in (0,1,3)
+                 and 17<=offset<=toc_offset and 0<=stored<=toc_offset-offset
+                 and ((kind==3 and stored==0) or (kind!=3 and stored>0)), "invalid PYZ entry bounds")
+        if stored:
+            spans.append((offset,offset+stored))
+        rows.append({"name":name,"type":kind,"offset":offset,"stored_bytes":stored})
+    spans.sort()
+    _require(all(a[1]<=b[0] for a,b in zip(spans,spans[1:])), "overlapping PYZ entry ranges")
+    for row in rows:
+        if row["type"]==3:
+            row.update(sha256=None,actual_bytes=0)
+        else:
+            data,_=_hash_member(source,row["offset"],row["stored_bytes"],True,budget)
+            # These are hashes of opaque serialized bytes, never unmarshaled.
+            data.pop("prefix")
+            row.update(data)
+    return {"entries":rows,"toc_sha256":hashlib.sha256(raw).hexdigest(),
+            "toc_bytes":len(raw),"archive_bytes":size}
+
+
+def inspect_pyz_toc(stream, *, max_read_bytes):
+    budget=_InspectionBudget(max_read_bytes)
+    report=_inspect_pyz(stream,budget)
+    return {**report,"status":"pyz_metadata_candidate_review_required",
+            "aggregate_read_bytes":budget.used,"nested_payload_bytes_decompressed":budget.decompressed,
+            "embedded_inventory_verified":False,"release_authorized":False}
+
+
+def inspect_embedded_binary(stream, *, max_read_bytes):
+    budget=_InspectionBudget(max_read_bytes)
+    source=_BudgetStream(stream,budget)
+    outer=inspect_carchive_toc(source,max_declared_expanded_bytes=max_read_bytes)
+    budget.count_entries(len(outer["entries"])+outer["runtime_option_count"])
+    source.seek(0,os.SEEK_END)
+    start=source.tell()-outer["archive_bytes"]
+    pyz,unknown=[],[]
+    for row in outer["entries"]:
+        kind=row["type"]
+        capture=MAX_PYZ_BYTES if kind=="z" else 4096 if kind=="n" else 0
+        data,raw=_hash_member(source,start+row["offset"],row["stored_bytes"],row["compressed"],
+                              budget,expected=row["declared_expanded_bytes"],capture_limit=capture)
+        prefix=data.pop("prefix")
+        row.update(data)
+        if kind=="z":
+            _require(len(pyz)==0, "multiple PYZ archives require independent review")
+            pyz.append({"container_name":row["name"],"sha256":row["sha256"],
+                        **_inspect_pyz(io.BytesIO(raw),budget)})
+        elif kind=="n":
+            try:
+                target=bytes(raw).rstrip(b"\\0").decode("utf-8")
+            except UnicodeError as exc:
+                raise ValueError("invalid embedded link target") from exc
+            _require(not target.startswith("/"), "absolute embedded link target")
+            row["lexical_target"]=_link_target(row["name"],target)
+        elif kind=="Z" or row["name"].lower().endswith((".zip",".whl",".pyz",".tar",".gz",".bz2",".xz",".7z")) or prefix.startswith((b"PK\\x03\\x04",b"PYZ\\0",b"\\x1f\\x8b",b"BZh",b"\\xfd7zXZ\\0")):
+            # Do not recurse through unreviewed formats. Retain their identities only.
+            unknown.append(row["name"])
+    return {**outer,"status":"embedded_archive_candidate_review_required",
+            "pyz_archives":pyz,"pyz_toc_read":bool(pyz),"uninspected_nested_archives":unknown,
+            "aggregate_read_bytes":budget.used,"nested_payload_bytes_decompressed":budget.decompressed,
+            "symlink_targets_reviewed":True,"symlinks_followed":False,
+            "embedded_inventory_verified":False,"release_authorized":False}
+
+
 def _link_target(path, value):
     # Absolute symlinks refer to the image root, never the host root.
     _require(isinstance(value, str) and 0 < len(value) <= 4096 and
@@ -250,7 +489,7 @@ def _package_metadata(path, raw):
              "declared_license_expression":headers.get("License-Expression")}]
 
 
-def _entry_record(archive, entry, path):
+def _entry_record(archive, entry, path, *, binary_capture=None):
     name = str(path)
     row = {"path":name,"mode":entry.mode,"uid":entry.uid,"gid":entry.gid,
            "size":entry.size, "xattr_names":sorted(k for k in entry.pax_headers if
@@ -271,6 +510,9 @@ def _entry_record(archive, entry, path):
         capture = _metadata_kind(name)
         if capture:
             _require(entry.size <= MAX_METADATA, "package metadata exceeds bound")
+        binary = binary_capture is not None and name == PINNED_BINARY_PATH
+        if binary:
+            _require(entry.size == PINNED_BINARY_SIZE and not binary_capture, "unexpected pinned binary occurrence")
         raw = bytearray()
         count = 0
         with source:
@@ -279,10 +521,13 @@ def _entry_record(archive, entry, path):
                     first = data[:4]
                 h.update(data)
                 count += len(data)
-                if capture:
+                if capture or binary:
                     raw.extend(data)
         _require(count == entry.size, "truncated member")
         row.update(sha256=h.hexdigest(), elf=first==b"\x7fELF")
+        if binary:
+            _require(row["sha256"]==PINNED_BINARY_SHA256 and row["elf"], "pinned binary hash mismatch")
+            binary_capture["bytes"]=raw
         if capture:
             row["package_metadata"] = _package_metadata(name, bytes(raw))
             row["package_metadata_kind"] = capture
@@ -362,7 +607,7 @@ def _inventory_report(tree):
             "embedded_archive_inventory_verified":False,"complete_sbom":False}
 
 
-def _scan_layer(store, desc, expected_diff, remaining, member_budget, *, inventory=None, layer=0):
+def _scan_layer(store, desc, expected_diff, remaining, member_budget, *, inventory=None, layer=0, binary_capture=None):
     _require(desc["mediaType"] == LAYER_TYPE, "unsupported layer media type")
     digest, size = desc["digest"], desc["size"]
     _hex(expected_diff)
@@ -390,7 +635,7 @@ def _scan_layer(store, desc, expected_diff, remaining, member_budget, *, invento
                         _require(not any(part.startswith(".wh.") for part in path.parts[:-1]),
                                  "whiteout ancestor is invalid")
                         if not path.name.startswith(".wh."):
-                            changes.append(_entry_record(archive, entry, path))
+                            changes.append(_entry_record(archive, entry, path, binary_capture=binary_capture))
                     if path.name.startswith(".wh."):
                         _require(entry.isreg() and entry.size == 0 and
                                  path.name[4:] not in ("", ".", ".."), "invalid whiteout")
@@ -427,13 +672,15 @@ def _scan_layer(store, desc, expected_diff, remaining, member_budget, *, invento
                     "candidate_paths": markers}
 
 
-def verify(root, manifest_digest, *, max_expanded_bytes, max_compressed_bytes, logical_inventory=False):
+def verify(root, manifest_digest, *, max_expanded_bytes, max_compressed_bytes, logical_inventory=False, embedded_inventory=False):
     """Return review-only evidence from local blobs; fail closed on malformed inputs."""
     _require(type(max_expanded_bytes) is int and max_expanded_bytes > 0,
              "explicit positive inspection budget required")
     _require(type(max_compressed_bytes) is int and max_compressed_bytes > 0,
              "explicit positive compressed budget required")
-    _require(type(logical_inventory) is bool, "explicit inventory mode required")
+    _require(type(logical_inventory) is bool and type(embedded_inventory) is bool, "explicit inventory mode required")
+    _require(not embedded_inventory or (manifest_digest==PINNED_MANIFEST and logical_inventory),
+             "pinned manifest and logical inventory required for embedded review")
     try:
         with _store(root) as store:
             manifest, manifest_bytes = _json_blob(store, manifest_digest, budget=max_compressed_bytes)
@@ -478,13 +725,24 @@ def verify(root, manifest_digest, *, max_expanded_bytes, max_compressed_bytes, l
             expanded = members = 0
             unique = {}
             inventory = {} if logical_inventory else None
+            binary_capture = {} if embedded_inventory else None
             for layer, (desc, diff) in enumerate(zip(descs, diffs), 1):
                 row = _scan_layer(store, desc, diff, max_expanded_bytes - expanded,
-                                  MAX_MEMBERS - members, inventory=inventory, layer=layer)
+                                  MAX_MEMBERS - members, inventory=inventory, layer=layer,
+                                  binary_capture=binary_capture)
                 expanded += row["expanded_bytes"]
                 members += row["members"]
                 unique[row["digest"]] = row["compressed_bytes"]
                 layers.append(row)
+            embedded = {}
+            if embedded_inventory:
+                binary=inventory.get(PINNED_BINARY_PATH,{})
+                _require(binary.get("kind")=="regular" and binary.get("layer")==13 and
+                         binary.get("sha256")==PINNED_BINARY_SHA256 and binary.get("size")==PINNED_BINARY_SIZE
+                         and "bytes" in binary_capture, "final pinned binary not verified")
+                report=inspect_embedded_binary(io.BytesIO(binary_capture.pop("bytes")),max_read_bytes=max_expanded_bytes-expanded)
+                embedded={"embedded_archive_review":{**report,"path":PINNED_BINARY_PATH,"binary_sha256":PINNED_BINARY_SHA256,"layer":13},
+                          "aggregate_expanded_and_nested_read_bytes":expanded+report["aggregate_read_bytes"]}
             return {"status": "layer_bytes_verified_review_only", "manifest_digest": manifest_digest,
                     "config_digest": config_desc["digest"], "layer_count": len(layers),
                     "unique_layer_count": len(unique), "unique_compressed_bytes": sum(unique.values()),
@@ -495,6 +753,7 @@ def verify(root, manifest_digest, *, max_expanded_bytes, max_compressed_bytes, l
                     "expanded_bytes": expanded, "layers": layers,
                     "whiteout_semantics_applied": logical_inventory, "final_inventory_verified": False,
                     **({"logical_inventory": _inventory_report(inventory)} if logical_inventory else {}),
+                    **embedded,
                     "embedded_inventory_verified": False, "signature_verified": False,
                     "license_approved": False, "security_approved": False,
                     "execution_authorized": False, "release_authorized": False}
@@ -509,12 +768,13 @@ def main():
     parser.add_argument("--max-expanded-bytes", required=True, type=int)
     parser.add_argument("--max-compressed-bytes", required=True, type=int)
     parser.add_argument("--logical-inventory", action="store_true")
+    parser.add_argument("--embedded-inventory", action="store_true")
     args = parser.parse_args()
     try:
         result = verify(args.oci_store, PINNED_MANIFEST,
                         max_expanded_bytes=args.max_expanded_bytes,
                         max_compressed_bytes=args.max_compressed_bytes,
-                        logical_inventory=args.logical_inventory)
+                        logical_inventory=args.logical_inventory, embedded_inventory=args.embedded_inventory)
     except ValueError:
         parser.exit(1, "Offline review rejected; no admission granted.\n")
     print(json.dumps(result, sort_keys=True, indent=2))
