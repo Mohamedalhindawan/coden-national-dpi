@@ -144,8 +144,12 @@ class PreflightBroker:
                                 max_response_bytes=MAX_RESPONSE_BYTES)
             if cancelled is not None and cancelled():
                 return self._receipt("cancelled")
-            if time.monotonic() - started >= route["timeout"]:
+            completed = time.monotonic()
+            if completed - started >= route["timeout"]:
                 return self._receipt("timeout")
+            # A consumed grant never accepts a response arriving after expiry.
+            if completed >= self._expires:
+                return self._receipt("grant_expired")
             if type(outcome) is not tuple or len(outcome) != 2:
                 return self._receipt("invalid_fixture_transport")
             code, raw = outcome
