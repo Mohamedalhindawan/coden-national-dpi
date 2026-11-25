@@ -33,3 +33,35 @@ class ToolBenchmarkTests(unittest.TestCase):
         self.assertEqual(result["status"], "benchmark_match")
         self.assertFalse(result["tool_executed"])
         self.assertFalse(result["release_authorized"])
+
+    def test_local_http_receipt_rejects_auth_timeout_cancel_and_wrong_model(self):
+        from ai_factory import factory_qwen_tool_benchmark as bench
+        response = json.loads(reply("count_flags", CASES["count"]["expected_args"]))
+        response["model"] = "local-qwen"
+        raw = json.dumps(response).encode()
+        accepted = bench.audit_http_case("count", status_code=200, raw=raw)
+        self.assertEqual(accepted["status"], "schema_match")
+        self.assertFalse(accepted["tool_executed"])
+        self.assertFalse(accepted["sdk_conversation_ran"])
+        self.assertFalse(accepted["release_authorized"])
+        for code, failure, reason in (
+            (401, None, "authentication_failed"),
+            (403, None, "authentication_failed"),
+            (302, None, "http_status_rejected"),
+            (429, None, "http_status_rejected"),
+            (200, "timeout", "timeout"),
+            (200, "cancelled", "cancelled"),
+            (200, "unknown", "invalid_transport_outcome"),
+        ):
+            with self.subTest(code=code, failure=failure):
+                result = bench.audit_http_case("count", status_code=code, raw=raw, failure=failure)
+                self.assertEqual(result["status"], "schema_rejected")
+                self.assertEqual(result["reason_code"], reason)
+                self.assertFalse(result["automatic_retry_allowed"])
+                self.assertFalse(result["release_authorized"])
+                self.assertNotIn("response_sha256", result)
+        response["model"] = "private-unexpected-model"
+        result = bench.audit_http_case("count", status_code=200, raw=json.dumps(response).encode())
+        self.assertEqual(result["reason_code"], "model_identity_mismatch")
+        self.assertNotIn("private-unexpected-model", repr(result))
+        self.assertFalse(result["automatic_retry_allowed"])
