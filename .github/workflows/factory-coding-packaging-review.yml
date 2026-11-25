@@ -980,3 +980,88 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+
+  sprint15-public-schema-security-metadata:
+    # Public metadata only; no OCI registry, image layers, installation or execution.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '36c8e3730799135b9174f98ac783cd3d80069cf3' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Retrieve pinned public CycloneDX schema data
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          timeout 60s env -i PATH=/usr/bin:/bin python3 -I - <<'PY'
+          import base64,hashlib,json,urllib.request
+          from pathlib import Path
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*args,**kwargs): return None
+          opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+          pinned={"bom-1.5.schema.json":"c149728127117c39317b795032ed6e9a92e2f950","spdx.schema.json":"f04d013c74c48de35726e93e367f0f738f51135d","jsf-0.82.schema.json":"f46bfb1e52731ad1280123ff3e2bd29bd18d4bc2"}
+          records=[]
+          for name,sha in pinned.items():
+              url="https://api.github.com/repos/CycloneDX/specification/git/blobs/"+sha
+              with opener.open(urllib.request.Request(url,headers={"Accept":"application/vnd.github+json","User-Agent":"CODEN-schema-review"}),timeout=15) as res:
+                  assert res.status==200
+                  data=res.read(1024*1024+1)
+              assert len(data)<=1024*1024
+              obj=json.loads(data)
+              assert obj["sha"]==sha and obj["encoding"]=="base64"
+              raw=base64.b64decode("".join(obj["content"].splitlines()),validate=True)
+              assert len(raw)==obj["size"]
+              assert hashlib.sha1(b"blob "+str(len(raw)).encode()+b"\0"+raw).hexdigest()==sha
+              schema=json.loads(raw)
+              assert schema["$id"]=="http://cyclonedx.org/schema/"+name
+              Path("evidence",name).write_bytes(raw)
+              records.append(dict(name=name,git_blob=sha,sha256=hashlib.sha256(raw).hexdigest(),bytes=len(raw)))
+          Path("evidence/schema-receipt.json").write_text(json.dumps(records,indent=2)+"\n")
+          PY
+      - name: Retrieve bounded Debian security tracker records for observed source packages
+        if: always()
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p evidence
+          timeout 120s env -i PATH=/usr/bin:/bin python3 -I - <<'PY'
+          import datetime,hashlib,json,urllib.request
+          from pathlib import Path
+          url="https://security-tracker.debian.org/tracker/data/json"
+          sources=set("acl apt attr audit base-files base-passwd bash brotli bzip2 ca-certificates cdebconf coreutils curl cyrus-sasl2 dash db5.3 debconf debian-archive-keyring debianutils diffutils dpkg e2fsprogs expat findutils gcc-14 gdbm git glibc gmp gnutls28 grep gzip hostname init-system-helpers jemalloc keyutils krb5 libbsd libcap-ng libcap2 liberror-perl libevent libffi libidn2 libmd libpsl libseccomp libselinux libsemanage libsepol libssh2 libtasn1-6 libunistring libxcrypt libzstd lz4 mawk ncurses netbase nettle nghttp2 nghttp3 ngtcp2 openldap openssl p11-kit pam pcre2 perl readline rtmpdump rust-sequoia-sqv sed shadow sqlite3 systemd sysvinit tar tini tmux tzdata util-linux xxhash xz-utils zlib".split())
+          assert len(sources)==85
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*args,**kwargs): return None
+          opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+          cap=128*1024**2
+          receipt=dict(status="BLOCKED",source_url=url,requested_sources=sorted(sources),
+                       image_downloaded=False,release_authorized=False)
+          path=Path("evidence/debian-tracker-receipt.json")
+          def save(): path.write_text(json.dumps(receipt,indent=2)+"\n")
+          save()
+          try:
+              with opener.open(urllib.request.Request(url,headers={"Accept-Encoding":"identity","User-Agent":"CODEN-metadata-review"}),timeout=45) as res:
+                  assert res.status==200 and res.headers.get("Content-Encoding","identity")=="identity"
+                  raw=res.read(cap+1)
+                  assert len(raw)<=cap
+                  receipt["http_date"]=res.headers.get("Date")
+              data=json.loads(raw)
+              assert isinstance(data,dict)
+              filtered={n:data[n] for n in sorted(sources) if n in data}
+              assert all(isinstance(v,dict) for v in filtered.values())
+              out=json.dumps(filtered,sort_keys=True,separators=(",",":")).encode()
+              assert len(out)<=24*1024**2
+              Path("evidence/debian-tracker-selected.json").write_bytes(out)
+              receipt.update(status="TRACKER_METADATA_CAPTURED",fetched_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),source_sha256=hashlib.sha256(raw).hexdigest(),source_bytes=len(raw),filtered_sha256=hashlib.sha256(out).hexdigest(),found_sources=sorted(filtered),missing_sources=sorted(sources-set(filtered)))
+              save()
+          except Exception as exc:
+              receipt["error_type"]=type(exc).__name__;save();raise SystemExit("Security metadata acquisition blocked")
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: sprint15-public-schema-security-metadata
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
