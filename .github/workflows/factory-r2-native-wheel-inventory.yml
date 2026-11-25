@@ -467,8 +467,10 @@ jobs:
                   assert len({i.filename for i in entries})==len(entries)
                   py=[i for i in files if i.filename.endswith(".py")]
                   pyc=[i for i in files if i.filename.endswith(".pyc")]
-                  rec=[i for i in files if i.filename.endswith(".dist-info/RECORD")]
-                  assert len(rec)==1 and rec[0].file_size<=8*1024**2
+                  records=[i for i in files if i.filename.endswith(".dist-info/RECORD")]
+                  rec=[i for i in records if len(PurePosixPath(i.filename).parts)==2]
+                  nested=[i for i in records if len(PurePosixPath(i.filename).parts)>2]
+                  assert len(rec)==1 and rec[0].file_size<=8*1024**2,(n,[i.filename for i in records])
                   rows=list(csv.reader(io.StringIO(z.read(rec[0]).decode("utf-8"))))
                   assert all(len(r)==3 for r in rows)
                   dirs={str(p) for i in files for p in PurePosixPath(i.filename).parents if str(p)!="."}
@@ -481,8 +483,10 @@ jobs:
                      pyc_existing=len(pyc),pyc_existing_page_bytes=sum(page(i.file_size) for i in pyc),
                      bytecode_1x_page_scenario=sum(page(i.file_size+256) for i in py),
                      bytecode_2x_page_scenario=sum(page(2*i.file_size+256) for i in py),
-                     possible_cache_dirs=len(caches-dirs),record_bytes=rec[0].file_size,record_rows=len(rows),
+                     possible_cache_dirs=len(caches-dirs),record_bytes=rec[0].file_size,record_rows=len(rows),nested_record_count=len(nested),
+                     nested_record_bytes=sum(i.file_size for i in nested),
                      record_extra_page_scenario=page(rec[0].file_size+extra_record)-page(rec[0].file_size)))
+              Path("evidence/per-wheel-footprint.json").write_text(json.dumps(results,indent=2))
               print(n,len(py),flush=True)
           assert len(results)==131
           keys=[k for k in results[0] if k not in ("name","version","wheel_sha256")]
