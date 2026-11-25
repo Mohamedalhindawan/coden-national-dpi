@@ -209,3 +209,76 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+  official-runtime-metadata-review:
+    if: github.event.repository.private == false && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    permissions: {}
+    steps:
+      - name: Check exact upstream image tag availability and manifest identity only
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          python3 - <<'PY'
+          import hashlib, json, re, urllib.error, urllib.request
+          from pathlib import Path
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+          opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+          def get(url,headers=None):
+              with opener.open(urllib.request.Request(url,headers=headers or {}),timeout=15) as res:
+                  data=res.read(2*1024**2+1)
+                  if len(data)>2*1024**2: raise ValueError("metadata too large")
+                  return data,res.headers
+          root="https://ghcr.io/v2/openhands/agent-server/"
+          raw,_=get("https://ghcr.io/token?service=ghcr.io&scope=repository%3Aopenhands%2Fagent-server%3Apull")
+          token=json.loads(raw)["token"]
+          assert isinstance(token,str) and 0<len(token)<16384
+          headers={"Authorization":"Bearer "+token,"Accept":", ".join((
+              "application/vnd.oci.image.index.v1+json",
+              "application/vnd.oci.image.manifest.v1+json",
+              "application/vnd.docker.distribution.manifest.list.v2+json",
+              "application/vnd.docker.distribution.manifest.v2+json"))}
+          tags=["077f3fa-python-amd64","077f3fa-python-minimal-amd64",
+                "077f3fa-python-amd64-source-minimal","077f3fa-python-minimal-amd64-source-minimal"]
+          results=[]
+          def manifest(ref):
+              data,h=get(root+"manifests/"+ref,headers)
+              digest="sha256:"+hashlib.sha256(data).hexdigest()
+              assert h.get("Docker-Content-Digest")==digest
+              if ref.startswith("sha256:"): assert ref==digest
+              Path("evidence",digest[7:]+".json").write_bytes(data)
+              return json.loads(data),digest
+          for tag in tags:
+              try:
+                  obj,digest=manifest(tag)
+                  image,selected=obj,digest
+                  if "manifests" in obj:
+                      m=[m for m in obj["manifests"] if m.get("platform",{}).get("os")=="linux" and m.get("platform",{}).get("architecture")=="amd64"]
+                      assert len(m)==1
+                      image,selected=manifest(m[0]["digest"])
+                  layers=image["layers"]
+                  assert 0<len(layers)<256 and all(type(l["size"]) is int and l["size"]>=0 for l in layers)
+                  config=image["config"]["digest"]
+                  assert re.fullmatch(r"sha256:[a-f0-9]{64}",config)
+                  results.append(dict(tag=tag,status="MANIFEST_FOUND",manifest_digest=digest,amd64_manifest_digest=selected,
+                                      config_digest=config,compressed_layer_bytes=sum(l["size"] for l in layers),
+                                      layers=len(layers),source_provenance_verified=False,license_approved=False))
+              except urllib.error.HTTPError as exc:
+                  results.append(dict(tag=tag,status="REGISTRY_HTTP_"+str(exc.code)))
+          report=dict(results=results,upstream_commit="077f3fad6d31cd852be5c87176e0a93c3b446126",
+                      manifests_only=True,image_layers_downloaded=False,source_provenance_verified=False,
+                      installed_dependency_inventory_verified=False,rootless_runtime_verified=False,
+                      build_authorized=False,release_authorized=False)
+          Path("evidence/review.json").write_text(json.dumps(report,indent=2))
+          print(json.dumps(report,indent=2))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-official-runtime-metadata-review
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
