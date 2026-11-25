@@ -1649,3 +1649,137 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+
+  sprint20-modeb-public-metadata:
+    # Public metadata only. Never fetch distribution payloads, install or import packages.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '304e2342bce14242e2edc2ceef1fcb8fd7b229b2' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45459482500
+          name: optional-tom-runtime-scope
+          path: input
+      - name: Reconcile wheel pins and inspect public core metadata only
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          echo '6bcb3f75c6a1803e3c47cad87c4881c5e250431b876d79e1deec2f82bd1a4301  input/optional-tom.lock' | sha256sum -c -
+          echo 'acb0247cbcce90314ea3dc34cfff5cde5c6ae258c7bb2e32a607fe3a3c320c66  input/optional-tom-non-dev.txt' | sha256sum -c -
+          env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/python3 -I -B - <<'PY'
+          import concurrent.futures,datetime,email.parser,hashlib,json,re,threading,tomllib,urllib.parse,urllib.request
+          from pathlib import Path
+          out=Path("evidence")
+          def emit(name,obj):
+              (out/name).write_text(json.dumps(obj,sort_keys=True,indent=2)+"\n")
+          def sha(raw): return hashlib.sha256(raw).hexdigest()
+          lock=tomllib.loads(Path("input/optional-tom.lock").read_text())
+          exported={}; key=None
+          for line in Path("input/optional-tom-non-dev.txt").read_text().splitlines():
+              if re.match(r'^[a-z0-9-]+==',line):
+                  key=tuple(line.split(' ;',1)[0].split('=='));exported[key]=set()
+              elif (match:=re.search(r'--hash=sha256:([a-f0-9]{64})',line)):
+                  exported[key].add(match[1])
+          def rank(fn):
+              assert fn.endswith(".whl")
+              py,abi,plats=fn[:-4].rsplit("-",3)[-3:]
+              ranks=[]
+              for p in plats.split("."):
+                  m=re.fullmatch(r'manylinux_2_(\d+)_x86_64',p)
+                  if p=="any" and abi=="none" and "py3" in py.split("."):
+                      ranks.append((3,0,0));continue
+                  if not m or not 5<=int(m[1])<=41: continue
+                  if py=="cp313" and abi=="cp313":ranks.append((0,0,-int(m[1])))
+                  elif abi=="abi3" and re.fullmatch(r'cp3\d+',py) and 2<=int(py[3:])<=13:
+                      ranks.append((1,-int(py[3:]),-int(m[1])))
+              return min(ranks) if ranks else None
+          rows=[]
+          for pkg in lock["package"]:
+              k=(pkg["name"],pkg["version"])
+              if k not in exported: continue
+              choices=[]
+              for w in pkg["wheels"]:
+                  fn=w["url"].rsplit("/",1)[-1]; r=rank(fn)
+                  if r is not None and w["hash"][7:] in exported[k]: choices.append((r,fn,w))
+              choices.sort(key=lambda x:x[:2])
+              r,fn,w=choices[0]
+              rows.append(dict(name=k[0],version=k[1],filename=fn,url=w["url"],sha256=w["hash"][7:],size=w["size"],compatible_choices=len(choices)))
+          rows.sort(key=lambda x:(x["name"],x["version"]))
+          exact=sha(("\n".join(" ".join((x["name"],x["version"],x["sha256"])) for x in rows)+"\n").encode())
+          assert len(exported)==len(rows)==126 and exact=="240b32737dafed61b8fc9ab7446fd6ce069ff3775a8c525e60cc55501c885b00"
+          assert sum(x["size"] for x in rows)==103180372 and sum(x["compatible_choices"]>1 for x in rows)==10
+          emit("selection.json",dict(rows=rows,selection_digest=exact,actual_wheel_bytes_verified=False,release_authorized=False))
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*a,**kw): return None
+          budget=128*1024**2
+          lock_budget=threading.Lock()
+          consumed=0
+          def get(url,cap,accept):
+              global consumed
+              u=urllib.parse.urlsplit(url)
+              assert u.scheme=="https" and u.netloc in ("pypi.org","files.pythonhosted.org") and not u.query and not u.fragment
+              assert (u.netloc=="pypi.org" and re.fullmatch(r'/simple/[a-z0-9-]+/',u.path)) or (u.netloc=="files.pythonhosted.org" and re.fullmatch(r'/packages/[a-f0-9]{2}/[a-f0-9]{2}/[a-f0-9]+/[A-Za-z0-9_.+-]+\.whl\.metadata',u.path))
+              req=urllib.request.Request(url,headers={"Accept":accept,"Accept-Encoding":"identity","User-Agent":"CODEN-metadata-review/1"})
+              with lock_budget:
+                  if consumed+cap+1>budget: raise ValueError("aggregate metadata budget")
+                  consumed+=cap+1
+              raw=None
+              try:
+                  opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+                  with opener.open(req,timeout=8) as response:
+                      if response.headers.get("Content-Encoding","identity")!="identity":raise ValueError("encoded metadata")
+                      raw=response.read(cap+1)
+                      if len(raw)>cap:raise ValueError("metadata cap")
+                      return raw
+              finally:
+                  if raw is not None:
+                      with lock_budget: consumed-=cap+1-len(raw)
+          def review(row):
+              result=dict(row,status="BLOCKED",actual_wheel_bytes_verified=False,legal_approval=False)
+              try:
+                  raw=get("https://pypi.org/simple/"+row["name"]+"/",8*1024**2,"application/vnd.pypi.simple.v1+json")
+                  result["simple_response_sha256"]=sha(raw)
+                  files=json.loads(raw)["files"]
+                  exact=[x for x in files if x["filename"]==row["filename"]]
+                  if len(exact)!=1: raise ValueError("exact filename missing or ambiguous")
+                  f=exact[0]
+                  if f["hashes"].get("sha256")!=row["sha256"] or f["url"]!=row["url"]:raise ValueError("index identity mismatch")
+                  if f.get("size") is not None and f["size"]!=row["size"]:raise ValueError("index size mismatch")
+                  result.update(index_identity_verified=True,yanked=f.get("yanked",False),index_requires_python=f.get("requires-python"),index_size=f.get("size"))
+                  md=f.get("core-metadata",f.get("dist-info-metadata"))
+                  if not isinstance(md,dict) or not re.fullmatch(r"[0-9a-f]{64}",md.get("sha256","")):
+                      result["status"]="METADATA_HASH_NOT_ADVERTISED";return result
+                  body=get(row["url"]+".metadata",512*1024,"application/octet-stream")
+                  if sha(body)!=md["sha256"]:raise ValueError("sidecar digest mismatch")
+                  msg=email.parser.BytesParser().parsebytes(body,headersonly=True)
+                  canonical=lambda n:re.sub(r"[-_.]+","-",n).lower()
+                  if len(msg.get_all("Name",[]))!=1 or len(msg.get_all("Version",[]))!=1 or canonical(msg["Name"])!=row["name"] or msg["Version"]!=row["version"]:raise ValueError("metadata identity mismatch")
+                  result.update(status="PUBLIC_CORE_METADATA_VERIFIED",metadata_sha256=sha(body),metadata_bytes=len(body),metadata_version=msg.get("Metadata-Version"),requires_python=msg.get("Requires-Python"),license_expression=msg.get_all("License-Expression",[]),license_files=msg.get_all("License-File",[]),license_field=(msg.get("License") or "")[:8192],license_classifiers=[x for x in msg.get_all("Classifier",[]) if x.startswith("License ::")],requires_dist=msg.get_all("Requires-Dist",[]),provides_extra=msg.get_all("Provides-Extra",[]),record_verified=False,native_contents_verified=False)
+                  (out/(row["name"]+".metadata")).write_bytes(body)
+              except Exception as exc:
+                  result["error_type"]=type(exc).__name__
+                  if isinstance(exc,ValueError):result["reason"]=str(exc)[:160]
+                  elif hasattr(exc,"code"):result["http_status"]=exc.code
+              return result
+          started=datetime.datetime.now(datetime.timezone.utc).isoformat()
+          with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool: results=list(pool.map(review,rows))
+          emit("metadata-review.json",dict(started_utc=started,finished_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),results=results,metadata_budget=budget,metadata_bytes_or_reserved=consumed,distribution_payload_downloaded=False,installed=False,imported=False,legal_approval=False,release_authorized=False))
+          verified=sum(x["status"]=="PUBLIC_CORE_METADATA_VERIFIED" for x in results)
+          print("PUBLIC_CORE_METADATA_VERIFIED",verified,"of",len(results))
+          print("INDEX_IDENTITY_VERIFIED",sum(x.get("index_identity_verified",False) for x in results))
+          if verified!=126: raise SystemExit(1)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: sprint20-modeb-public-core-metadata
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
