@@ -316,6 +316,10 @@ jobs:
               for r in records:
                   require(all(type(r[k]) is int and r[k] > 0 for k in keys),
                           "invalid wheel sizes")
+              bound = sorted([r["name"],r["version"],r["wheel_sha256"],*[r[k] for k in keys]] for r in records)
+              bound_digest = hashlib.sha256(json.dumps(bound,separators=(",",":")).encode()).hexdigest()
+              require(bound_digest == "bebbaa4e714a76ff1a128ca98862fdb3e48cbf4775669af2e1d56b4d88f30e9a",
+                      "per-wheel capacity identity mismatch")
               totals = tuple(sum(r[k] for r in records) for k in keys)
               require(totals == (105369096,301372095,14517), "wheel totals mismatch")
               require(capacity.get("wheel_count") == 131 and capacity.get("crc_verified") is True and
