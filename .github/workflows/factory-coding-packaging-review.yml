@@ -1871,3 +1871,70 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+
+  sprint21-r2-targeted-provenance:
+    # Public PEP 740 metadata only, not wheels, source archives or executable artifacts.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '79df0df43aee18ff70bf5d801f07bb9a89d151f8' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - name: Inspect public provenance for only the three residual package concerns
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/python3 -I -B - <<'PY'
+          import base64,datetime,hashlib,json,urllib.error,urllib.request
+          from pathlib import Path
+          rows=[
+              ("jiter","0.16.0","jiter-0.16.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl","c682bea068a90b764577bdb78a60a4c1d1606daf9cd4c893832a37c7cc9d9026","pydantic/jiter"),
+              ("tokenizers","0.23.2","tokenizers-0.23.2-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl","41c2f84d172449b4dadb9cdc508e3e364076613c35b16e76ecfe47a60d1e3305","huggingface/tokenizers"),
+              ("fastmcp-slim","4.2.0","fastmcp_slim-4.2.0-py3-none-any.whl","174239bed3ac47275afa7fe82941a65f86ad0314205195766c92b138c6dcfebe","PrefectHQ/fastmcp"),
+          ]
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*a,**kw): return None
+          opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+          out=Path("evidence")
+          results=[]
+          for name,version,filename,digest,repo in rows:
+              url=f"https://pypi.org/integrity/{name}/{version}/{filename}/provenance"
+              row=dict(name=name,version=version,filename=filename,wheel_sha256=digest,expected_repository=repo,url=url,status="BLOCKED",signature_verified=False,compiled_membership_verified=False)
+              try:
+                  req=urllib.request.Request(url,headers={"Accept":"application/json","Accept-Encoding":"identity"})
+                  with opener.open(req,timeout=8) as response:
+                      assert response.headers.get("Content-Encoding","identity")=="identity"
+                      raw=response.read(2*1024**2+1)
+                  if len(raw)>2*1024**2:raise ValueError("metadata cap")
+                  doc=json.loads(raw)
+                  assert isinstance(doc,dict) and isinstance(doc.get("attestation_bundles"),list)
+                  statements=[]
+                  for bundle in doc["attestation_bundles"]:
+                      publisher=bundle.get("publisher",{})
+                      for attestation in bundle["attestations"]:
+                          statement_raw=base64.b64decode(attestation["envelope"]["statement"],validate=True)
+                          statement=json.loads(statement_raw)
+                          subjects=statement.get("subject",[])
+                          statements.append(dict(predicate_type=statement.get("predicateType"),subject_digest_match=any(x.get("name")==filename and x.get("digest",{}).get("sha256")==digest for x in subjects),publisher=publisher,statement_sha256=hashlib.sha256(statement_raw).hexdigest()))
+                  row.update(status="PROVENANCE_METADATA_COLLECTED",response_sha256=hashlib.sha256(raw).hexdigest(),bytes=len(raw),statements=statements)
+                  (out/(name+".provenance.json")).write_bytes(raw)
+              except urllib.error.HTTPError as exc:
+                  row.update(status="NOT_PUBLISHED_AT_ENDPOINT" if exc.code==404 else "HTTP_BLOCKED",http_status=exc.code)
+              except Exception as exc:
+                  row.update(error_type=type(exc).__name__)
+              results.append(row)
+          receipt=dict(status="PUBLIC_PROVENANCE_DISCOVERY_ONLY",as_of_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),rows=results,distribution_downloaded=False,signature_verified=False,installation_authorized=False,release_authorized=False)
+          (out/"provenance-review.json").write_text(json.dumps(receipt,sort_keys=True,indent=2)+"\n")
+          print(json.dumps([(r["name"],r["status"],len(r.get("statements",[]))) for r in results]))
+          # A 404 is a completed discovery, not an authenticity decision.
+          if any(r["status"] not in ("PROVENANCE_METADATA_COLLECTED","NOT_PUBLISHED_AT_ENDPOINT") for r in results):raise SystemExit(1)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: sprint21-r2-targeted-provenance
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
