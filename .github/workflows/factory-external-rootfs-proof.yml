@@ -46,7 +46,14 @@ jobs:
             rm -f -- "$logpath" "$work/mount-check.awk"
             rmdir "$work" || rc=1
             printf 'final_exit_code=%s\n' "$rc" > "$evidence/exit.txt"
-            if [ "$rc" = 0 ]; then echo resources_removed > "$evidence/cleanup.txt"; fi
+            # Cleanup evidence is separate from the probe result.
+            if ! podman container exists "$name" && ! mountpoint -q "$root" && test ! -e "$work"; then
+              echo resources_removed > "$evidence/cleanup.txt"
+            else
+              echo cleanup_unverified > "$evidence/cleanup.txt"
+              rc=1
+              printf 'final_exit_code=%s\n' "$rc" > "$evidence/exit.txt"
+            fi
             exit "$rc"
           }
           trap cleanup EXIT
@@ -89,17 +96,28 @@ jobs:
               test "$(df -Pk / | awk "NR==2{print \$2}")" = 786432
               test "$(df -Pi / | awk "NR==2{print \$2}")" = 49152
               awk "\$5==\"/\" && \$0 ~ / - tmpfs / {ok=1} END{exit !ok}" /proc/self/mountinfo
+              # Record evidence before checks; never write to a possibly external metadata mount.
+              cat /proc/self/mountinfo
+              df -Pk
+              df -Pi
               test -c /dev/null
-              for path in /etc/hostname /run/.containerenv; do
-                if (printf denied > "$path") 2>/dev/null; then exit 24; fi
+              for path in /etc/hosts /etc/hostname /run/.containerenv; do
+                if test -L "$path"; then printf "METADATA_SYMLINK %s\n" "$path"; exit 24; fi
+                mountopts=$(awk -v p="$path" "\$5==p {print \$6}" /proc/self/mountinfo)
+                printf "METADATA_MOUNT %s %s\n" "$path" "${mountopts:-rootfs}"
+                if test -n "$mountopts"; then
+                  case "$mountopts" in ro|ro,*) ;; *) printf "METADATA_EXTERNAL_WRITABLE %s\n" "$path"; exit 24;; esac
+                elif test -e "$path"; then
+                  test -f "$path"
+                  test "$(stat -c %d "$path")" = "$(stat -c %d /)"
+                fi
               done
-              printf "GENERATED_METADATA_WRITE_DENIED\n"
+              printf "GENERATED_METADATA_QUOTA_OR_READONLY_PASS\n"
               printf test > /dev/null
               test -r /proc/1/stat
               test ! -e /run/podman/podman.sock && test ! -e /var/run/docker.sock
               test -z "$(find /dev -xdev -type b -print)"
               for ns in ipc pid net mnt cgroup; do printf "NS %s %s\n" "$ns" "$(readlink "/proc/self/ns/$ns")"; done
-              cat /proc/self/mountinfo
               # /run must share root quota; /dev must deny ordinary file writes.
               test "$(stat -c %d /run)" = "$(stat -c %d /)"
               if touch /dev/coden-write-probe 2>/dev/null; then rm /dev/coden-write-probe; exit 25; fi
@@ -131,7 +149,7 @@ jobs:
           test "$(cat "$evidence/container-exit.txt")" = 0
           grep -qx EXTERNAL_ROOTFS_SYNTHETIC_PASS "$evidence/probe.log"
           grep -qx AUXILIARY_WRITES_RESTRICTED_PASS "$evidence/probe.log"
-          grep -qx GENERATED_METADATA_WRITE_DENIED "$evidence/probe.log"
+          grep -qx GENERATED_METADATA_QUOTA_OR_READONLY_PASS "$evidence/probe.log"
           # Reject any extra writable ordinary-file mount, including generated single-file binds.
           # Standard character-device bind mounts and kernel pseudo-filesystems are classified
           # separately; their kernel-resource accounting is not inferred from this check.
