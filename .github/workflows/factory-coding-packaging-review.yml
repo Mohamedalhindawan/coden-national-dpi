@@ -2076,3 +2076,166 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+  sprint24-logical-io-kernel-preflight:
+    # Exact existing wheel/ELF auditors on generated trusted fixtures. No distributions.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == 'da959e2966feb68ca735cd2a4c8e72f360525820' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: da959e2966feb68ca735cd2a4c8e72f360525820
+          persist-credentials: false
+      - name: Exercise strict wheel auditor under rootless containment
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          unit="coden-s24-fixture-${GITHUB_RUN_ID}.service"
+          store=""; scratch=""
+          cleanup() {
+            status=$?
+            trap - EXIT
+            sudo systemctl stop "$unit" >/dev/null 2>&1 || true
+            state="$(sudo systemctl show "$unit" -p ActiveState --value 2>/dev/null || true)"
+            case "$state" in inactive|failed) ;; *) status=1;; esac
+            printf 'SERVICE_%s\n' "$state" > "$ev/cleanup.txt"
+            for dir in "$scratch" "$store"; do
+              [[ -n "$dir" ]] || continue
+              if mountpoint -q "$dir"; then
+                sudo umount "$dir" || { echo UNMOUNT_FAILED >> "$ev/cleanup.txt"; status=1; continue; }
+              fi
+              sudo rmdir "$dir" || { status=1; continue; }
+              echo MOUNT_UNMOUNTED_AND_REMOVED >> "$ev/cleanup.txt"
+            done
+            exit "$status"
+          }
+          trap cleanup EXIT
+          test "$(git rev-parse HEAD)" = da959e2966feb68ca735cd2a4c8e72f360525820
+          test "$(git hash-object ai_factory/factory_wheel_notice_audit.py)" = 32fe2e50a0e5263184bffd286cd57d4de434a8e2
+          test "$(git hash-object ai_factory/factory_python_elf.py)" = fc1426358f3cc374af01fe453ece23c9dbef120e
+          uid="$(id -u nobody)"; gid="$(id -g nobody)"
+          host_ns="$(readlink /proc/self/ns/net)"
+          store="$(sudo mktemp -d /opt/coden-s24-input.XXXXXXXX)"
+          scratch="$(sudo mktemp -d /opt/coden-s24-scratch.XXXXXXXX)"
+          sudo mount -t tmpfs -o "size=8m,nosuid,nodev,noexec,mode=0755,uid=$(id -u),gid=$(id -g)" tmpfs "$store"
+          sudo mount -t tmpfs -o "size=960m,nosuid,nodev,noexec,mode=0700,uid=$uid,gid=$gid" tmpfs "$scratch"
+          sudo mkdir "$scratch/home" "$scratch/tmp"
+          sudo chown "$uid:$gid" "$scratch/home" "$scratch/tmp"
+          sudo chmod 0700 "$scratch/home" "$scratch/tmp"
+          mkdir -m 0755 "$store/ai_factory"
+          install -m 0444 ai_factory/factory_wheel_notice_audit.py ai_factory/factory_python_elf.py "$store/ai_factory/"
+          sudo mount -o remount,ro,nosuid,nodev,noexec "$store"
+          findmnt -n -o FSTYPE,OPTIONS --mountpoint "$store" > "$ev/input-mount.txt"
+          findmnt -n -o FSTYPE,OPTIONS --mountpoint "$scratch" > "$ev/scratch-mount.txt"
+          script="$(cat <<'PY'
+          import hashlib,importlib.util,json,os,socket,sys,resource
+          from pathlib import Path
+          root,scratch,host=Path(sys.argv[1]),Path(sys.argv[2]),sys.argv[3]
+          a,b=os.statvfs(root),os.statvfs(scratch)
+          assert a.f_frsize*a.f_blocks==8388608 and a.f_flag&os.ST_RDONLY
+          assert b.f_frsize*b.f_blocks==1006632960
+          assert all(os.stat(p).st_dev==os.stat(scratch).st_dev for p in (scratch/"home",scratch/"tmp",Path("/tmp"),Path("/var/tmp")))
+          assert os.getuid()!=0 and set(os.getgroups())<={os.getgid()}
+          st=dict(x.split(":",1) for x in Path("/proc/self/status").read_text().splitlines() if ":" in x)
+          assert int(st["CapEff"],16)==0 and st["NoNewPrivs"].strip()=="1"
+          assert os.readlink("/proc/self/ns/net")!=host and sorted(n for _,n in socket.if_nameindex())==["lo"]
+          assert len(Path("/proc/self/net/route").read_text().splitlines())==1
+          v6=Path("/proc/self/net/ipv6_route")
+          assert not v6.exists() or all(x.split()[-1]=="lo" for x in v6.read_text().splitlines() if x.strip())
+          assert not any(os.path.lexists(x) for x in ("/run/docker.sock","/var/run/docker.sock"))
+          assert set(os.environ)<={"PATH","HOME","TMPDIR","LC_ALL"}
+          cg=next(x.split(":",2)[2] for x in Path("/proc/self/cgroup").read_text().splitlines() if x.startswith("0::"))
+          p=Path("/sys/fs/cgroup")/cg.lstrip("/")
+          cpu=(p/"cpu.max").read_text().split()
+          assert int(cpu[0])==2*int(cpu[1]) and (p/"memory.max").read_text().strip()=="4294967296" and (p/"pids.max").read_text().strip()=="128"
+          import base64,csv,io,zipfile
+          sys.path.insert(0,str(root))
+          from ai_factory.factory_wheel_notice_audit import inspect_wheel,inspect_wheel_batch,WheelBudget
+          def fixture(name,payload):
+              prefix=name+"-1.dist-info/"
+              files={name+"/object":payload,prefix+"METADATA":("Name: "+name+"\nVersion: 1\n").encode(),prefix+"WHEEL":b"Wheel-Version: 1.0\nTag: py3-none-any\n",prefix+"LICENSE":b"generated test fixture"}
+              rows=[[n,"sha256="+base64.urlsafe_b64encode(hashlib.sha256(data).digest()).decode().rstrip("="),str(len(data))] for n,data in files.items()]
+              rows.append([prefix+"RECORD","",""])
+              text=io.StringIO(newline="");csv.writer(text,lineterminator="\n").writerows(rows)
+              files[prefix+"RECORD"]=text.getvalue().encode()
+              out=io.BytesIO()
+              with zipfile.ZipFile(out,"w",compression=zipfile.ZIP_DEFLATED) as z:
+                  for n,data in files.items():z.writestr(n,data)
+              raw=out.getvalue()
+              return (raw,hashlib.sha256(raw).hexdigest()),sum(map(len,files.values()))
+          good=[fixture("first",b"fixture"),fixture("second",Path("/bin/true").read_bytes()),fixture("third",b"fixture")]
+          result=inspect_wheel_batch([x[0] for x in good],scratch=scratch/"tmp",inspect_native=True,fixture_native=True)
+          assert result["record_verified"] and result["native_count"]==1 and not result["release_authorized"]
+          assert result["expanded_bytes"]==sum(x[1] for x in good)
+          assert result["compressed_bytes"]==sum(len(x[0][0]) for x in good)
+          assert result["archive_read_bytes"]>result["compressed_bytes"]
+          assert result["native_input_reserved_bytes"]==4*len(Path("/bin/true").read_bytes())
+          assert result["logical_io_bytes"]==result["archive_read_bytes"]+result["expanded_bytes"]+result["native_input_reserved_bytes"]
+          assert not result["native_internal_io_verified"]
+          try:inspect_wheel_batch([x[0] for x in good],scratch=scratch/"tmp",inspect_native=True)
+          except ValueError as exc:assert "native inspection blocked" in str(exc)
+          else:raise AssertionError("native admission path was not blocked")
+          # Prove a limit reached by reads alone even when decompression fits.
+          from ai_factory.factory_wheel_notice_audit import _MeteredArchive
+          tiny=WheelBudget(io_limit=10)
+          reader=_MeteredArchive(b"abcdef",tiny)
+          assert reader.read(4)==b"abcd";reader.seek(0)
+          assert reader.read(4)==b"abcd"
+          try:reader.read(3)
+          except ValueError:pass
+          else:raise AssertionError("unmetered repeated read")
+          assert reader.tell()==4 and tiny.archive_read_bytes==8 and tiny.failed
+          io_only=WheelBudget(io_limit=len(good[0][0][0]))
+          try:inspect_wheel(*good[0][0],budget=io_only)
+          except ValueError:pass
+          else:raise AssertionError("ZIP read budget bypass")
+          assert io_only.failed and io_only.logical_io_bytes<=len(good[0][0][0])
+
+          assert result["wheels"][1]["files"]["second/object"]["native"]["machine"]
+          assert not list((scratch/"tmp").iterdir())
+          bad=[good[0],fixture("broken",b"\x7fELF"+b"\0"*16),good[2]]
+          try:inspect_wheel_batch([x[0] for x in bad],scratch=scratch/"tmp",inspect_native=True,fixture_native=True)
+          except ValueError:pass
+          else:raise AssertionError("malformed ELF accepted")
+          assert not list((scratch/"tmp").iterdir())
+          budget=WheelBudget()
+          large=[fixture(n,b"x"*(mib*1024**2)) for n,mib in (("largeone",40),("largetwo",40),("largethree",49))]
+          for pair,expanded in large[:2]:
+              assert inspect_wheel(*pair,budget=budget)["expanded_bytes"]==expanded
+          before=budget.expanded_bytes
+          before_io=budget.logical_io_bytes
+          assert before==sum(x[1] for x in large[:2])
+          try:inspect_wheel(*large[2][0],budget=budget)
+          except ValueError:pass
+          else:raise AssertionError("aggregate expanded limit not enforced")
+          assert budget.failed and budget.expanded_bytes==before
+          assert before_io>before and budget.logical_io_bytes<=128*1024**2
+          try:inspect_wheel(*large[0][0],budget=budget)
+          except ValueError:pass
+          else:raise AssertionError("failed budget reused")
+          assert not list((scratch/"tmp").iterdir())
+          print(json.dumps(dict(status="SYNTHETIC_LOGICAL_IO_KERNEL_PREFLIGHT",source_commit="da959e2966feb68ca735cd2a4c8e72f360525820",wheel_count=3,record_verified=True,expanded_bytes=result["expanded_bytes"],compressed_bytes=result["compressed_bytes"],native_count=result["native_count"],native_output_bytes=result["native_output_bytes"],archive_read_bytes=result["archive_read_bytes"],logical_io_bytes=result["logical_io_bytes"],native_input_reserved_bytes=result["native_input_reserved_bytes"],native_real_path_blocked=True,repeated_read_limit_pass=True,read_only_budget_limit_pass=True,large_logical_io_before_third=before_io,large_logical_io_after_reject=budget.logical_io_bytes,cgroup_memory_peak_bytes=int((p/"memory.peak").read_text().strip()),malformed_elf_batch_rejected=True,large_expanded_before_third=before,third_declared_expanded_bytes=large[2][1],aggregate_expanded_limit=128*1024**2,third_rejected=True,failed_budget_reuse_rejected=True,scratch_empty=True,uid=os.getuid(),input_capacity=8388608,scratch_capacity=1006632960,cpu_max=cpu,memory_max=4294967296,pids_max=128,network_interfaces=["lo"],docker_socket_absent=True,max_rss_kib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,real_wheels_scanned=False,readelf_io_metered=False,independent_approval=False,release_authorized=False),sort_keys=True))
+          PY
+          )"
+          timeout --kill-after=5s 90s sudo systemd-run --unit="$unit" --wait --pipe --quiet \
+            -p "User=$uid" -p "Group=$gid" -p CPUQuota=200% -p MemoryMax=4294967296 -p TasksMax=128 \
+            -p RuntimeMaxSec=600 -p KillMode=control-group -p NoNewPrivileges=yes \
+            -p CapabilityBoundingSet= -p AmbientCapabilities= -p PrivateNetwork=yes \
+            -p PrivateDevices=yes -p ProtectHome=tmpfs -p ProtectSystem=strict \
+            -p 'TemporaryFileSystem=/run:ro' -p 'TemporaryFileSystem=/dev/shm:ro' \
+            -p "BindPaths=$scratch/tmp:/tmp $scratch/tmp:/var/tmp" -p "ReadWritePaths=$scratch /tmp /var/tmp" \
+            -p RestrictSUIDSGID=yes \
+            /usr/bin/env -i PATH=/usr/bin:/bin "HOME=$scratch/home" TMPDIR=/tmp LC_ALL=C /usr/bin/python3 -I -B -c "$script" "$store" "$scratch" "$host_ns" > "$ev/logical-io-kernel-preflight.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: sprint24-logical-io-kernel-preflight-receipts
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
