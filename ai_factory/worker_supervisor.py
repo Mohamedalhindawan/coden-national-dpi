@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import sqlite3
 import stat
 import subprocess
 import sys
@@ -94,10 +95,20 @@ def _monitor_bound_task(proc, *, queue_db, journal, task_id, timeout_seconds):
     """
     from .durable_queue import DurableQueue
 
-    queue = DurableQueue(queue_db)
+    def monitor_read(read):
+        try:
+            return read()
+        except (OSError, sqlite3.Error, ValueError, TypeError, KeyError) as exc:
+            # Lost durable state is not permission to keep executing.
+            # Stop only the owned process group; preserve the lease for review.
+            if proc.returncode is None:
+                _terminate_process_group(proc)
+            raise SupervisorError("worker queue monitoring failed; operator review required") from exc
+
+    queue = monitor_read(lambda: DurableQueue(queue_db))
     deadline = time.monotonic() + timeout_seconds
     while True:
-        state = queue.read(task_id)["status"]
+        state = monitor_read(lambda: queue.read(task_id)["status"])
         if state in ("cancel_requested", "cancelled", "needs_review"):
             if proc.returncode is None:
                 _terminate_process_group(proc)
@@ -139,7 +150,7 @@ def _monitor_bound_task(proc, *, queue_db, journal, task_id, timeout_seconds):
             continue
         # Exit can race with a cancel request. Re-read at least once so a
         # successful child exit never masks an already registered cancel.
-        final_state = queue.read(task_id)["status"]
+        final_state = monitor_read(lambda: queue.read(task_id)["status"])
         if final_state in ("cancel_requested", "cancelled", "needs_review"):
             continue
         if final_state == "queued":
