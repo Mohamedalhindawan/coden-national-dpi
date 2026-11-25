@@ -4,7 +4,6 @@ import shutil
 import tarfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 from ai_factory.factory_python_elf import collect_elf, inspect_elf_file
 
@@ -53,11 +52,11 @@ class PythonElfReviewTest(unittest.TestCase):
 
     def test_distinguishes_rpath_from_runpath(self):
         def fake_readelf(args, **kwargs):
-            return SimpleNamespace(stdout=(
+            return (
                 ' 0x000000000000000f (RPATH) Library rpath: [$ORIGIN/old]\n'
                 ' 0x000000000000001d (RUNPATH) Library runpath: [$ORIGIN/new]\n'
-                if '-d' in args else ''))
-        with patch('ai_factory.factory_python_elf.subprocess.run', side_effect=fake_readelf):
+                if '-d' in args else '')
+        with patch('ai_factory.factory_python_elf._bounded_command', side_effect=fake_readelf):
             result = inspect_elf_file(Path('/synthetic/object'))
         self.assertEqual(result['rpath'], ['$ORIGIN/old'])
         self.assertEqual(result['runpath'], ['$ORIGIN/new'])
