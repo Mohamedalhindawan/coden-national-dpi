@@ -3,6 +3,7 @@
 No OpenHands agent/service is installed or run in CI; the workspace files
 stand in for an upstream SDK sandbox export.
 """
+import hashlib
 import json
 import os
 import subprocess
@@ -161,6 +162,33 @@ class OpenHandsMultiFileReviewTests(unittest.TestCase):
         self.assertFalse(receipt["release_authorized"])
         self.assertEqual(project.execute(root / "candidate.pyz", ["x", "x", "y"]),
                          {"x": 2, "y": 1})
+
+
+    def test_review_receipt_binds_all_three_original_files_and_task(self):
+        with patch.object(project, "supported_host", return_value=True), \
+             patch.object(project, "lint"), \
+             patch.object(project, "verify", side_effect=[2, 1]):
+            result = self.assess()
+        receipt = json.loads((result["directory"] / "review.json").read_text())
+        expected = {name: hashlib.sha256((self.source / name).read_bytes()).hexdigest()
+                    for name in sorted(openhands_multifile_review.EXPECTED_FILES)}
+        self.assertEqual(receipt["source_files_sha256"], expected)
+        self.assertEqual(receipt["task_sha256"],
+                         hashlib.sha256(project.encoded(self.task).encode("utf-8")).hexdigest())
+        self.assertFalse(receipt["agent_authored_tests_executed"])
+        self.assertFalse(receipt["release_authorized"])
+
+    def test_independent_timeout_keeps_evidence_without_review_receipt(self):
+        with patch.object(project, "supported_host", return_value=True), \
+             patch.object(project, "lint"), \
+             patch.object(project, "verify", side_effect=[2, subprocess.TimeoutExpired("fixture", 5)]):
+            result = self.assess()
+        self.assertEqual(result["status"], "failed")
+        self.assertTrue((result["directory"] / "candidate.pyz").is_file())
+        self.assertFalse((result["directory"] / "review.json").exists())
+        self.assertFalse(result["automatic_retry_allowed"])
+        self.assertFalse(result["execution_authorized"])
+        self.assertFalse(result["release_authorized"])
 
 
 if __name__ == "__main__":
