@@ -447,3 +447,75 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+  official-minimal-referrer-discovery:
+    if: github.event.repository.private == false && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    permissions: {}
+    steps:
+      - name: Discover signature and SBOM metadata without fetching runtime layers
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          python3 - <<'PY'
+          import hashlib,json,re,urllib.error,urllib.request
+          from pathlib import Path
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl): return None
+          opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+          root="https://ghcr.io/v2/openhands/agent-server/"
+          def fetch(url,headers=None,cap=2097152):
+              try:
+                  with opener.open(urllib.request.Request(url,headers=headers or {}),timeout=10) as res:
+                      raw=res.read(cap+1)
+                      if len(raw)>cap: raise ValueError("metadata exceeds cap")
+                      return res.status,raw,res.headers
+              except urllib.error.HTTPError as exc:
+                  return exc.code,b"",exc.headers
+          code,raw,_=fetch("https://ghcr.io/token?service=ghcr.io&scope=repository%3Aopenhands%2Fagent-server%3Apull",cap=65536)
+          assert code==200
+          token=json.loads(raw)["token"]
+          assert isinstance(token,str) and 0<len(token)<16384
+          auth={"Authorization":"Bearer "+token,"Accept":", ".join(("application/vnd.oci.image.index.v1+json","application/vnd.oci.image.manifest.v1+json","application/vnd.docker.distribution.manifest.list.v2+json","application/vnd.docker.distribution.manifest.v2+json"))}
+          records=[]
+          for subject in ("9a36355fa2baacaae1c6dd5a1a80492bba89d1dec5a536af572ba5fb3e96e22f","7796a8a2b901fb3f706312d1c10bfda9185b4c6cee5594e1a32f81a62d2dd95d"):
+              digest="sha256:"+subject
+              for kind,path in [("oci_referrers","referrers/"+digest),("fallback_index","manifests/sha256-"+subject),("cosign_signature","manifests/sha256-"+subject+".sig"),("cosign_attestation","manifests/sha256-"+subject+".att"),("cosign_sbom","manifests/sha256-"+subject+".sbom")]:
+                  code,raw,h=fetch(root+path,auth)
+                  record=dict(subject=digest,endpoint=kind,http_status=code)
+                  if code==200:
+                      obj=json.loads(raw)
+                      assert isinstance(obj,dict)
+                      raw_sha="sha256:"+hashlib.sha256(raw).hexdigest()
+                      if kind!="oci_referrers": assert h.get("Docker-Content-Digest")==raw_sha
+                      entries=obj.get("manifests",obj.get("layers",[]))
+                      assert isinstance(entries,list) and len(entries)<=256
+                      desc=[]
+                      for entry in entries:
+                          assert re.fullmatch(r"sha256:[0-9a-f]{64}",entry["digest"])
+                          desc.append({k:entry[k] for k in ("digest","mediaType","artifactType","size") if k in entry})
+                      record.update(metadata_sha256=raw_sha,descriptors=desc,artifact_type=obj.get("artifactType"),pagination_present=bool(h.get("Link")))
+                      Path("evidence",subject+"-"+kind+".json").write_bytes(raw)
+                  records.append(record)
+              # No registry token is sent to GitHub's REST API.
+              code,raw,h=fetch("https://api.github.com/repos/OpenHands/software-agent-sdk/attestations/"+digest,{"Accept":"application/vnd.github+json","User-Agent":"CODEN-metadata-review","X-GitHub-Api-Version":"2022-11-28"})
+              record=dict(subject=digest,endpoint="github_attestations",http_status=code)
+              if code==200:
+                  obj=json.loads(raw)
+                  assert isinstance(obj,dict) and isinstance(obj.get("attestations"),list)
+                  record.update(bundle_count=len(obj["attestations"]),pagination_present=bool(h.get("Link")),metadata_sha256="sha256:"+hashlib.sha256(raw).hexdigest())
+                  Path("evidence",subject+"-github-attestations.json").write_bytes(raw)
+              records.append(record)
+          report=dict(status="DISCOVERY_ONLY",results=records,signature_identity_verified=False,sbom_verified=False,
+                      installed_inventory_verified=False,image_layers_downloaded=False,build_authorized=False,release_authorized=False)
+          Path("evidence/referrer-review.json").write_text(json.dumps(report,indent=2)+"\n")
+          print(json.dumps(report,indent=2))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-official-minimal-referrer-discovery
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
