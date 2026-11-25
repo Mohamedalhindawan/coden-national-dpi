@@ -107,16 +107,18 @@ class WheelBudget:
     Limits are deliberately no larger than the proposed three-wheel scope.
     This is not an OS quota or a network acquisition authorization.
     """
-    __slots__ = ("_compressed_limit", "_expanded_limit", "_compressed", "_expanded", "_failed")
+    __slots__ = ("_compressed_limit", "_expanded_limit", "_io_limit", "_compressed", "_expanded", "_archive_read", "_native_reserved", "_failed")
 
-    def __init__(self, compressed_limit=8 * 1024**2, expanded_limit=128 * 1024**2):
+    def __init__(self, compressed_limit=8 * 1024**2, expanded_limit=128 * 1024**2, io_limit=128 * 1024**2):
         if (type(compressed_limit) is not int or type(expanded_limit) is not int
                 or not 0 < compressed_limit <= 8 * 1024**2
-                or not 0 < expanded_limit <= 128 * 1024**2):
+                or not 0 < expanded_limit <= 128 * 1024**2
+                or type(io_limit) is not int or not 0 < io_limit <= 128 * 1024**2):
             raise ValueError("invalid wheel budget")
         self._compressed_limit = compressed_limit
         self._expanded_limit = expanded_limit
-        self._compressed = self._expanded = 0
+        self._io_limit = io_limit
+        self._compressed = self._expanded = self._archive_read = self._native_reserved = 0
         self._failed = False
 
     @property
@@ -133,7 +135,36 @@ class WheelBudget:
 
     @property
     def remaining(self):
-        return self._expanded_limit - self._expanded
+        return min(self._expanded_limit - self._expanded, self.io_remaining)
+
+    @property
+    def archive_read_bytes(self):
+        return self._archive_read
+
+    @property
+    def native_input_reserved_bytes(self):
+        return self._native_reserved
+
+    @property
+    def logical_io_bytes(self):
+        return self._archive_read + self._expanded + self._native_reserved
+
+    @property
+    def io_remaining(self):
+        return self._io_limit - self.logical_io_bytes
+
+    def _require_io(self, count):
+        if self.failed or count < 0 or count > self.io_remaining:
+            self._failed = True
+            raise ValueError("shared logical I/O budget exhausted or failed")
+
+    def _read(self, count):
+        self._require_io(count)
+        self._archive_read += count
+
+    def _reserve_native(self, count):
+        self._require_io(count)
+        self._native_reserved += count
 
     def _admit(self, count):
         if self.failed or count > self._compressed_limit - self._compressed:
@@ -148,7 +179,71 @@ class WheelBudget:
         self._expanded += count
 
 
-def _strict_ranges(raw, z, entries):
+class _MeteredArchive:
+    """Meter logical reads of an immutable in-memory archive, including rereads.
+
+    No claim about physical device reads, zlib internals, or external tools.
+    All archive access in the strict path goes through this object.
+    """
+    def __init__(self, raw, budget):
+        self._stream = io.BytesIO(raw)
+        self._size = len(raw)
+        self._budget = budget
+
+    def tell(self):
+        return self._stream.tell()
+
+    def seek(self, offset, whence=0):
+        return self._stream.seek(offset, whence)
+
+    def seekable(self):
+        return True
+
+    def read(self, size=-1):
+        available = max(0, self._size - self.tell())
+        requested = available if size < 0 else size
+        self._budget._require_io(requested)
+        count = min(requested, available)
+        self._budget._read(count)
+        return self._stream.read(count)
+
+    def at(self, offset, size):
+        if offset < 0 or size < 0 or offset+size > self._size:
+            raise ValueError("archive read outside bounds")
+        self.seek(offset)
+        raw = self.read(size)
+        if len(raw) != size:
+            raise ValueError("short archive read")
+        return raw
+
+
+def _classic_eocd(reader, size):
+    """Narrow review profile; reject split/ZIP64/comment/trailing layouts."""
+    if size < 22:
+        raise ValueError("short ZIP end record")
+    magic,disk,central_disk,disk_count,total_count,central_size,central_offset,comment = struct.unpack(
+        "<4s4H2IH",reader.at(size-22,22))
+    if (magic != b"PK\x05\x06" or disk or central_disk or comment
+            or disk_count != total_count or not 0 < total_count <= 50000
+            or central_offset + central_size != size-22
+            or central_offset == 0xffffffff or central_size == 0xffffffff):
+        raise ValueError("unsupported ZIP end record")
+    return total_count,central_offset
+
+
+def _check_extra(extra):
+    offset = 0
+    while offset < len(extra):
+        if len(extra)-offset < 4:
+            raise ValueError("truncated ZIP extra field")
+        kind,size = struct.unpack_from("<HH",extra,offset)
+        offset += 4
+        if size > len(extra)-offset or kind in (0x0001,0x7075):
+            raise ValueError("unsupported ZIP64 or Unicode-path extra field")
+        offset += size
+
+
+def _strict_ranges(reader, z, entries):
     """Resolve bounded local records without extracting any file.
 
     Conservative profile: stored/deflate, ordinary local sizes, no data
@@ -162,7 +257,7 @@ def _strict_ranges(raw, z, entries):
         if offset != end or offset + 30 > z.start_dir:
             raise ValueError("noncontiguous or overlapping local records")
         (magic, _, flags, method, _, _, crc, compressed, expanded,
-         nlen, xlen) = struct.unpack_from("<4s5H3I2H", raw, offset)
+         nlen, xlen) = struct.unpack("<4s5H3I2H", reader.at(offset, 30))
         if (magic != b"PK\x03\x04" or flags != e.flag_bits
                 or flags & ~0x806 or method not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)
                 or method != e.compress_type
@@ -172,7 +267,9 @@ def _strict_ranges(raw, z, entries):
         end = begin + compressed
         if begin > z.start_dir or end > z.start_dir:
             raise ValueError("wheel local record bounds")
-        name = raw[offset + 30:offset + 30 + nlen].decode("utf-8" if flags & 0x800 else "cp437")
+        name = reader.at(offset + 30, nlen).decode("utf-8" if flags & 0x800 else "cp437")
+        _check_extra(reader.at(offset+30+nlen,xlen))
+        _check_extra(e.extra)
         if name != e.orig_filename:
             raise ValueError("wheel local name mismatch")
         ranges[e.filename] = (begin, end)
@@ -181,7 +278,7 @@ def _strict_ranges(raw, z, entries):
     return ranges
 
 
-def _member_blocks(raw, e, span, budget):
+def _member_blocks(reader, e, span, budget):
     """Bound actual emitted bytes, even for a forged central directory.
 
     A one-byte overflow probe is never retained or accepted as evidence.
@@ -200,7 +297,13 @@ def _member_blocks(raw, e, span, budget):
         return block
 
     for offset in range(begin, end, CHUNK):
-        pending = raw[offset:min(offset + CHUNK, end)]
+        count_to_read = min(CHUNK, end-offset)
+        if decoder is None:
+            if count_to_read > budget.remaining or count_to_read > e.file_size-count:
+                budget._failed = True
+                raise ValueError("stored member expansion budget or size")
+            budget._require_io(2*count_to_read)
+        pending = reader.at(offset,count_to_read)
         if decoder is None:
             yield account(pending)
             continue
@@ -229,12 +332,21 @@ def _member_blocks(raw, e, span, budget):
 
 def _inspect_record(raw, digest, budget, *, native_session=None):
     budget._admit(len(raw))
-    if hashlib.sha256(raw).hexdigest() != digest:
+    reader = _MeteredArchive(raw,budget)
+    read_before = budget.archive_read_bytes
+    io_before = budget.logical_io_bytes
+    native_before = budget.native_input_reserved_bytes
+    hasher = hashlib.sha256()
+    for offset in range(0,len(raw),CHUNK):
+        hasher.update(reader.at(offset,min(CHUNK,len(raw)-offset)))
+    if hasher.hexdigest() != digest:
         raise ValueError("wheel digest mismatch")
     before = budget.expanded_bytes
-    with zipfile.ZipFile(io.BytesIO(raw)) as z:
+    expected_count,expected_central = _classic_eocd(reader,len(raw))
+    with zipfile.ZipFile(reader) as z:
         entries = z.infolist()
-        if len(entries) > 50000 or sum(e.file_size for e in entries) > budget.remaining:
+        if (len(entries) != expected_count or z.start_dir != expected_central
+                or sum(e.file_size for e in entries) > budget.remaining):
             raise ValueError("wheel member count or declared expansion budget")
         _validate_namespace(entries)
         aliases = {}
@@ -254,7 +366,7 @@ def _inspect_record(raw, digest, budget, *, native_session=None):
                 key = unicodedata.normalize("NFC", spelling.casefold())
                 if aliases.setdefault(key, spelling) != spelling:
                     raise ValueError("Unicode or casefold wheel path collision")
-        spans = _strict_ranges(raw, z, entries)
+        spans = _strict_ranges(reader, z, entries)
         files = {e.filename: e for e in entries if not e.is_dir()}
         roots = {p.split("/")[0] for p in files if p.split("/")[0].endswith(".dist-info")}
         if len(roots) != 1:
@@ -265,7 +377,7 @@ def _inspect_record(raw, digest, budget, *, native_session=None):
             raise ValueError("missing wheel distribution metadata or RECORD")
         if files[record].file_size > MAX_RECORD:
             raise ValueError("RECORD size limit")
-        record_bytes = b"".join(_member_blocks(raw, files[record], spans[record], budget))
+        record_bytes = b"".join(_member_blocks(reader, files[record], spans[record], budget))
         signatures = {record + ".jws", record + ".p7s"}
         rows = {}
         for row in csv.reader(io.StringIO(record_bytes.decode("utf-8"), newline=""), strict=True):
@@ -291,7 +403,7 @@ def _inspect_record(raw, digest, budget, *, native_session=None):
             sha = hashlib.sha256()
             verifier = hashlib.new(algo) if algo and algo != "sha256" else sha
             first = b""
-            blocks = (record_bytes,) if name == record else _member_blocks(raw, e, spans[name], budget)
+            blocks = (record_bytes,) if name == record else _member_blocks(reader, e, spans[name], budget)
             native_file = None
             native = None
             try:
@@ -313,6 +425,7 @@ def _inspect_record(raw, digest, budget, *, native_session=None):
                     raise ValueError("RECORD content hash mismatch")
                 if native_file is not None:
                     native_file.close()
+                    budget._reserve_native(4*e.file_size)
                     native = native_session.inspect()
             finally:
                 if native_file is not None:
@@ -326,6 +439,10 @@ def _inspect_record(raw, digest, budget, *, native_session=None):
                     receipt[name]["native"] = native
     return {"record_verified": True, "compressed_bytes": len(raw),
             "expanded_bytes": budget.expanded_bytes - before, "files": receipt,
+            "archive_read_bytes": budget.archive_read_bytes-read_before,
+            "logical_io_bytes": budget.logical_io_bytes-io_before,
+            "native_input_reserved_bytes": budget.native_input_reserved_bytes-native_before,
+            "native_internal_io_verified": False,
             "legacy_signature_files": sorted(signatures & set(files)),
             "legacy_signatures_verified": False, "release_authorized": False}
 
@@ -376,7 +493,7 @@ class _NativeSession:
         self.path.unlink()
 
 
-def inspect_wheel_batch(candidates, *, scratch, inspect_native=False):
+def inspect_wheel_batch(candidates, *, scratch, inspect_native=False, fixture_native=False):
     """Strict three-wheel batch; bytes supplied by caller, no network access.
 
     An unsuccessful inspection or cleanup raises without returning a receipt.
@@ -384,6 +501,8 @@ def inspect_wheel_batch(candidates, *, scratch, inspect_native=False):
     """
     if not isinstance(candidates, (list, tuple)) or len(candidates) != 3:
         raise ValueError("exactly three wheel inputs required")
+    if inspect_native and fixture_native is not True:
+        raise ValueError("native inspection blocked: internal reads unverified; fixture scope only")
     budget = WheelBudget()
     receipts = []
     try:
@@ -404,6 +523,10 @@ def inspect_wheel_batch(candidates, *, scratch, inspect_native=False):
         raise
     return {"wheels": receipts, "compressed_bytes": budget.compressed_bytes,
             "expanded_bytes": budget.expanded_bytes, "native_count": native_count,
+            "archive_read_bytes": budget.archive_read_bytes,
+            "logical_io_bytes": budget.logical_io_bytes,
+            "native_input_reserved_bytes": budget.native_input_reserved_bytes,
+            "native_internal_io_verified": False, "fixture_native": bool(inspect_native),
             "native_output_bytes": native_output_bytes, "legacy_signatures_verified": False,
             "record_verified": True, "release_authorized": False}
 
