@@ -403,3 +403,66 @@ class OfflineOCIReviewTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,"final pinned binary"):
                 self.inventory(Path(d),layers+[[("usr/local/bin/.wh.openhands-agent-server",R,b"",0)]],
                                embedded_binary=binary,max_read=250000)
+
+    def test_pax_metadata_size_is_bounded_before_tarfile_parse(self):
+        from ai_factory import oci_offline_evidence as audit
+        from unittest.mock import patch
+        R=tarfile.REGTYPE
+        # Use a small synthetic extended header and lower the policy bound,
+        # so rejection must happen before tarfile allocates/parses its body.
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d)
+            digest,layer=fixture(root)
+            store=root/"blobs/sha256"
+            buf=io.BytesIO()
+            with tarfile.open(fileobj=buf,mode="w",format=tarfile.PAX_FORMAT) as tar:
+                info=tarfile.TarInfo("example")
+                info.pax_headers={"comment":"x"*8192}
+                tar.addfile(info)
+            raw=buf.getvalue()
+            packed=gzip.compress(raw,mtime=0)
+            def put(data):
+                h=hashlib.sha256(data).hexdigest()
+                (store/h).write_bytes(data)
+                return {"digest":"sha256:"+h,"size":len(data)}
+            desc=put(packed)
+            desc["mediaType"]=audit.LAYER_TYPE
+            cfg=put(json.dumps({"os":"linux","architecture":"amd64","rootfs":{"type":"layers","diff_ids":["sha256:"+hashlib.sha256(raw).hexdigest()]}}).encode())
+            cfg["mediaType"]=audit.CONFIG_TYPE
+            manifest=put(json.dumps({"schemaVersion":2,"mediaType":audit.MANIFEST_TYPE,"config":cfg,"layers":[desc]}).encode())
+            with patch.object(audit,"MAX_METADATA",4096):
+                with self.assertRaisesRegex(ValueError,"extended tar metadata"):
+                    audit.verify(root,manifest["digest"],max_compressed_bytes=100000,max_expanded_bytes=100000,logical_inventory=True)
+
+    def test_embedded_inventory_rejects_unaccounted_data_gaps(self):
+        import zlib
+        from ai_factory.oci_offline_evidence import inspect_embedded_binary,inspect_pyz_toc
+        raw=self.carchive_fixture([("member",1,4,4,0,b"b")],payload=b"Xdata")
+        with self.assertRaisesRegex(ValueError,"unaccounted"):
+            inspect_embedded_binary(io.BytesIO(raw),max_read_bytes=8192)
+        data=zlib.compress(b"module")
+        raw=self.pyz_fixture(rows=[("demo",(0,18,len(data)))],payload=b"X"+data)
+        with self.assertRaisesRegex(ValueError,"unaccounted"):
+            inspect_pyz_toc(io.BytesIO(raw),max_read_bytes=8192)
+
+    def test_embedded_inventory_rejects_link_ancestors_and_missing_nul(self):
+        from ai_factory.oci_offline_evidence import inspect_embedded_binary
+        for entries,payload in [
+            ([("alias",0,7,7,0,b"n"),("alias/child",7,1,1,0,b"x")],b"target\0x"),
+            ([("alias",0,6,6,0,b"n")],b"target"),
+            ([("a",0,2,2,0,b"n"),("b",2,2,2,0,b"n")],b"b\0a\0"),
+        ]:
+            with self.subTest(entries=entries):
+                with self.assertRaises(ValueError):
+                    inspect_embedded_binary(io.BytesIO(self.carchive_fixture(entries,payload=payload)),max_read_bytes=8192)
+
+    def test_embedded_inventory_distinguishes_unknown_archives_and_native_files(self):
+        from ai_factory.oci_offline_evidence import inspect_embedded_binary
+        raw=self.carchive_fixture([("native.so",0,4,4,0,b"b"),("opaque",4,4,4,0,b"x")],
+                                  payload=b"\x7fELFPK\x05\x06")
+        report=inspect_embedded_binary(io.BytesIO(raw),max_read_bytes=8192)
+        self.assertEqual(report["entries"][0]["content_kind"],"elf")
+        self.assertEqual(report["entries"][1]["content_kind"],"unreviewed_archive")
+        self.assertEqual(report["uninspected_nested_archives"],["opaque"])
+        self.assertFalse(report["embedded_inventory_verified"])
+        self.assertFalse(report["release_authorized"])
