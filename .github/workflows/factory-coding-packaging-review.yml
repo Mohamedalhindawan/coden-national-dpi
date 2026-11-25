@@ -436,9 +436,15 @@ jobs:
                       installed_inventory_verified=False,signature_identity_verified=False,license_approved=False,
                       runtime_isolation_verified=False,build_authorized=False,release_authorized=False)
           Path("evidence/config-review.json").write_text(json.dumps(report,indent=2)+"\n")
-          # Only selected public metadata is retained; unknown env values and
-          # raw registry authorization are never copied to evidence or logs.
-          print("CONFIG_DIGEST_VERIFIED",config,"layers",len(diff_ids))
+          # Preserve the exact public config object, not layer payloads or
+          # registry authorization. Only the previously reviewed env key set
+          # is eligible for archival; no config values are printed to logs.
+          assert set(x.split("=",1)[0] for x in env)=={"PATH","OH_ENABLE_VSCODE","OPENHANDS_BUILD_GIT_SHA","OPENHANDS_BUILD_GIT_REF","ACP_NODE_DIR","LC_ALL","LANG","LOG_JSON","OH_ACP_SKILL_SOURCING","LD_LIBRARY_PATH"}
+          assert len(env)==10
+          Path("evidence",config.split(":",1)[1]+".json").write_bytes(raw)
+          report["raw_public_config_retained"]=True
+          Path("evidence/config-review.json").write_text(json.dumps(report,indent=2)+"\n")
+          print("CONFIG_DIGEST_VERIFIED",config,"layers",len(diff_ids),"raw public metadata retained")
           PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
