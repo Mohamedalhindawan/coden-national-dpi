@@ -2079,7 +2079,7 @@ jobs:
 
   sprint24-logical-io-kernel-preflight:
     # Exact existing wheel/ELF auditors on generated trusted fixtures. No distributions.
-    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == 'da959e2966feb68ca735cd2a4c8e72f360525820' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '9f3e6cfd9ff6a91ad4854509711d5a1cc8db2199' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
     runs-on: ubuntu-24.04
     timeout-minutes: 4
     permissions:
@@ -2087,7 +2087,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: da959e2966feb68ca735cd2a4c8e72f360525820
+          ref: 9f3e6cfd9ff6a91ad4854509711d5a1cc8db2199
           persist-credentials: false
       - name: Exercise strict wheel auditor under rootless containment
         shell: bash
@@ -2116,8 +2116,8 @@ jobs:
             exit "$status"
           }
           trap cleanup EXIT
-          test "$(git rev-parse HEAD)" = da959e2966feb68ca735cd2a4c8e72f360525820
-          test "$(git hash-object ai_factory/factory_wheel_notice_audit.py)" = 32fe2e50a0e5263184bffd286cd57d4de434a8e2
+          test "$(git rev-parse HEAD)" = 9f3e6cfd9ff6a91ad4854509711d5a1cc8db2199
+          test "$(git hash-object ai_factory/factory_wheel_notice_audit.py)" = 0f626b4140df120dfac565f8bcd470dddd9bb5a2
           test "$(git hash-object ai_factory/factory_python_elf.py)" = fc1426358f3cc374af01fe453ece23c9dbef120e
           uid="$(id -u nobody)"; gid="$(id -g nobody)"
           host_ns="$(readlink /proc/self/ns/net)"
@@ -2178,6 +2178,16 @@ jobs:
           assert result["native_input_reserved_bytes"]==4*len(Path("/bin/true").read_bytes())
           assert result["logical_io_bytes"]==result["archive_read_bytes"]+result["expanded_bytes"]+result["native_input_reserved_bytes"]
           assert not result["native_internal_io_verified"]
+          assert 0<result["evidence_bytes"]<=16*1024**2
+          evprobe=WheelBudget()
+          first=inspect_wheel(*good[0][0],budget=evprobe)
+          evbudget=WheelBudget(evidence_limit=first["evidence_bytes"])
+          inspect_wheel(*good[0][0],budget=evbudget)
+          try:inspect_wheel(*good[2][0],budget=evbudget)
+          except ValueError as exc:assert "evidence limit" in str(exc)
+          else:raise AssertionError("aggregate evidence budget bypass")
+          assert evbudget.failed and evbudget.evidence_bytes==first["evidence_bytes"]
+
           try:inspect_wheel_batch([x[0] for x in good],scratch=scratch/"tmp",inspect_native=True)
           except ValueError as exc:assert "native inspection blocked" in str(exc)
           else:raise AssertionError("native admission path was not blocked")
@@ -2220,7 +2230,7 @@ jobs:
           except ValueError:pass
           else:raise AssertionError("failed budget reused")
           assert not list((scratch/"tmp").iterdir())
-          print(json.dumps(dict(status="SYNTHETIC_LOGICAL_IO_KERNEL_PREFLIGHT",source_commit="da959e2966feb68ca735cd2a4c8e72f360525820",wheel_count=3,record_verified=True,expanded_bytes=result["expanded_bytes"],compressed_bytes=result["compressed_bytes"],native_count=result["native_count"],native_output_bytes=result["native_output_bytes"],archive_read_bytes=result["archive_read_bytes"],logical_io_bytes=result["logical_io_bytes"],native_input_reserved_bytes=result["native_input_reserved_bytes"],native_real_path_blocked=True,repeated_read_limit_pass=True,read_only_budget_limit_pass=True,large_logical_io_before_third=before_io,large_logical_io_after_reject=budget.logical_io_bytes,cgroup_memory_peak_bytes=int((p/"memory.peak").read_text().strip()),malformed_elf_batch_rejected=True,large_expanded_before_third=before,third_declared_expanded_bytes=large[2][1],aggregate_expanded_limit=128*1024**2,third_rejected=True,failed_budget_reuse_rejected=True,scratch_empty=True,uid=os.getuid(),input_capacity=8388608,scratch_capacity=1006632960,cpu_max=cpu,memory_max=4294967296,pids_max=128,network_interfaces=["lo"],docker_socket_absent=True,max_rss_kib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,real_wheels_scanned=False,readelf_io_metered=False,independent_approval=False,release_authorized=False),sort_keys=True))
+          print(json.dumps(dict(status="SYNTHETIC_LOGICAL_IO_KERNEL_PREFLIGHT",source_commit="9f3e6cfd9ff6a91ad4854509711d5a1cc8db2199",wheel_count=3,record_verified=True,expanded_bytes=result["expanded_bytes"],compressed_bytes=result["compressed_bytes"],native_count=result["native_count"],native_output_bytes=result["native_output_bytes"],archive_read_bytes=result["archive_read_bytes"],logical_io_bytes=result["logical_io_bytes"],native_input_reserved_bytes=result["native_input_reserved_bytes"],native_real_path_blocked=True,repeated_read_limit_pass=True,read_only_budget_limit_pass=True,evidence_bytes=result["evidence_bytes"],evidence_budget_limit_pass=True,large_logical_io_before_third=before_io,large_logical_io_after_reject=budget.logical_io_bytes,cgroup_memory_peak_bytes=int((p/"memory.peak").read_text().strip()),malformed_elf_batch_rejected=True,large_expanded_before_third=before,third_declared_expanded_bytes=large[2][1],aggregate_expanded_limit=128*1024**2,third_rejected=True,failed_budget_reuse_rejected=True,scratch_empty=True,uid=os.getuid(),input_capacity=8388608,scratch_capacity=1006632960,cpu_max=cpu,memory_max=4294967296,pids_max=128,network_interfaces=["lo"],docker_socket_absent=True,max_rss_kib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,real_wheels_scanned=False,readelf_io_metered=False,independent_approval=False,release_authorized=False),sort_keys=True))
           PY
           )"
           timeout --kill-after=5s 90s sudo systemd-run --unit="$unit" --wait --pipe --quiet \
