@@ -1,9 +1,11 @@
-"""CODEN Factory: guarded, read-only discovery of six portable agent skills.
+"""CODEN Factory: guarded discovery and explicit review-only staging of six portable agent skills.
 
 SKILL.md files are instructions, not runnable components. This module never
 imports, executes, enables or installs a skill, agent, model or GitHub action.
 """
 import argparse
+import hashlib
+import os
 import json
 from pathlib import Path
 import re
@@ -22,24 +24,28 @@ SKILLS = {
 NAME = re.compile(r"^factory-[a-z0-9-]{1,48}$")
 
 
-def _read_skill(path: Path, name: str) -> None:
+def _read_skill(path: Path, name: str) -> bytes:
     """Verify the actual portable skill exists and declares its canonical name."""
-    if (path.is_symlink() or not path.is_file()
+    if (any(p.is_symlink() for p in (path, *path.parents)) or not path.is_file()
             or not 450 < path.stat().st_size < 7000):
         raise ValueError("unsafe or incomplete Agent Skill document")
-    text = path.read_text(encoding="utf-8")
+    raw = path.read_bytes()
+    if not 450 < len(raw) < 7000:
+        raise ValueError("unsafe or incomplete Agent Skill document")
+    text = raw.decode("utf-8")
     if not text.startswith("---\n") or "\n---\n" not in text[4:]:
         raise ValueError("skill frontmatter missing")
     header, body = text[4:].split("\n---\n", 1)
     fields = {}
     for line in header.splitlines():
         key, separator, val = line.partition(":")
-        if not separator or not key.strip() or key in fields:
+        if not separator or key not in {"name", "description"} or key in fields:
             raise ValueError("invalid skill frontmatter")
-        fields[key.strip()] = val.strip()
+        fields[key] = val.strip()
     if (fields.get("name") != name or not fields.get("description")
             or len(fields["description"]) > 500 or not body.strip()):
         raise ValueError("skill name/description does not match manifest")
+    return raw
 
 
 def validate(data: dict) -> list[dict]:
@@ -113,6 +119,53 @@ def choose(task_kind: str) -> dict:
         "release_authorized": False,
         "paid_calls_authorized": False,
         "note": "Read SKILL.md and follow instructions manually; runtime integration is not authorized.",
+    }
+
+
+def stage_reviewed(task_kind: str, workspace, expected_sha256: str) -> dict:
+    """Explicitly copy one reviewed text file to an empty private operator workspace.
+
+    This is not SDK loading, installation, or permission to execute. The caller
+    must control the workspace exclusively (no concurrent writers), provide the
+    independently reviewed digest, and enforce a fresh isolated HOME/network and
+    the returned public-skill switches before any separately approved SDK load.
+    No .mcp.json, scripts, resources, external skills or existing files are copied.
+    """
+    if (not isinstance(expected_sha256, str)
+            or re.fullmatch(r"[a-f0-9]{64}", expected_sha256) is None):
+        raise ValueError("reviewed SHA-256 required")
+    item = choose(task_kind)
+    raw = _read_skill(ROOT / item["skill_path"], item["recommended_skill"])
+    digest = hashlib.sha256(raw).hexdigest()
+    if digest != expected_sha256:
+        raise ValueError("reviewed skill digest mismatch")
+    root = Path(workspace).absolute()
+    if (any(p.is_symlink() or (p / ".git").exists() for p in (root, *root.parents))
+            or not root.is_dir() or root.stat().st_uid != os.getuid()
+            or root.stat().st_mode & 0o077 or any(root.iterdir())):
+        raise ValueError("empty private operator workspace outside a Git tree required")
+    parent = root
+    for component in (".agents", "skills", item["recommended_skill"]):
+        parent = parent / component
+        parent.mkdir(mode=0o700, exist_ok=False)
+    target = parent / "SKILL.md"
+    with target.open("xb") as stream:
+        stream.write(raw)
+    target.chmod(0o600)
+    return {
+        "task_kind": task_kind,
+        "skill_path": str(target.relative_to(root)),
+        "sha256": digest,
+        "status": "REVIEW_ONLY_STAGED",
+        "required_environment": {
+            "OH_PUBLIC_SKILLS_ENABLED": "false",
+            "OH_PUBLIC_CATALOG_ENABLED": "false",
+        },
+        "isolated_home_required": True,
+        "runtime_invoked": False,
+        "execution_authorized": False,
+        "paid_calls_authorized": False,
+        "release_authorized": False,
     }
 
 
