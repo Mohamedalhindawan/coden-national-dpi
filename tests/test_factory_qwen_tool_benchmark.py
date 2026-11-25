@@ -65,3 +65,31 @@ class ToolBenchmarkTests(unittest.TestCase):
         self.assertEqual(result["reason_code"], "model_identity_mismatch")
         self.assertNotIn("private-unexpected-model", repr(result))
         self.assertFalse(result["automatic_retry_allowed"])
+
+    def test_captured_benchmark_cli_rejects_wrong_or_missing_model_alias(self):
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from unittest.mock import patch
+        from ai_factory import factory_qwen_tool_benchmark as bench
+        for alias in ("local-qwen", "unexpected-model", None):
+            with self.subTest(alias=alias), TemporaryDirectory() as temp:
+                folder = Path(temp)
+                for case_id, case in CASES.items():
+                    response = json.loads(reply(case["expected_tool"], case["expected_args"]))
+                    if alias is not None:
+                        response["model"] = alias
+                    (folder / (case_id + ".json")).write_text(json.dumps(response))
+                receipt = folder / "receipt.json"
+                with patch.object(bench.sys, "argv", ["benchmark", "review", temp, str(receipt)]):
+                    if alias == "local-qwen":
+                        bench.main()
+                    else:
+                        with self.assertRaises(SystemExit):
+                            bench.main()
+                result = json.loads(receipt.read_text())
+                self.assertEqual(result["status"], "benchmark_match" if alias == "local-qwen" else "benchmark_rejected")
+                self.assertFalse(result["release_authorized"])
+                self.assertFalse(result["sdk_conversation_ran"])
+                if alias != "local-qwen":
+                    self.assertTrue(all(v["reason_code"] == "model_identity_mismatch" for v in result["cases"].values()))
+                    self.assertNotIn("unexpected-model", repr(result))
