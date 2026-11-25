@@ -1505,3 +1505,147 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+
+  sprint19-integrated-synthetic-scanner:
+    # Exact existing scanner on trusted generated fixtures only. No image acquisition.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == 'e9229c8a3cfba2e5bee796e0089fb9188d45575e' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: e9229c8a3cfba2e5bee796e0089fb9188d45575e
+          persist-credentials: false
+      - name: Exercise exact scanner in combined read-only input and bounded scratch sandbox
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          unit="coden-s19-fixture-${GITHUB_RUN_ID}.service"
+          store=""; scratch=""
+          cleanup() {
+            status=$?
+            trap - EXIT
+            sudo systemctl stop "$unit" >/dev/null 2>&1 || true
+            state="$(sudo systemctl show "$unit" -p ActiveState --value 2>/dev/null || true)"
+            case "$state" in inactive|failed) ;; *) status=1;; esac
+            printf 'SERVICE_%s\n' "$state" > "$ev/cleanup.txt"
+            for dir in "$scratch" "$store"; do
+              [[ -n "$dir" ]] || continue
+              if mountpoint -q "$dir"; then
+                sudo umount "$dir" || { echo UNMOUNT_FAILED >> "$ev/cleanup.txt"; status=1; continue; }
+              fi
+              sudo rmdir "$dir" || { status=1; continue; }
+              echo MOUNT_UNMOUNTED_AND_REMOVED >> "$ev/cleanup.txt"
+            done
+            exit "$status"
+          }
+          trap cleanup EXIT
+          test "$(git rev-parse HEAD)" = e9229c8a3cfba2e5bee796e0089fb9188d45575e
+          test "$(git hash-object ai_factory/oci_offline_evidence.py)" = 0f8151441285396b1d98979f7b89c25571a50d9d
+          uid="$(id -u nobody)"; gid="$(id -g nobody)"
+          host_ns="$(readlink /proc/self/ns/net)"
+          store="$(sudo mktemp -d /opt/coden-s19-input.XXXXXXXX)"
+          scratch="$(sudo mktemp -d /opt/coden-s19-scratch.XXXXXXXX)"
+          sudo mount -t tmpfs -o "size=512m,nosuid,nodev,noexec,mode=0755,uid=$(id -u),gid=$(id -g)" tmpfs "$store"
+          sudo mount -t tmpfs -o "size=960m,nosuid,nodev,noexec,mode=0700,uid=$uid,gid=$gid" tmpfs "$scratch"
+          sudo mkdir "$scratch/home" "$scratch/tmp"
+          sudo chown "$uid:$gid" "$scratch/home" "$scratch/tmp"
+          sudo chmod 0700 "$scratch/home" "$scratch/tmp"
+          install -m 0444 ai_factory/oci_offline_evidence.py "$store/scanner.py"
+          # Trusted synthetic bytes only. No real binary, code object or package.
+          env -i PATH=/usr/bin:/bin python3 -I -B - "$store" <<'PY'
+          import gzip,hashlib,io,json,marshal,os,struct,sys,tarfile,zlib
+          from pathlib import Path
+          root=Path(sys.argv[1]); blobs=root/"oci/blobs/sha256"
+          blobs.mkdir(parents=True)
+          module=b"trusted synthetic opaque bytes"
+          packed=zlib.compress(module)
+          pyz=b"PYZ\0\xf3\x0d\x0d\x0a"+struct.pack("!i",17+len(packed))+b"\0"*5+packed+marshal.dumps([("demo",(0,17,len(packed)))],4)
+          name=b"PYZ.pyz\0"; n=18+len(name); n+=(-n)%16
+          toc=struct.pack("!IIIIBc",n,0,len(pyz),len(pyz),0,b"z")+name+b"\0"*(n-18-len(name))
+          binary=b"\x7fELF"+pyz+toc+struct.pack("!8sIIII64s",b"MEI\x0c\x0b\x0a\x0b\x0e",len(pyz)+len(toc)+88,len(pyz),len(toc),313,b"libpython3.13.so.1.0")
+          def put(raw,media):
+              h=hashlib.sha256(raw).hexdigest()
+              (blobs/h).write_bytes(raw)
+              return dict(digest="sha256:"+h,size=len(raw),mediaType=media)
+          def layer(payload=None):
+              out=io.BytesIO()
+              with tarfile.open(fileobj=out,mode="w") as t:
+                  if payload is not None:
+                      item=tarfile.TarInfo("usr/local/bin/openhands-agent-server")
+                      item.size=len(payload);item.mode=0o755
+                      t.addfile(item,io.BytesIO(payload))
+              raw=out.getvalue()
+              return put(gzip.compress(raw,mtime=0),"application/vnd.oci.image.layer.v1.tar+gzip"),"sha256:"+hashlib.sha256(raw).hexdigest()
+          empty,diff=layer(); last,lastdiff=layer(binary)
+          config=put(json.dumps(dict(os="linux",architecture="amd64",rootfs=dict(type="layers",diff_ids=[diff]*12+[lastdiff,diff]))).encode(),"application/vnd.oci.image.config.v1+json")
+          manifest=put(json.dumps(dict(schemaVersion=2,mediaType="application/vnd.oci.image.manifest.v1+json",config=config,layers=[empty]*12+[last,empty])).encode(),"application/vnd.oci.image.manifest.v1+json")
+          (root/"fixture.json").write_text(json.dumps(dict(manifest=manifest["digest"],binary_size=len(binary),binary_sha256=hashlib.sha256(binary).hexdigest(),module_sha256=hashlib.sha256(module).hexdigest())))
+          for p in root.rglob("*"): p.chmod(0o555 if p.is_dir() else 0o444)
+          PY
+          sudo mount -o remount,ro,nosuid,nodev,noexec "$store"
+          findmnt -n -o FSTYPE,OPTIONS --mountpoint "$store" > "$ev/input-mount.txt"
+          findmnt -n -o FSTYPE,OPTIONS --mountpoint "$scratch" > "$ev/scratch-mount.txt"
+          script="$(cat <<'PY'
+          import hashlib,importlib.util,json,os,socket,sys,resource
+          from pathlib import Path
+          root,scratch,host=Path(sys.argv[1]),Path(sys.argv[2]),sys.argv[3]
+          a,b=os.statvfs(root),os.statvfs(scratch)
+          assert a.f_frsize*a.f_blocks==536870912 and a.f_flag&os.ST_RDONLY
+          assert b.f_frsize*b.f_blocks==1006632960
+          assert all(os.stat(p).st_dev==os.stat(scratch).st_dev for p in (scratch/"home",scratch/"tmp",Path("/tmp"),Path("/var/tmp")))
+          assert os.getuid()!=0 and set(os.getgroups())<={os.getgid()}
+          st=dict(x.split(":",1) for x in Path("/proc/self/status").read_text().splitlines() if ":" in x)
+          assert int(st["CapEff"],16)==0 and st["NoNewPrivs"].strip()=="1"
+          assert os.readlink("/proc/self/ns/net")!=host and sorted(n for _,n in socket.if_nameindex())==["lo"]
+          assert len(Path("/proc/self/net/route").read_text().splitlines())==1
+          v6=Path("/proc/self/net/ipv6_route")
+          assert not v6.exists() or all(x.split()[-1]=="lo" for x in v6.read_text().splitlines() if x.strip())
+          assert not any(os.path.lexists(x) for x in ("/run/docker.sock","/var/run/docker.sock"))
+          assert set(os.environ)<={"PATH","HOME","TMPDIR","LC_ALL"}
+          cg=next(x.split(":",2)[2] for x in Path("/proc/self/cgroup").read_text().splitlines() if x.startswith("0::"))
+          p=Path("/sys/fs/cgroup")/cg.lstrip("/")
+          cpu=(p/"cpu.max").read_text().split()
+          assert int(cpu[0])==2*int(cpu[1]) and (p/"memory.max").read_text().strip()=="4294967296" and (p/"pids.max").read_text().strip()=="128"
+          raw=(root/"scanner.py").read_bytes()
+          blob=hashlib.sha1(b"blob "+str(len(raw)).encode()+b"\0"+raw).hexdigest()
+          assert blob=="0f8151441285396b1d98979f7b89c25571a50d9d"
+          spec=importlib.util.spec_from_file_location("coden_fixture_scanner",root/"scanner.py")
+          scanner=importlib.util.module_from_spec(spec);spec.loader.exec_module(scanner)
+          fixture=json.loads((root/"fixture.json").read_text())
+          # Override only identity pins in memory for generated fixture, never
+          # modify source or authorize use of a different real image.
+          scanner.PINNED_MANIFEST=fixture["manifest"]
+          scanner.PINNED_BINARY_SIZE=fixture["binary_size"]
+          scanner.PINNED_BINARY_SHA256=fixture["binary_sha256"]
+          result=scanner.verify(root/"oci",fixture["manifest"],max_expanded_bytes=2147483647,max_compressed_bytes=536870912,logical_inventory=True,embedded_inventory=True)
+          embedded=result["embedded_archive_review"]
+          assert result["layer_count"]==14 and embedded["layer"]==13 and embedded["binary_sha256"]==fixture["binary_sha256"]
+          assert embedded["pyz_archives"][0]["entries"][0]["sha256"]==fixture["module_sha256"]
+          assert not result["release_authorized"] and not result["execution_authorized"] and not result["embedded_inventory_verified"]
+          assert result["aggregate_expanded_and_nested_read_bytes"]<=2147483647
+          print(json.dumps(dict(status="INTEGRATED_SYNTHETIC_SCANNER_REVIEW_ONLY",scanner_git_blob=blob,scanner_sha256=hashlib.sha256(raw).hexdigest(),synthetic_identity_override=True,fixture_manifest=fixture["manifest"],fixture_binary_sha256=fixture["binary_sha256"],layer_count=result["layer_count"],pyz_module_sha256=fixture["module_sha256"],aggregate_expanded_and_nested_read_bytes=result["aggregate_expanded_and_nested_read_bytes"],input_capacity=536870912,input_readonly=True,scratch_capacity=1006632960,cpu_max=cpu,memory_max=4294967296,pids_max=128,uid=os.getuid(),no_new_privs=True,cap_eff=0,network_interfaces=["lo"],docker_socket_absent=True,max_rss_kib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,real_binary_scanned=False,independent_approval=False,release_authorized=False),sort_keys=True))
+          PY
+          )"
+          timeout --kill-after=5s 90s sudo systemd-run --unit="$unit" --wait --pipe --quiet \
+            -p "User=$uid" -p "Group=$gid" -p CPUQuota=200% -p MemoryMax=4294967296 -p TasksMax=128 \
+            -p RuntimeMaxSec=600 -p KillMode=control-group -p NoNewPrivileges=yes \
+            -p CapabilityBoundingSet= -p AmbientCapabilities= -p PrivateNetwork=yes \
+            -p PrivateDevices=yes -p ProtectHome=tmpfs -p ProtectSystem=strict \
+            -p 'TemporaryFileSystem=/run:ro' -p 'TemporaryFileSystem=/dev/shm:ro' \
+            -p "BindPaths=$scratch/tmp:/tmp $scratch/tmp:/var/tmp" -p "ReadWritePaths=$scratch /tmp /var/tmp" \
+            -p RestrictSUIDSGID=yes \
+            /usr/bin/env -i PATH=/usr/bin:/bin "HOME=$scratch/home" TMPDIR=/tmp LC_ALL=C /usr/bin/python3 -I -B -c "$script" "$store" "$scratch" "$host_ns" > "$ev/integrated-scanner.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: sprint19-integrated-synthetic-scanner-receipts
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
