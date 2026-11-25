@@ -233,6 +233,21 @@ class OpenHandsSDKOperatorTests(unittest.TestCase):
         self.assertEqual(list(self.output.iterdir()), [])
         self.assertNotIn("private lint", repr(result))
 
+    def test_invalid_generated_test_syntax_requires_manual_review(self):
+        original = FakeConversation.run
+        def malformed(conversation):
+            original(conversation)
+            (self.export / "tests" / "test_logic.py").write_text("def private_fixture(:\n")
+        with patch.object(FakeConversation, "run", new=malformed):
+            result = self.run_pilot(allow_agent=True)
+        self.assertEqual(result["status"], "artifact_review_required")
+        self.assertTrue(result["agent_session_attempted"])
+        self.assertFalse(result["automatic_retry_allowed"])
+        self.assertFalse(result["release_authorized"])
+        self.assertTrue(FakeConversation.seen[0].closed)
+        self.assertNotIn("private_fixture", repr(result))
+        self.assertEqual(list(self.output.iterdir()), [])
+
     def test_qwen_route_review_has_no_secret_or_execution(self):
         result = openhands_sdk_operator.review_qwen_route(
             model="openai/local-qwen", base_url="http://qwen3:11434/v1")
