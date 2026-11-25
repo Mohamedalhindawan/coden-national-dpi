@@ -204,7 +204,8 @@ def _run_once(*, task, candidate_root, output_root, workspace, model,
 def _review_closed(task, export, outputs):
     try:
         accepted = openhands_multifile_review.review(task, export, outputs)
-    except (OSError, ValueError, TypeError, RuntimeError, subprocess.TimeoutExpired):
+    except (OSError, ValueError, TypeError, RuntimeError, SyntaxError,
+            RecursionError, ArithmeticError, subprocess.TimeoutExpired):
         return _result("artifact_review_required", attempted=True)
     return {**accepted, "agent_session_attempted": True,
             "execution_authorized": False, "release_authorized": False,
