@@ -76,6 +76,21 @@ def review_qwen_route(*, model, base_url):
     }
 
 
+def _fixture_llm_options(model, base_url):
+    """Shared exact route validation for injected SDK fixtures only.
+
+    Real SDK admission remains blocked before this helper is called. The
+    placeholder is not an authentication mechanism or production secret.
+    """
+    if model == "openai/local-qwen":
+        return {**review_qwen_route(model=model,base_url=base_url)["llm_options"],
+                "api_key":"fixture-only"}
+    if (type(model) is not str or not LOCAL_MODEL.fullmatch(model)
+            or "cloud" in model.lower() or base_url != "http://ollama:11434"):
+        raise ValueError("only reviewed local fixture routes allowed")
+    return {"model":model,"base_url":base_url,"api_key":"local"}
+
+
 def _official_sdk():
     try:
         from openhands.sdk import LLM, Agent, Conversation, Tool
@@ -145,11 +160,7 @@ def _run_once(*, task, candidate_root, output_root, workspace, model,
 
     if not project.valid(task) or task.get("recipe") != "python-transform":
         raise ValueError("synthetic reviewed transform task required")
-    if (not isinstance(model, str) or not LOCAL_MODEL.fullmatch(model)
-            or "cloud" in model.lower()):
-        raise ValueError("local Ollama-only model identifier required")
-    if base_url != "http://ollama:11434":
-        raise ValueError("only operator-owned Docker-network Ollama endpoint allowed")
+    llm_options = _fixture_llm_options(model, base_url)
 
     export, outputs = openhands_multifile_review._review_paths(candidate_root, output_root)
     if any(export.iterdir()):
@@ -171,7 +182,7 @@ def _run_once(*, task, candidate_root, output_root, workspace, model,
         # Upstream SDK agent and tools are reused; there is NO custom agent
         # execution engine. Provider session and tools must be confined to
         # the operator's isolated container/network.
-        llm = installed.LLM(model=model, base_url=base_url, api_key="local")
+        llm = installed.LLM(**llm_options)
         agent = installed.Agent(
             llm=llm,
             tools=[installed.Tool(name=installed.TerminalTool.name),
@@ -286,11 +297,8 @@ def launch_isolated(*, task, candidate_root, output_root, model, base_url,
         return _result("blocked_runtime_admission")
     if not project.valid(task) or task.get("recipe") != "python-transform":
         raise ValueError("synthetic-only reviewed transform required")
-    if (not isinstance(model, str) or not LOCAL_MODEL.fullmatch(model)
-            or "cloud" in model.lower()):
-        raise ValueError("local Ollama model required")
-    if base_url != "http://ollama:11434":
-        raise ValueError("unexpected local model endpoint")
+    # Metadata preflight accepts the same exact routes; no credentials are used.
+    _fixture_llm_options(model, base_url)
     if not isinstance(server_image, str) or not PINNED_IMAGE.fullmatch(server_image):
         raise ValueError("pinned OpenHands image digest required")
     if (not isinstance(network, str) or not NETWORK.fullmatch(network)
