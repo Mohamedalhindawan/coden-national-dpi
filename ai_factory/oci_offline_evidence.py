@@ -356,7 +356,7 @@ def _inspect_pyz(stream, budget):
     _require(17<size<=MAX_PYZ_BYTES, "unsupported PYZ size")
     source.seek(0)
     header=source.read(17)
-    _require(header[:8]==b"PYZ\\0\\xf3\\x0d\\x0d\\x0a" and header[12:]==b"\\0"*5,
+    _require(header[:8]==b"PYZ\0\xf3\x0d\x0d\x0a" and header[12:]==b"\0"*5,
              "unexpected PYZ header or Python bytecode version")
     toc_offset=struct.unpack("!i",header[8:12])[0]
     _require(17<=toc_offset<size and size-toc_offset<=8*CHUNK, "invalid PYZ TOC bounds")
@@ -423,12 +423,12 @@ def inspect_embedded_binary(stream, *, max_read_bytes):
                         **_inspect_pyz(io.BytesIO(raw),budget)})
         elif kind=="n":
             try:
-                target=bytes(raw).rstrip(b"\\0").decode("utf-8")
+                target=bytes(raw).rstrip(b"\0").decode("utf-8")
             except UnicodeError as exc:
                 raise ValueError("invalid embedded link target") from exc
             _require(not target.startswith("/"), "absolute embedded link target")
             row["lexical_target"]=_link_target(row["name"],target)
-        elif kind=="Z" or row["name"].lower().endswith((".zip",".whl",".pyz",".tar",".gz",".bz2",".xz",".7z")) or prefix.startswith((b"PK\\x03\\x04",b"PYZ\\0",b"\\x1f\\x8b",b"BZh",b"\\xfd7zXZ\\0")):
+        elif kind=="Z" or row["name"].lower().endswith((".zip",".whl",".pyz",".tar",".gz",".bz2",".xz",".7z")) or prefix.startswith((b"PK\x03\x04",b"PYZ\0",b"\x1f\x8b",b"BZh",b"\xfd7zXZ\0")):
             # Do not recurse through unreviewed formats. Retain their identities only.
             unknown.append(row["name"])
     return {**outer,"status":"embedded_archive_candidate_review_required",
