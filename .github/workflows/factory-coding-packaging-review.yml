@@ -1065,3 +1065,44 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+
+  sprint15-cyclonedx-schema-raw-review:
+    # Static schema data only. Separate from OCI acquisition and tracker capture.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == 'a99e3c0b161d5db68b0d5b4d51319d32665f774d' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions: {}
+    steps:
+      - name: Verify static public schema bytes against pinned Git blob hashes
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          timeout 60s env -i PATH=/usr/bin:/bin python3 -I - <<'PY'
+          import hashlib,json,urllib.request
+          from pathlib import Path
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*args,**kwargs): return None
+          opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+          pinned={"bom-1.5.schema.json":"c149728127117c39317b795032ed6e9a92e2f950","spdx.schema.json":"f04d013c74c48de35726e93e367f0f738f51135d","jsf-0.82.schema.json":"f46bfb1e52731ad1280123ff3e2bd29bd18d4bc2"}
+          receipt=[]
+          for name,sha in pinned.items():
+              url="https://raw.githubusercontent.com/CycloneDX/specification/1.5/schema/"+name
+              with opener.open(urllib.request.Request(url,headers={"Accept-Encoding":"identity"}),timeout=15) as res:
+                  assert res.status==200 and res.headers.get("Content-Encoding","identity")=="identity"
+                  raw=res.read(1024*1024+1)
+              assert 0<len(raw)<=1024*1024
+              assert hashlib.sha1(b"blob "+str(len(raw)).encode()+b"\0"+raw).hexdigest()==sha
+              assert json.loads(raw)["$id"]=="http://cyclonedx.org/schema/"+name
+              Path("evidence",name).write_bytes(raw)
+              receipt.append(dict(name=name,source=url,git_blob=sha,sha256=hashlib.sha256(raw).hexdigest(),bytes=len(raw)))
+          Path("evidence/schema-receipt.json").write_text(json.dumps(receipt,indent=2)+"\n")
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: sprint15-cyclonedx-schema-raw-review
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
