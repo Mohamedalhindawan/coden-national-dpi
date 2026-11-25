@@ -111,3 +111,101 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+  source-capacity-review:
+    if: github.event.repository.private == false && github.head_ref == 'fix/factory-staging-inventory-consistency-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: OpenHands/software-agent-sdk
+          ref: 077f3fad6d31cd852be5c87176e0a93c3b446126
+          persist-credentials: false
+          path: upstream
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45474396046
+          name: coding-packaging-source-contract
+          path: inputs
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45528990156
+          name: r2-staging-capacity-review
+          path: capacity
+      - name: Measure patched tracked source without executing it
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          test "$(git -C upstream rev-parse HEAD)" = 077f3fad6d31cd852be5c87176e0a93c3b446126
+          printf '%s\n' '0609700a143b3fc8b0439f7ff2c74b75aa41c220fa9ba4294db35bac54b8f70f  inputs/coding-profile-source.patch' '4efcc832216289d4cc845f52582f49954734499e712af0e8bac716a324d5e086  capacity/staging-capacity.json' | sha256sum -c -
+          git -C upstream apply --check ../inputs/coding-profile-source.patch
+          git -C upstream apply ../inputs/coding-profile-source.patch
+          git -C upstream diff --check
+          git -C upstream ls-files --stage -z > evidence/tracked-index.nul
+          python3 - <<'PY'
+          import hashlib, json, stat
+          from pathlib import Path
+          root=Path("upstream")
+          groups={n:{"files":0,"bytes":0,"page_rounded_bytes":0,"symlinks":0} for n in
+                  ("openhands-sdk","openhands-tools","openhands-agent-server","openhands-workspace","other")}
+          records=[]
+          for entry in Path("evidence/tracked-index.nul").read_bytes().split(b"\0"):
+              if not entry: continue
+              meta, raw=entry.split(b"\t",1)
+              mode, oid, stage=meta.decode().split()
+              name=raw.decode("utf-8")
+              relative=Path(name)
+              if relative.is_absolute() or ".." in relative.parts or stage!="0":
+                  raise ValueError("unexpected tracked entry")
+              p=root/relative
+              for parent in relative.parents:
+                  if (root/parent).is_symlink(): raise ValueError("linked source parent")
+              info=p.lstat()
+              key=relative.parts[0] if relative.parts[0] in groups else "other"
+              g=groups[key]
+              if mode=="120000" and stat.S_ISLNK(info.st_mode):
+                  g["symlinks"]+=1
+                  continue
+              if mode not in ("100644","100755") or not stat.S_ISREG(info.st_mode):
+                  raise ValueError("unreviewed source member type")
+              size=info.st_size
+              if size>128*1024**2: raise ValueError("source member too large")
+              digest=hashlib.sha256(p.read_bytes()).hexdigest()
+              allocated=((size+4095)//4096)*4096
+              g["files"]+=1; g["bytes"]+=size; g["page_rounded_bytes"]+=allocated
+              records.append({"path":name,"bytes":size,"sha256":digest,"page_rounded_bytes":allocated})
+          assert all(groups[n]["files"] for n in groups if n!="other")
+          assert (root/"LICENSE").is_file()
+          receipt=json.loads(Path("capacity/staging-capacity.json").read_text())
+          assert receipt["input_count"]==132 and receipt["build_authorized"] is False
+          source=sum(g["page_rounded_bytes"] for g in groups.values())
+          editable=sum(g["page_rounded_bytes"] for n,g in groups.items() if n!="other")
+          peak=receipt["peak_bytes"]
+          cap=960*1024**2
+          # Stress scenarios only: no claim of installer or PyInstaller allocation.
+          scenarios=[]
+          for temporary,output,duplication in [(32,64,0),(32,64,64),(64,128,128),(32,64,288)]:
+              total=peak+source+(temporary+output+duplication)*1024**2
+              scenarios.append(dict(temporary_mib=temporary,output_mib=output,duplication_mib=duplication,modeled_bytes=total,fits=total<=cap,headroom_bytes=cap-total))
+          report=dict(groups=groups,tracked_regular_file_count=len(records),tracked_page_rounded_bytes=source,
+                      editable_page_rounded_bytes=editable,source_plus_staging_model_bytes=peak+source,
+                      scenarios=scenarios,source_license_sha256=hashlib.sha256((root/"LICENSE").read_bytes()).hexdigest(),
+                      metadata_overhead_measured=False,symlink_allocation_measured=False,actual_installer_peak_measured=False,
+                      actual_build_output_measured=False,build_authorized=False,release_authorized=False)
+          Path("evidence/source-capacity.json").write_text(json.dumps(report,indent=2))
+          Path("evidence/source-files.json").write_text(json.dumps(records,indent=2))
+          print(json.dumps(report,indent=2))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-patched-source-capacity
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7

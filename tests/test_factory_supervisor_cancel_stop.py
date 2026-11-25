@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -315,6 +316,123 @@ class MonitoredSupervisorCancellationTests(unittest.TestCase):
         self.assertFalse(outcome["process_tree_absence_verified"])
         self.assertEqual(self.q.read("target")["status"], "cancel_requested")
         self.assertEqual(checkpoint.read(self.journal, "target")["next_action"], "inspect_cancel_stop")
+
+
+    def test_monitor_read_failure_stops_owned_child(self):
+        self.create()
+        proc = MagicMock()
+        proc.returncode = None
+        original_read = DurableQueue.read
+        launched = False
+
+        def begin(_cmd, **kwargs):
+            nonlocal launched
+            self.q.claim("fixture", task_id="target", lease_seconds=30)
+            launched = True
+            return proc
+
+        def read(queue, task_id):
+            if launched:
+                raise OSError("synthetic queue unavailable")
+            return original_read(queue, task_id)
+
+        def stop(child):
+            self.assertIs(child, proc)
+            child.returncode = -signal.SIGKILL
+
+        with patch.object(DurableQueue, "read", new=read):
+            with patch.object(worker_supervisor.subprocess, "Popen", side_effect=begin):
+                with patch.object(worker_supervisor, "_terminate_process_group", side_effect=stop) as kill:
+                    with self.assertRaises(worker_supervisor.SupervisorError):
+                        self.run_target()
+        kill.assert_called_once_with(proc)
+        self.assertEqual(self.q.read("target")["status"], "leased")
+        self.assertIsNone(self.q.claim("replacement"))
+
+
+    def test_monitor_wait_failure_stops_owned_child(self):
+        self.create()
+        proc = MagicMock()
+        proc.returncode = None
+        proc.wait.side_effect = OSError("synthetic wait failure")
+
+        def begin(_cmd, **kwargs):
+            self.q.claim("fixture", task_id="target", lease_seconds=30)
+            return proc
+
+        def stop(child):
+            self.assertIs(child, proc)
+            child.returncode = -signal.SIGKILL
+
+        with patch.object(worker_supervisor.subprocess, "Popen", side_effect=begin):
+            with patch.object(worker_supervisor, "_terminate_process_group", side_effect=stop) as kill:
+                with self.assertRaises(worker_supervisor.SupervisorError):
+                    self.run_target()
+        kill.assert_called_once_with(proc)
+        self.assertEqual(self.q.read("target")["status"], "leased")
+        self.assertIsNone(self.q.claim("replacement"))
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "requires Linux process-group semantics")
+    def test_real_sqlite_lock_stops_owned_process_and_descendant(self):
+        self.create()
+        marker = self.root / "locked-worker.pid"
+        fixture = (
+            "import os, subprocess, sys, time\n"
+            "from pathlib import Path\n"
+            "from ai_factory.durable_queue import DurableQueue\n"
+            "lease = DurableQueue(sys.argv[1]).claim('fixture', task_id='target', lease_seconds=30)\n"
+            "assert lease['task_id'] == 'target'\n"
+            "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'], "
+            "stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)\n"
+            "p = Path(sys.argv[2]); tmp = p.with_suffix('.tmp')\n"
+            "tmp.write_text(str(child.pid)); os.replace(tmp,p)\n"
+            "time.sleep(30)\n"
+        )
+        real_popen = subprocess.Popen
+        processes = []
+        lock = sqlite3.connect(self.db, timeout=1, isolation_level=None)
+
+        def begin(_cmd, **kwargs):
+            proc = real_popen([sys.executable, "-c", fixture, str(self.db), str(marker)], **kwargs)
+            processes.append(proc)
+            deadline = time.monotonic() + 4
+            while not marker.exists() and proc.poll() is None and time.monotonic() < deadline:
+                time.sleep(0.02)
+            self.assertTrue(marker.exists(), "fixture did not claim target")
+            lock.execute("BEGIN EXCLUSIVE")
+            return proc
+
+        try:
+            with patch.object(worker_supervisor.subprocess, "Popen", side_effect=begin):
+                with self.assertRaisesRegex(worker_supervisor.SupervisorError, "monitoring failed"):
+                    self.run_target(timeout_seconds=10, lease_seconds=30)
+            self.assertEqual(len(processes), 1)
+            self.assertEqual(processes[0].returncode, -signal.SIGKILL)
+            pid = int(marker.read_text())
+            def running():
+                try:
+                    return (Path("/proc") / str(pid) / "stat").read_text().rsplit(") ",1)[1][0] not in ("Z","X")
+                except FileNotFoundError:
+                    return False
+            deadline = time.monotonic() + 2
+            while running() and time.monotonic() < deadline:
+                time.sleep(0.02)
+            self.assertFalse(running())
+        finally:
+            lock.close()
+            for proc in processes:
+                if proc.poll() is None:
+                    try:
+                        os.killpg(proc.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    proc.wait(timeout=5)
+        reopened = DurableQueue(self.db)
+        self.assertEqual(reopened.read("target")["status"], "leased")
+        self.assertEqual(reopened.recover_expired(now=10**12), 1)
+        self.assertEqual(reopened.read("target")["status"], "needs_review")
+        self.assertEqual(reopened.read("target")["attempts"], 1)
+        self.assertIsNone(reopened.claim("replacement"))
 
 
 if __name__ == "__main__":

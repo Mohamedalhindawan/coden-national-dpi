@@ -195,6 +195,25 @@ class OpenHandsSDKOperatorTests(unittest.TestCase):
         self.assertTrue(FakeConversation.seen[0].closed)
         verifier.assert_not_called()
 
+    def test_real_sdk_default_blocked_before_import_pending_admission(self):
+        with patch.object(openhands_sdk_operator, "_official_sdk") as real_sdk:
+            result = self.run_pilot(allow_agent=True, sdk=None)
+        self.assertEqual(result["status"], "blocked_runtime_admission")
+        self.assertFalse(result["agent_session_attempted"])
+        self.assertFalse(result["release_authorized"])
+        real_sdk.assert_not_called()
+
+    def test_close_failure_blocks_artifact_review_and_retry(self):
+        with patch.object(FakeConversation, "close", side_effect=RuntimeError("private cleanup detail")), \
+             patch.object(openhands_multifile_review, "review") as verifier:
+            result = self.run_pilot(allow_agent=True)
+        self.assertEqual(result["status"], "cleanup_unverified_review_required")
+        self.assertTrue(result["agent_session_attempted"])
+        self.assertFalse(result["automatic_retry_allowed"])
+        self.assertFalse(result["release_authorized"])
+        self.assertNotIn("private cleanup detail", repr(result))
+        verifier.assert_not_called()
+
     def test_fake_sdk_to_real_multifile_sandbox_acceptance(self):
         if not project.supported_host():
             if os.getenv("CODEN_REQUIRE_SANDBOX") == "1":
@@ -268,6 +287,15 @@ class OpenHandsManagedLaunchTests(OpenHandsSDKOperatorTests):
         }
         kwargs.update(changes)
         return openhands_sdk_operator.launch_isolated(**kwargs)
+
+    def test_real_managed_launch_blocked_before_docker_or_sdk(self):
+        with patch.object(openhands_sdk_operator, "_official_sdk") as real_sdk:
+            result = self.launch(sdk=None)
+        self.assertEqual(result["status"], "blocked_runtime_admission")
+        self.assertFalse(result["agent_session_attempted"])
+        self.assertEqual(self.inspector_calls, [])
+        self.assertEqual(ManagedWorkspace.started, 0)
+        real_sdk.assert_not_called()
 
     def test_managed_disabled_has_zero_side_effects(self):
         with patch.object(project, "supported_host") as host:
@@ -359,6 +387,24 @@ class OpenHandsManagedLaunchTests(OpenHandsSDKOperatorTests):
             ("context", "current"), ("network", self.network), ("image", self.image)
         ])
         verify.assert_called_once_with(self.task, self.export, self.output)
+
+    def test_review_only_after_managed_workspace_exit(self):
+        def verify(*args):
+            self.assertEqual(ManagedWorkspace.closed, 1)
+            return {"status": "awaiting_human_review"}
+        with patch.object(project, "supported_host", return_value=True), \
+             patch.object(openhands_multifile_review, "review", side_effect=verify):
+            result = self.launch()
+        self.assertEqual(result["status"], "awaiting_human_review")
+
+    def test_workspace_exit_failure_never_reviews_artifacts(self):
+        with patch.object(project, "supported_host", return_value=True), \
+             patch.object(ManagedWorkspace, "__exit__", side_effect=RuntimeError("cleanup")), \
+             patch.object(openhands_multifile_review, "review") as verify:
+            result = self.launch()
+        self.assertFalse(result["automatic_retry_allowed"])
+        self.assertFalse(result["release_authorized"])
+        verify.assert_not_called()
 
     def test_launch_crash_reports_manual_review_and_workspace_is_closed(self):
         FakeConversation.fail = True

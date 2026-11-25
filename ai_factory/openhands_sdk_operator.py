@@ -1,6 +1,8 @@
 """Opt-in official OpenHands SDK Conversation bridge for a synthetic local-model pilot.
 
-This module does NOT install Docker, an agent SDK or a model. Its managed
+This module does NOT install Docker, an agent SDK or a model. Issue #162
+blocks the real default SDK path; injected SDKs are trusted test fixtures only.
+Its managed
 entrypoint may start ONE upstream DockerWorkspace container only after explicit
 operator opt-in and fail-closed local daemon/network/image preflight. An expert
 may instead supply a pre-created DockerWorkspace to run_once. Both require
@@ -92,8 +94,8 @@ def _prompt(task):
     )
 
 
-def run_once(*, task, candidate_root, output_root, workspace, model,
-             base_url, allow_agent=False, sdk=None):
+def _run_once(*, task, candidate_root, output_root, workspace, model,
+             base_url, allow_agent=False, sdk=None, defer_review=False):
     """Execute one SDK Conversation ONLY with explicit operator opt-in.
 
     SDK must already be installed/pinned, and the operator must have created,
@@ -103,6 +105,9 @@ def run_once(*, task, candidate_root, output_root, workspace, model,
         raise ValueError("explicit boolean operator approval required")
     if not allow_agent:
         return _result("disabled")
+    if sdk is None:
+        # #162: an opt-in flag is not an independent runtime admission receipt.
+        return _result("blocked_runtime_admission")
 
     if not project.valid(task) or task.get("recipe") != "python-transform":
         raise ValueError("synthetic reviewed transform task required")
@@ -128,6 +133,7 @@ def run_once(*, task, candidate_root, output_root, workspace, model,
         return _result("sandbox_unavailable")
 
     conversation = None
+    agent_failed = cleanup_failed = False
     try:
         # Upstream SDK agent and tools are reused; there is NO custom agent
         # execution engine. Provider session and tools must be confined to
@@ -144,14 +150,25 @@ def run_once(*, task, candidate_root, output_root, workspace, model,
     except Exception:
         # Child may have already created files. Do not replay automatically
         # or allow a failed agent's message to constitute review evidence.
-        return _result("agent_failed_review_required", attempted=True)
+        agent_failed = True
     finally:
         if conversation is not None:
             try:
                 conversation.close()
             except Exception:
-                pass
+                cleanup_failed = True
+    if cleanup_failed:
+        # Do not accept an export while SDK teardown remains uncertain.
+        return _result("cleanup_unverified_review_required", attempted=True)
+    if agent_failed:
+        return _result("agent_failed_review_required", attempted=True)
 
+    if defer_review:
+        return _result("conversation_closed_pending_workspace_exit", attempted=True)
+    return _review_closed(task, export, outputs)
+
+
+def _review_closed(task, export, outputs):
     try:
         accepted = openhands_multifile_review.review(task, export, outputs)
     except (OSError, ValueError, TypeError, RuntimeError):
@@ -159,6 +176,13 @@ def run_once(*, task, candidate_root, output_root, workspace, model,
     return {**accepted, "agent_session_attempted": True,
             "execution_authorized": False, "release_authorized": False,
             "automatic_retry_allowed": False}
+
+
+def run_once(*, task, candidate_root, output_root, workspace, model,
+             base_url, allow_agent=False, sdk=None):
+    return _run_once(task=task, candidate_root=candidate_root,
+                     output_root=output_root, workspace=workspace, model=model,
+                     base_url=base_url, allow_agent=allow_agent, sdk=sdk)
 
 
 def _context_is_local(context):
@@ -223,6 +247,9 @@ def launch_isolated(*, task, candidate_root, output_root, model, base_url,
         raise ValueError("explicit boolean operator mode required")
     if not (allow_agent or preflight_only):
         return _result("disabled")
+    if sdk is None and not preflight_only:
+        # No real SDK import or Docker startup until #162 is independently admitted.
+        return _result("blocked_runtime_admission")
     if not project.valid(task) or task.get("recipe") != "python-transform":
         raise ValueError("synthetic-only reviewed transform required")
     if (not isinstance(model, str) or not LOCAL_MODEL.fullmatch(model)
@@ -291,7 +318,7 @@ def launch_isolated(*, task, candidate_root, output_root, model, base_url,
             enable_gpu=False,
             detach_logs=False,
         ) as workspace:
-            return run_once(
+            outcome = _run_once(
                 task=task,
                 candidate_root=export,
                 output_root=output_root,
@@ -300,7 +327,11 @@ def launch_isolated(*, task, candidate_root, output_root, model, base_url,
                 base_url=base_url,
                 allow_agent=True,
                 sdk=installed,
+                defer_review=True,
             )
+        if outcome["status"] == "conversation_closed_pending_workspace_exit":
+            return _review_closed(task, export, output_root)
+        return outcome
     except Exception:
         # SDK construction can have started a container before raising.
         # Report uncertainty and require operator cleanup, never retry.

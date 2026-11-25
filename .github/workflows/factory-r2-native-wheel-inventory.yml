@@ -261,29 +261,55 @@ jobs:
 
   staging-capacity-review:
     needs: [static-inventory, python-static-review]
-    if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    if: always() && !cancelled() && github.event.repository.private == false && github.event.pull_request.head.repo.full_name == github.repository && ((github.head_ref == 'feat/factory-acceleration-batch01-20261124' && needs.static-inventory.result == 'success' && needs.python-static-review.result == 'success') || (github.head_ref == 'fix/factory-staging-inventory-consistency-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && needs.static-inventory.result == 'skipped' && needs.python-static-review.result == 'skipped'))
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     permissions:
       contents: read
+      actions: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: github.head_ref == 'feat/factory-acceleration-batch01-20261124'
         with:
           name: r2-native-wheel-inventory
           path: wheels
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: github.head_ref == 'feat/factory-acceleration-batch01-20261124'
         with:
           name: r2-python-standalone-static-review
           path: interpreter
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: github.head_ref == 'fix/factory-staging-inventory-consistency-20261125'
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45524906341
+          name: r2-native-wheel-inventory
+          path: wheels
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: github.head_ref == 'fix/factory-staging-inventory-consistency-20261125'
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45524906341
+          name: r2-python-standalone-static-review
+          path: interpreter
+      - name: Verify archived replay receipts
+        if: github.head_ref == 'fix/factory-staging-inventory-consistency-20261125'
+        run: |
+          set -euo pipefail
+          sha256sum -c <<'SUMS'
+          51e2f26a5c2c14a786b7552189a718ef281e35811db698b40d75f7174f37ddcf  wheels/inventory.json
+          af68348be0590fc8de8be4c95153155e6f15eaf442cdea2974be0b6febdc6328  wheels/capacity.json
+          a478f6ff4e24dbfaf4a2d5243700e59d535f5629c0b19921546dd83159914ef4  interpreter/python-candidate.json
+          SUMS
       - name: Bind capacity estimate to exact reviewed inventory receipts
         run: |
           set -euo pipefail
           mkdir -m 0700 evidence
           python - <<'PY'
-          import copy, hashlib, json
+          import copy, hashlib, json, os
           from pathlib import Path
           from ai_factory.factory_staging_capacity import plan_staging
 
@@ -316,6 +342,10 @@ jobs:
               for r in records:
                   require(all(type(r[k]) is int and r[k] > 0 for k in keys),
                           "invalid wheel sizes")
+              bound = sorted([r["name"],r["version"],r["wheel_sha256"],*[r[k] for k in keys]] for r in records)
+              bound_digest = hashlib.sha256(json.dumps(bound,separators=(",",":")).encode()).hexdigest()
+              require(bound_digest == "bebbaa4e714a76ff1a128ca98862fdb3e48cbf4775669af2e1d56b4d88f30e9a",
+                      "per-wheel capacity identity mismatch")
               totals = tuple(sum(r[k] for r in records) for k in keys)
               require(totals == (105369096,301372095,14517), "wheel totals mismatch")
               require(capacity.get("wheel_count") == 131 and capacity.get("crc_verified") is True and
@@ -338,12 +368,17 @@ jobs:
           x=copy.deepcopy(p); x["compressed_bytes"]+=1; cases.append((w,x,c))
           x=copy.deepcopy(c); x["archive_member_count"]+=1; cases.append((w,p,x))
           x=copy.deepcopy(w); x["complete"]=False; cases.append((x,p,c))
+          x=copy.deepcopy(w)
+          x["records"][0]["expanded_member_bytes"]-=1
+          x["records"][1]["expanded_member_bytes"]+=1
+          cases.append((x,p,c))
           for case in cases:
               try: bind(*case)
               except ValueError: pass
               else: raise AssertionError("invalid receipt admitted")
           report=plan_staging(inputs,capacity_bytes=960*1024**2,reserve_bytes=128*1024**2)
           report.update(input_count=len(inputs),receipt_negative_checks=len(cases),
+                        archived_replay=os.environ.get('GITHUB_HEAD_REF')=='fix/factory-staging-inventory-consistency-20261125',
                         receipt_sha256={name:hashlib.sha256(Path(name).read_bytes()).hexdigest()
                                         for name in ("wheels/inventory.json","interpreter/python-candidate.json","wheels/capacity.json")},
                         reserve_is_provisional=True,actual_installation_allowed=False,
@@ -356,6 +391,146 @@ jobs:
         if: always()
         with:
           name: r2-staging-capacity-review
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  installation-footprint-review:
+    if: github.event.repository.private == false && github.head_ref == 'fix/factory-staging-inventory-consistency-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13.15'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45461338865
+          name: pyo3-remediation-candidate
+          path: lock
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45524906341
+          name: r2-native-wheel-inventory
+          path: inventory
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45529694706
+          name: r2-patched-source-capacity
+          path: source
+      - name: Measure per-member allocation and bytecode RECORD inputs without installation
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          python - <<'PY'
+          import csv,hashlib,io,json,re,tarfile,tomllib,zipfile
+          from pathlib import Path,PurePosixPath
+          from urllib.parse import urlsplit
+          from urllib.request import build_opener,urlopen
+          from ai_factory.factory_wheel_notice_audit import NoRedirect,inspect_wheel,CAP
+          def sha(raw): return hashlib.sha256(raw).hexdigest()
+          def read_pinned(path,digest):
+              raw=Path(path).read_bytes()
+              assert sha(raw)==digest
+              return raw
+          page=lambda n: ((n+4095)//4096)*4096
+          raw=read_pinned("lock/pyo3-candidate.lock","93447ba7c43d7c8bffe1bb66d99abad1eaffcbd0d11fe1ef5bb776c7155998a3")
+          prior=json.loads(read_pinned("inventory/inventory.json","51e2f26a5c2c14a786b7552189a718ef281e35811db698b40d75f7174f37ddcf"))
+          source=json.loads(read_pinned("source/source-capacity.json","09c5f7414f5d7288ca0ad7390033073c21a0259b70d808cf40341e02857b38c3"))
+          assert prior["complete"] is True and prior["installed"] is False and len(prior["records"])==131
+          packages={(p["name"],p["version"]):p for p in tomllib.loads(raw.decode())["package"]}
+          results=[]
+          for record in prior["records"]:
+              n,v,digest=(record[k] for k in ("name","version","wheel_sha256"))
+              matches=[w for w in packages[n,v]["wheels"] if w["hash"]=="sha256:"+digest]
+              assert len(matches)==1
+              w=matches[0]; u=urlsplit(w["url"])
+              assert u.scheme=="https" and u.netloc=="files.pythonhosted.org" and u.path.endswith(".whl") and not u.query and not u.fragment and 0<w["size"]<=CAP
+              with build_opener(NoRedirect()).open(w["url"],timeout=30) as response:
+                  b=response.read(CAP+1)
+              assert len(b)==w["size"]==record["compressed_bytes"] and sha(b)==digest
+              inspect_wheel(b,digest)
+              with zipfile.ZipFile(io.BytesIO(b)) as z:
+                  assert z.testzip() is None
+                  entries=z.infolist()
+                  assert len(entries)==record["archive_member_count"] and sum(i.file_size for i in entries)==record["expanded_member_bytes"]
+                  files=[i for i in entries if not i.is_dir()]
+                  assert len({i.filename for i in entries})==len(entries)
+                  py=[i for i in files if i.filename.endswith(".py")]
+                  pyc=[i for i in files if i.filename.endswith(".pyc")]
+                  records=[i for i in files if i.filename.endswith(".dist-info/RECORD")]
+                  rec=[i for i in records if len(PurePosixPath(i.filename).parts)==2]
+                  nested=[i for i in records if len(PurePosixPath(i.filename).parts)>2]
+                  assert len(rec)==1 and rec[0].file_size<=8*1024**2,(n,[i.filename for i in records])
+                  rows=list(csv.reader(io.StringIO(z.read(rec[0]).decode("utf-8"))))
+                  assert all(len(r)==3 for r in rows)
+                  dirs={str(p) for i in files for p in PurePosixPath(i.filename).parents if str(p)!="."}
+                  caches={str(PurePosixPath(i.filename).parent/"__pycache__") for i in py}
+                  # Scenario only: generated pyc line uses path + tag and conservative fixed CSV fields.
+                  extra_record=sum(len(i.filename.encode())+160 for i in py)+1024
+                  results.append(dict(name=n,version=v,wheel_sha256=digest,compressed_page_bytes=page(len(b)),
+                     regular_files=len(files),raw_directory_count=len(dirs),regular_page_bytes=sum(page(i.file_size) for i in files),
+                     py_sources=len(py),py_source_bytes=sum(i.file_size for i in py),
+                     pyc_existing=len(pyc),pyc_existing_page_bytes=sum(page(i.file_size) for i in pyc),
+                     bytecode_1x_page_scenario=sum(page(i.file_size+256) for i in py),
+                     bytecode_2x_page_scenario=sum(page(2*i.file_size+256) for i in py),
+                     possible_cache_dirs=len(caches-dirs),record_bytes=rec[0].file_size,record_rows=len(rows),nested_record_count=len(nested),
+                     nested_record_bytes=sum(i.file_size for i in nested),
+                     record_extra_page_scenario=page(rec[0].file_size+extra_record)-page(rec[0].file_size)))
+              Path("evidence/per-wheel-footprint.json").write_text(json.dumps(results,indent=2))
+              print(n,len(py),flush=True)
+          assert len(results)==131
+          keys=[k for k in results[0] if k not in ("name","version","wheel_sha256")]
+          totals={k:sum(r[k] for r in results) for k in keys}
+          name="cpython-3.13.15%2B20260814-x86_64-unknown-linux-gnu-install_only.tar.gz"
+          with urlopen("https://github.com/astral-sh/python-build-standalone/releases/download/20260814/"+name,timeout=60) as response:
+              raw=response.read(128*1024**2+1)
+          assert len(raw)==118484282 and sha(raw)=="45816a2653b47a6cc48d8ada4ea1185758a4c2db389d012b31e0205e5ccb548b"
+          seen=set(); reg=[]; links=0; dirs=set()
+          with tarfile.open(fileobj=io.BytesIO(raw),mode="r:gz") as t:
+              for m in t:
+                  p=PurePosixPath(m.name)
+                  assert p.parts and p.parts[0]=="python" and ".." not in p.parts and m.name not in seen
+                  seen.add(m.name)
+                  if m.isfile(): reg.append((m.name,m.size))
+                  elif m.issym() or m.islnk(): links+=1
+                  elif m.isdir(): dirs.add(m.name)
+                  else: raise ValueError("unexpected tar member")
+          assert len(seen)==4525 and len(reg)==3478 and sum(s for _,s in reg)==386276509
+          interpreter=dict(compressed_page_bytes=page(len(raw)),regular_page_bytes=sum(page(s) for _,s in reg),
+                           files=len(reg),links=links,explicit_dirs=len(dirs),
+                           py_sources=sum(n.endswith(".py") for n,_ in reg),existing_pyc=sum(n.endswith(".pyc") for n,_ in reg))
+          staged=[("python",interpreter["compressed_page_bytes"],interpreter["regular_page_bytes"])]+[(r["name"],r["compressed_page_bytes"],r["regular_page_bytes"]) for r in results]
+          current=sum(c for _,c,_ in staged); peak=current
+          for _,c,e in sorted(staged,key=lambda x:(-x[1],x[0])):
+              peak=max(peak,current+e)
+              current+=e-c
+          cap=960*1024**2; scenarios=[]
+          for pyc,dup,temp,out in [(0,0,32,64),(1,0,32,64),(2,64,32,64),(2,128,64,128)]:
+              bytecode=totals["bytecode_"+str(pyc)+"x_page_scenario"] if pyc else 0
+              modeled=peak+source["tracked_page_rounded_bytes"]+bytecode+totals["record_extra_page_scenario"]+(dup+temp+out)*1024**2
+              scenarios.append(dict(bytecode_multiplier=pyc,duplicate_mib=dup,temporary_mib=temp,output_mib=out,modeled_bytes=modeled,headroom_bytes=cap-modeled,fits=modeled<=cap))
+          report=dict(wheels=131,totals=totals,interpreter=interpreter,staged_payload_peak_bytes=peak,final_payload_bytes=current,
+                      tracked_source_page_bytes=source["tracked_page_rounded_bytes"],scenarios=scenarios,
+                      bytecode_generated=False,record_rewritten=False,actual_installation=False,actual_peak_build_capacity_proven=False,
+                      directory_metadata_accounted=False,aggregate_writable_budget_proven=False,build_authorized=False,release_authorized=False)
+          Path("evidence/installation-footprint.json").write_text(json.dumps(report,indent=2))
+          Path("evidence/per-wheel-footprint.json").write_text(json.dumps(results,indent=2))
+          print(json.dumps(report,indent=2))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-installation-footprint-review
           path: evidence/
           if-no-files-found: error
           retention-days: 7
