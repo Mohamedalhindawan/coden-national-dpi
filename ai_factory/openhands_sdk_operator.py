@@ -94,8 +94,8 @@ def _prompt(task):
     )
 
 
-def run_once(*, task, candidate_root, output_root, workspace, model,
-             base_url, allow_agent=False, sdk=None):
+def _run_once(*, task, candidate_root, output_root, workspace, model,
+             base_url, allow_agent=False, sdk=None, defer_review=False):
     """Execute one SDK Conversation ONLY with explicit operator opt-in.
 
     SDK must already be installed/pinned, and the operator must have created,
@@ -163,6 +163,12 @@ def run_once(*, task, candidate_root, output_root, workspace, model,
     if agent_failed:
         return _result("agent_failed_review_required", attempted=True)
 
+    if defer_review:
+        return _result("conversation_closed_pending_workspace_exit", attempted=True)
+    return _review_closed(task, export, outputs)
+
+
+def _review_closed(task, export, outputs):
     try:
         accepted = openhands_multifile_review.review(task, export, outputs)
     except (OSError, ValueError, TypeError, RuntimeError):
@@ -170,6 +176,13 @@ def run_once(*, task, candidate_root, output_root, workspace, model,
     return {**accepted, "agent_session_attempted": True,
             "execution_authorized": False, "release_authorized": False,
             "automatic_retry_allowed": False}
+
+
+def run_once(*, task, candidate_root, output_root, workspace, model,
+             base_url, allow_agent=False, sdk=None):
+    return _run_once(task=task, candidate_root=candidate_root,
+                     output_root=output_root, workspace=workspace, model=model,
+                     base_url=base_url, allow_agent=allow_agent, sdk=sdk)
 
 
 def _context_is_local(context):
@@ -305,7 +318,7 @@ def launch_isolated(*, task, candidate_root, output_root, model, base_url,
             enable_gpu=False,
             detach_logs=False,
         ) as workspace:
-            return run_once(
+            outcome = _run_once(
                 task=task,
                 candidate_root=export,
                 output_root=output_root,
@@ -314,7 +327,11 @@ def launch_isolated(*, task, candidate_root, output_root, model, base_url,
                 base_url=base_url,
                 allow_agent=True,
                 sdk=installed,
+                defer_review=True,
             )
+        if outcome["status"] == "conversation_closed_pending_workspace_exit":
+            return _review_closed(task, export, output_root)
+        return outcome
     except Exception:
         # SDK construction can have started a container before raising.
         # Report uncertainty and require operator cleanup, never retry.
