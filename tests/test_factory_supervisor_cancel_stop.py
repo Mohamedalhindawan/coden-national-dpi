@@ -3,6 +3,7 @@
 A requested cancellation is never an assertion that the entire process tree
 ceased; only the group SIGKILL attempt + reaped leader are directly observed.
 """
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -434,6 +435,86 @@ class MonitoredSupervisorCancellationTests(unittest.TestCase):
         self.assertEqual(reopened.read("target")["attempts"], 1)
         self.assertIsNone(reopened.claim("replacement"))
 
+
+    def test_integrated_skill_and_capacity_do_not_authorize_sdk_on_worker_failure(self):
+        from ai_factory import factory_skill_catalog, factory_staging_capacity, openhands_sdk_operator
+        self.create()
+        skill_workspace = self.root / "skill-workspace"
+        skill_workspace.mkdir(mode=0o700)
+        chosen = factory_skill_catalog.choose("multifile")
+        raw = (factory_skill_catalog.ROOT / chosen["skill_path"]).read_bytes()
+        digest = hashlib.sha256(raw).hexdigest()
+        staged = factory_skill_catalog.stage_reviewed("multifile", skill_workspace, digest)
+        target = skill_workspace / staged["skill_path"]
+        self.assertEqual(target.read_bytes(), raw)
+        self.assertFalse(staged["runtime_invoked"])
+        self.assertFalse(staged["execution_authorized"])
+        capacity = factory_staging_capacity.plan_staging([
+            {"name": "fixture", "compressed_bytes": 4096, "expanded_bytes": 4096, "members": 1}
+        ], capacity_bytes=65536)
+        self.assertTrue(capacity["fits_model"])
+        self.assertFalse(capacity["build_authorized"])
+        self.assertFalse(capacity["release_authorized"])
+        proc = MagicMock()
+        proc.returncode = None
+        proc.wait.side_effect = OSError("synthetic wait failure")
+        def begin(_cmd, **kwargs):
+            self.q.claim("fixture", task_id="target", lease_seconds=30)
+            return proc
+        def stop(child):
+            self.assertIs(child, proc)
+            child.returncode = -signal.SIGKILL
+        with patch.object(worker_supervisor.subprocess, "Popen", side_effect=begin):
+            with patch.object(worker_supervisor, "_terminate_process_group", side_effect=stop) as kill:
+                with self.assertRaises(worker_supervisor.SupervisorError):
+                    self.run_target()
+        kill.assert_called_once_with(proc)
+        # A passing model and staged skill cannot be used as runtime admission.
+        with patch.object(openhands_sdk_operator, "_official_sdk") as sdk:
+            result = openhands_sdk_operator.launch_isolated(
+                task={}, candidate_root=self.tasks, output_root=self.out,
+                model="ollama/qwen3:0.6b", base_url="http://ollama:11434",
+                server_image="ghcr.io/openhands/agent-server@sha256:"+"a"*64,
+                network="coden_internal", allow_agent=True)
+        sdk.assert_not_called()
+        self.assertEqual(result["status"], "blocked_runtime_admission")
+        self.assertFalse(result["agent_session_attempted"])
+        self.assertFalse(result["release_authorized"])
+        self.assertEqual(self.q.read("target")["status"], "leased")
+        self.assertEqual(self.q.recover_expired(now=10**12), 1)
+        self.assertEqual(self.q.read("target")["status"], "needs_review")
+        self.assertIsNone(self.q.claim("replacement"))
+        self.assertEqual(target.read_bytes(), raw)
+        self.assertEqual(list(self.out.iterdir()), [])
+
+    def test_final_queue_read_failure_is_safe_supervisor_error(self):
+        self.create()
+        proc = MagicMock()
+        proc.returncode = 0
+        proc.wait.return_value = 0
+        original_read = DurableQueue.read
+        reads_after_launch = 0
+        launched = False
+        def begin(_cmd, **kwargs):
+            nonlocal launched
+            lease = self.q.claim("fixture", task_id="target", lease_seconds=30)
+            self.q.finish("target", lease["lease_token"], "blocked")
+            kwargs["stdout"].write(b'{"task_id":"target","status":"blocked","execution_authorized":false}')
+            launched = True
+            return proc
+        def read(queue, task_id):
+            nonlocal reads_after_launch
+            if launched:
+                reads_after_launch += 1
+                if reads_after_launch == 3:
+                    raise sqlite3.OperationalError("private database error detail")
+            return original_read(queue, task_id)
+        with patch.object(DurableQueue, "read", new=read):
+            with patch.object(worker_supervisor.subprocess, "Popen", side_effect=begin):
+                with self.assertRaisesRegex(worker_supervisor.SupervisorError, "review required"):
+                    self.run_target()
+        self.assertEqual(self.q.read("target")["status"], "blocked")
+        self.assertIsNone(self.q.claim("replacement"))
 
 if __name__ == "__main__":
     unittest.main()
