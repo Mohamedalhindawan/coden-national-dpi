@@ -107,3 +107,115 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+  detached-session-cgroup-proof:
+    if: github.event.repository.private == false && github.head_ref == 'fix/factory-staging-inventory-consistency-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    env:
+      BASE: docker.io/library/ubuntu@sha256:9a04f13b3f80ef056361e30868593b1cfd2279fe19e4081cb93a90bf56819d6a
+    steps:
+      - name: Independent watchdog covers detached synthetic child sessions in same cgroup
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          name="coden-detached-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          logpath="$PWD/evidence/container.raw.log"
+          cleanup() {
+            rc=$?
+            trap - EXIT
+            timeout 20s podman rm -f --ignore "$name" >/dev/null 2>&1 || rc=1
+            if podman container exists "$name"; then echo cleanup_unverified > evidence/cleanup.txt; rc=1; else echo resources_removed > evidence/cleanup.txt; fi
+            printf 'final_exit_code=%s\n' "$rc" > evidence/exit.txt
+            exit "$rc"
+          }
+          trap cleanup EXIT
+          test "$(id -u)" -ne 0
+          podman info --format json | jq -e '.host.security.rootless == true and .host.cgroupVersion == "v2" and (.host.cgroupControllers | contains(["cpu","memory","pids"]))' >/dev/null
+          podman pull --platform linux/amd64 "$BASE"
+          export CODEN_SYNTHETIC_HOST_SECRET=never_forward_this_canary
+          podman create --name "$name" --pull=never --network none --http-proxy=false \
+            --read-only --read-only-tmpfs=false --cap-drop=all --security-opt=no-new-privileges \
+            --user 65534:65534 --cpus=2 --memory=4096m --memory-swap=4096m --pids-limit=128 \
+            --cgroupns=private --pid=private --ipc=private --timeout=35 \
+            --ulimit core=0:0 --ulimit nofile=256:256 --ulimit msgqueue=65536:65536 --ulimit memlock=0:0 \
+            --log-driver=k8s-file --log-opt max-size=1mb --log-opt "path=$logpath" \
+            "$BASE" /bin/sh -eu -c '
+              test "$(id -u)" = 65534
+              test -z "${CODEN_SYNTHETIC_HOST_SECRET:-}"
+              test "$(ls /sys/class/net | tr "\n" " ")" = "lo "
+              test "$(cat /sys/fs/cgroup/cpu.max)" = "200000 100000"
+              test "$(cat /sys/fs/cgroup/memory.max)" = 4294967296
+              test "$(cat /sys/fs/cgroup/memory.swap.max)" = 0
+              test "$(cat /sys/fs/cgroup/pids.max)" = 128
+              grep -Eq "^CapEff:[[:space:]]+0+$" /proc/self/status
+              grep -Eq "^NoNewPrivs:[[:space:]]+1$" /proc/self/status
+              command -v setsid >/dev/null
+              sleep 75 &
+              setsid /bin/sh -c "sleep 75 & wait" &
+              sleep 1
+              printf "DETACHED_FIXTURE_READY\n"
+              wait
+            ' >/dev/null
+          podman inspect "$name" | jq -e '.[0] | .HostConfig.Privileged==false and .HostConfig.ReadonlyRootfs==true and .HostConfig.NetworkMode=="none" and ([.Mounts[]? | select(.Type=="bind")]|length==0)' >/dev/null
+          started=$(date +%s)
+          podman start "$name" >/dev/null
+          for _ in $(seq 1 10); do
+            if podman logs "$name" 2>&1 | grep -qx DETACHED_FIXTURE_READY; then break; fi
+            sleep 1
+          done
+          podman logs "$name" > evidence/probe.log 2>&1
+          grep -qx DETACHED_FIXTURE_READY evidence/probe.log
+          podman top "$name" hpid | tail -n +2 | awk '{print $1}' > evidence/host-pids.txt
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          pids={int(x) for x in Path("evidence/host-pids.txt").read_text().split()}
+          assert 4<=len(pids)<=128
+          records=[]
+          for pid in sorted(pids):
+              base=Path("/proc")/str(pid)
+              fields=(base/"stat").read_text().rsplit(") ",1)[1].split()
+              cgroups=(base/"cgroup").read_text().splitlines()
+              assert len(cgroups)==1 and cgroups[0].startswith("0::/")
+              records.append(dict(pid=pid,start_ticks=int(fields[19]),session_id=int(fields[3]),cgroup=cgroups[0][3:]))
+          assert len({r["session_id"] for r in records})>=2,"detached session not observed"
+          assert len({r["cgroup"] for r in records})==1,"not one container cgroup"
+          cg=Path("/sys/fs/cgroup")/records[0]["cgroup"].lstrip("/")
+          assert cg.is_dir() and cg != Path("/sys/fs/cgroup")
+          observed={int(x) for x in (cg/"cgroup.procs").read_text().split()}
+          assert pids==observed,"incomplete process accounting"
+          Path("evidence/process-snapshot.json").write_text(json.dumps(dict(records=records,cgroup=str(cg),members=sorted(observed)),indent=2))
+          PY
+          timeout 50s podman wait "$name" > evidence/container-exit.txt
+          elapsed=$(( $(date +%s) - started ))
+          test "$elapsed" -ge 30 && test "$elapsed" -le 50
+          test "$(podman inspect "$name" --format '{{.State.Running}}')" = false
+          python3 - "$elapsed" <<'PY'
+          import json,sys
+          from pathlib import Path
+          snap=json.loads(Path("evidence/process-snapshot.json").read_text())
+          for r in snap["records"]:
+              p=Path("/proc")/str(r["pid"])/"stat"
+              try: fields=p.read_text().rsplit(") ",1)[1].split()
+              except FileNotFoundError: continue
+              assert int(fields[19])!=r["start_ticks"],"original process identity persists"
+          cg=Path(snap["cgroup"])
+          if cg.exists():
+              assert not (cg/"cgroup.procs").read_text().strip(),"residual cgroup processes"
+              assert "populated 0" in (cg/"cgroup.events").read_text().splitlines(),"cgroup remains populated"
+          report=dict(synthetic_only=True,elapsed_seconds=int(sys.argv[1]),tracked_processes=len(snap["records"]),
+                      separate_sessions=len({r["session_id"] for r in snap["records"]}),all_snapshot_identities_absent=True,
+                      final_cgroup_empty_or_removed=True,actual_agent_tree_verified=False,
+                      aggregate_writable_budget_proven=False,build_authorized=False,release_authorized=False)
+          Path("evidence/review.json").write_text(json.dumps(report,indent=2))
+          PY
+          test -f "$logpath" && test ! -L "$logpath"
+          test "$(stat -c %s "$logpath")" -le 1048576
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: synthetic-detached-cgroup-proof
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
