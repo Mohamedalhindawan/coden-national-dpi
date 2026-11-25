@@ -90,6 +90,32 @@ def prepare_modeb_trial(tasks_dir, task_id, *, branch, commit):
     }
 
 
+def run_modeb_fixture_trial(tasks_dir, task_id, *, branch, commit,
+                            expected_task_file_sha256, allow_agent=False,
+                            fixture_only=False, fixture_adapter=None, cancelled=None):
+    """Run the existing bridge against trusted fixtures only, without a lease.
+
+    The caller supplies the expected raw file hash and reviewed source
+    identity; this function does not inspect a Git checkout or authorize
+    real execution. Read the task once, then bind the request and receipt.
+    """
+    from . import openhands_sdk_operator
+
+    checkpoint._branch(branch)
+    checkpoint._commit(commit)
+    if not branch or not commit or task_id != "OPENHANDS_SYNTHETIC_1":
+        raise ValueError("explicit first Mode B task and source identity required")
+    task, digest = _read_task(tasks_dir, task_id)
+    if type(expected_task_file_sha256) is not str or digest != expected_task_file_sha256:
+        raise ValueError("task file identity mismatch")
+    source = {"branch": branch, "commit": commit, "task_file_sha256": digest}
+    result = openhands_sdk_operator.run_modeb_once(
+        task=task, source_identity=source, allow_agent=allow_agent,
+        fixture_only=fixture_only, fixture_adapter=fixture_adapter, cancelled=cancelled)
+    return dict(result, source_identity=source, queue_enqueued=False,
+                lease_claimed=False, source_checkout_verified=False)
+
+
 def submit(queue, checkpoint_root, tasks_dir, task_id, *, branch, commit):
     """Register a pre-existing trusted synthetic JSON task (never runs it)."""
     task, digest = _load_task(tasks_dir, task_id)
