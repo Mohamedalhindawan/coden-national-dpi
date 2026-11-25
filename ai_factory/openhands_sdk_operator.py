@@ -13,6 +13,7 @@ The OpenHands SDK runs the agent; CODEN only supplies policy, a restricted
 prompt and independent multi-file artifact review. No automatic retry,
 approval, merge, production release or paid provider fallback.
 """
+import hashlib
 import json
 import os
 import re
@@ -89,6 +90,95 @@ def _fixture_llm_options(model, base_url):
             or "cloud" in model.lower() or base_url != "http://ollama:11434"):
         raise ValueError("only reviewed local fixture routes allowed")
     return {"model":model,"base_url":base_url,"api_key":"local"}
+
+
+MODEB_TASK_SHA256 = "81706571edbff4228be140b398a0fddc5b4df84de50407b06f46c2397f009d0f"
+
+
+def prepare_modeb_request(task):
+    """Exact first-task intent, not a capability or authority to execute.
+
+    No host path, secret, hidden case, SDK object, or arbitrary tool command
+    is passed across this boundary. The external isolated adapter is not
+    implemented/admitted yet. This policy does not itself confine tools.
+    """
+    encoded = project.encoded(task)
+    if hashlib.sha256(encoded.encode("utf-8")).hexdigest() != MODEB_TASK_SHA256:
+        raise ValueError("only the pinned first Mode B task is eligible")
+    if not project.valid(task):
+        raise ValueError("invalid first Mode B task")
+    route = review_qwen_route(model="openai/local-qwen", base_url="http://qwen3:11434/v1")
+    return {
+        "task_id": task["id"],
+        "task_sha256": MODEB_TASK_SHA256,
+        "prompt": _prompt(task),
+        "workspace": "/workspace/export",
+        "allowed_files": sorted(openhands_multifile_review.EXPECTED_FILES),
+        "allowed_tools": ["file_editor", "terminal"],
+        "limits": {"cpu": 2, "ram_bytes": 4294967296, "pids": 128,
+                   "scratch_bytes": 1006632960, "seconds": 600},
+        "model": route["llm_options"],
+        "auth_broker_required": True,
+        "host_workspace_allowed": False,
+        "external_network_allowed": False,
+        "docker_socket_allowed": False,
+        "execution_authorized": False,
+        "release_authorized": False,
+    }
+
+
+def run_modeb_once(*, task, allow_agent=False, fixture_only=False,
+                   fixture_adapter=None, cancelled=None):
+    """Exercise the isolated-adapter contract using trusted injected fixtures.
+
+    Never instantiates a real SDK, LocalWorkspace, process, or network client.
+    Fixture receipts are not runtime evidence. Cancellation checks only
+    surround the fixture call; real asynchronous cancellation and cgroup
+    cleanup must be provided and admitted by a separate external supervisor.
+    """
+    def receipt(status, attempted=False):
+        return dict(_result(status), fixture_adapter_attempted=attempted,
+                    runtime_isolation_verified=False, real_sdk_imported=False,
+                    qwen_connected=False)
+    if type(allow_agent) is not bool or type(fixture_only) is not bool:
+        raise ValueError("explicit boolean scope required")
+    if not allow_agent:
+        return receipt("disabled")
+    if not fixture_only or fixture_adapter is None:
+        return receipt("blocked_runtime_admission")
+    request = prepare_modeb_request(task)
+    try:
+        if cancelled is not None and cancelled():
+            return receipt("fixture_cancelled_review_required")
+    except Exception:
+        return receipt("fixture_cancellation_unverified")
+    if any(key in os.environ for key in UNSAFE_ENV_KEYS):
+        return receipt("unsafe_environment")
+    response = None
+    failure = False
+    cleanup = None
+    try:
+        response = fixture_adapter.execute(request)
+    except Exception:
+        failure = True
+    finally:
+        try:
+            cleanup = fixture_adapter.close()
+        except Exception:
+            pass
+    if type(cleanup) is not dict or set(cleanup) != {"fixture_cleanup"} or cleanup["fixture_cleanup"] is not True:
+        return receipt("fixture_cleanup_unverified", True)
+    try:
+        if cancelled is not None and cancelled():
+            return receipt("fixture_cancelled_review_required", True)
+    except Exception:
+        return receipt("fixture_cancellation_unverified", True)
+    if failure:
+        return receipt("fixture_failed_review_required", True)
+    expected = {"status": "fixture_completed", "task_sha256": MODEB_TASK_SHA256}
+    if type(response) is not dict or response != expected:
+        return receipt("fixture_receipt_rejected", True)
+    return receipt("fixture_completed_review_required", True)
 
 
 def _official_sdk():
