@@ -40,7 +40,8 @@ def fixture(root, member=".wh.old", size=0, repeated=False, wrong_diff=False):
 class OfflineOCIReviewTests(unittest.TestCase):
     def review(self, root, digest, limit=100000):
         from ai_factory.oci_offline_evidence import verify
-        return verify(root, digest, max_expanded_bytes=limit)
+        return verify(root, digest, max_expanded_bytes=limit,
+                      max_compressed_bytes=100000)
 
     def test_verified_ordered_layers_and_whiteouts_not_admission(self):
         with tempfile.TemporaryDirectory() as d:
