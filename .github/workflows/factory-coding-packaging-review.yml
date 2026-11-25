@@ -772,3 +772,211 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+  official-minimal-authorized-logical-inventory:
+    # Sprint14: single explicitly authorized reacquisition for logical inventory only.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '08c85e62eb35d7980aa059bbde8557609452b90a' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Acquire exact public image once and build logical inventory offline
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          # Confirm exact reviewed scanner bytes before acquisition.
+          test "$(git hash-object ai_factory/oci_offline_evidence.py)" = 58f7905f724abd8d9974b928b009d69afc0e3874
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          store="$(mktemp -d "${RUNNER_TEMP}/coden-oci.XXXXXXXX")"
+          guard="$(mktemp "${RUNNER_TEMP}/coden-offline-guard.XXXXXXXX.py")"
+          cleanup() {
+            rm -f -- "$guard"
+            if mountpoint -q "$store"; then
+              sudo umount "$store" || { printf '%s\n' 'CLEANUP_FAILED' > "$ev/cleanup.txt"; return 1; }
+            fi
+            rmdir "$store" || return 1
+            printf '%s\n' 'STORE_UNMOUNTED_AND_REMOVED' > "$ev/cleanup.txt"
+          }
+          trap cleanup EXIT
+          test "$(id -u)" != 0
+          # Host-only quota mount; no privileged container, Docker socket or image execution.
+          sudo mount -t tmpfs -o "size=512m,nosuid,nodev,noexec,mode=0700,uid=$(id -u),gid=$(id -g)" tmpfs "$store"
+          mountpoint -q "$store"
+          findmnt -n -o FSTYPE,OPTIONS --mountpoint "$store" > "$ev/store-mount.txt"
+          # Prove network namespace and unprivileged execution before acquisition.
+          uid="$(id -u)"; gid="$(id -g)"
+          host_ns="$(readlink /proc/self/ns/net)"
+          cat > "$guard" <<'PYGUARD'
+          import os,runpy,socket,sys
+          from pathlib import Path
+          host=sys.argv[1]
+          fields={k:v.strip() for k,v in (line.split(":",1) for line in Path("/proc/self/status").read_text().splitlines() if ":" in line)}
+          kernel=sorted(name for _,name in socket.if_nameindex())
+          proc_names=sorted(line.split(":",1)[0].strip() for line in Path("/proc/self/net/dev").read_text().splitlines()[2:] if ":" in line)
+          ipv4=Path("/proc/self/net/route").read_text().splitlines()[1:]
+          ipv6=Path("/proc/self/net/ipv6_route")
+          routes6=ipv6.read_text().splitlines() if ipv6.exists() else []
+          assert os.getuid()!=0 and os.geteuid()!=0
+          assert int(fields["CapEff"],16)==0 and fields["NoNewPrivs"]=="1"
+          assert os.readlink("/proc/self/ns/net")!=host
+          assert kernel==["lo"] and proc_names==["lo"]
+          assert not ipv4 and not any(line.split()[-1]!="lo" for line in routes6 if line.strip())
+          if len(sys.argv)==2:
+              print("OFFLINE_NAMESPACE_NONROOT_KERNEL_PROC_NO_EXTERNAL_ROUTES")
+          else:
+              print("ACTUAL_INSPECTION_NAMESPACE_VERIFIED",file=sys.stderr)
+              sys.argv=sys.argv[2:]
+              runpy.run_path(sys.argv[0],run_name="__main__")
+          PYGUARD
+          sudo unshare --net -- setpriv --reuid "$uid" --regid "$gid" --clear-groups --no-new-privs env -i PATH=/usr/bin:/bin python3 -I "$guard" "$host_ns" > "$ev/network-preflight.txt"
+          timeout --kill-after=5s 300s env -i PATH=/usr/bin:/bin python3 -I - "$store" "$ev" <<'PY'
+          import hashlib,json,os,re,sys,urllib.error,urllib.request
+          from pathlib import Path
+          from urllib.parse import urlsplit
+          store,ev=map(Path,sys.argv[1:])
+          cap=512*1024**2
+          image="sha256:9a36355fa2baacaae1c6dd5a1a80492bba89d1dec5a536af572ba5fb3e96e22f"
+          config="sha256:132971a4abd0f0274f66045f4a6fd37d89b45c4a1029d3c17849a54a3dc3d9f1"
+          base="https://ghcr.io/v2/openhands/agent-server/"
+          report=dict(status="ACQUISITION_STARTED",manifest_digest=image,config_digest=config,
+                      max_compressed_bytes=cap,verified_blobs=[],image_executed=False,
+                      installed=False,build_authorized=False,execution_authorized=False,release_authorized=False)
+          def save():
+              (ev/"acquisition.json").write_text(json.dumps(report,indent=2)+"\n")
+          save()
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*args,**kwargs): return None
+          opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+          def req(url,headers):
+              return opener.open(urllib.request.Request(url,headers=headers),timeout=25)
+          def digest(raw):
+              return "sha256:"+hashlib.sha256(raw).hexdigest()
+          def bounded(url,headers,max_bytes):
+              with req(url,headers) as response:
+                  assert response.status==200
+                  raw=response.read(max_bytes+1)
+                  assert len(raw)<=max_bytes
+                  return raw
+          def stream_blob(desc):
+              dg,size=desc["digest"],desc["size"]
+              assert re.fullmatch(r"sha256:[0-9a-f]{64}",dg) and type(size) is int and size>0
+              target=blobs/dg[7:]
+              assert not target.exists()
+              try:
+                  response=req(base+"blobs/"+dg,auth)
+              except urllib.error.HTTPError as e:
+                  if e.code not in (301,302,303,307,308): raise
+                  redirect=e.headers.get("Location","")
+                  u=urlsplit(redirect)
+                  assert u.scheme=="https" and u.hostname=="pkg-containers.githubusercontent.com" and not u.username and not u.password and u.port in (None,443)
+                  # Never forward registry authorization to the CDN.
+                  response=req(redirect,{"Accept-Encoding":"identity"})
+              h=hashlib.sha256(); count=0
+              with response, target.open("xb") as out:
+                  assert response.status==200
+                  assert response.headers.get("Content-Encoding","identity")=="identity"
+                  length=response.headers.get("Content-Length")
+                  assert length is None or int(length)==size
+                  while count<size:
+                      block=response.read(min(1024**2,size-count))
+                      assert block
+                      out.write(block); h.update(block); count+=len(block)
+                  assert response.read(1)==b""
+              assert count==size and "sha256:"+h.hexdigest()==dg
+              target.chmod(0o400)
+              report["verified_blobs"].append(dict(digest=dg,bytes=count))
+              save()
+          try:
+              v=os.statvfs(store)
+              assert v.f_frsize*v.f_blocks<=cap and v.f_frsize*v.f_bavail>=331915022
+              assert os.getuid()!=0
+              report["store_capacity_bytes"]=v.f_frsize*v.f_blocks
+              mount=(ev/"store-mount.txt").read_text().split()
+              assert mount[0]=="tmpfs" and {"nosuid","nodev","noexec"}<=set(mount[1].split(","))
+              blobs=store/"blobs"/"sha256"; blobs.mkdir(parents=True)
+              token=json.loads(bounded("https://ghcr.io/token?service=ghcr.io&scope=repository%3Aopenhands%2Fagent-server%3Apull",{},65536))["token"]
+              assert isinstance(token,str) and 0<len(token)<16384
+              auth={"Authorization":"Bearer "+token,"Accept-Encoding":"identity"}
+              raw=bounded(base+"manifests/"+image,dict(auth,Accept="application/vnd.oci.image.manifest.v1+json"),1048576)
+              assert digest(raw)==image
+              m=json.loads(raw)
+              assert m["schemaVersion"]==2 and m["mediaType"]=="application/vnd.oci.image.manifest.v1+json"
+              c=m["config"]
+              assert c["digest"]==config and c["size"]==14745 and c["mediaType"]=="application/vnd.oci.image.config.v1+json"
+              layers=m["layers"]; assert len(layers)==14
+              unique={}
+              for d in layers:
+                  assert d["mediaType"]=="application/vnd.oci.image.layer.v1.tar+gzip"
+                  assert re.fullmatch(r"sha256:[0-9a-f]{64}",d["digest"]) and type(d["size"]) is int and d["size"]>0
+                  assert d["digest"] not in (image,config)
+                  assert d["digest"] not in unique or d==unique[d["digest"]]
+                  unique[d["digest"]]=d
+              total=len(raw)+c["size"]+sum(d["size"] for d in unique.values())
+              assert len(unique)==12 and total==331915022 and total<=cap
+              assert sum(d["size"] for d in layers)==331897380
+              report.update(required_payload_bytes=total,unique_layer_count=12,ordered_layer_count=14)
+              (blobs/image[7:]).write_bytes(raw)
+              (blobs/image[7:]).chmod(0o400)
+              stream_blob(c)
+              cfg=json.loads((blobs/config[7:]).read_bytes())
+              assert cfg["os"]=="linux" and cfg["architecture"]=="amd64"
+              assert cfg["rootfs"]["type"]=="layers" and len(cfg["rootfs"]["diff_ids"])==14
+              assert all(re.fullmatch(r"sha256:[0-9a-f]{64}",x) for x in cfg["rootfs"]["diff_ids"])
+              for desc in unique.values(): stream_blob(desc)
+              assert sum(p.stat().st_size for p in blobs.iterdir())==total
+              report["status"]="ALL_COMPRESSED_BLOBS_VERIFIED"
+              report["layer_blobs_verified"]=12
+              report["raw_layers_exported"]=False
+              save()
+          except Exception as exc:
+              report["status"]="ACQUISITION_STOPPED"
+              report["failure_type"]=type(exc).__name__
+              if isinstance(exc,urllib.error.HTTPError): report["http_status"]=exc.code
+              save()
+              sys.exit("Acquisition stopped; see sanitized receipt")
+          PY
+          # Separate inspection phase, no network or inherited environment.
+          # The approved storage is only the tmpfs; read-only remount prevents mutation.
+          sudo mount -o remount,ro,nosuid,nodev,noexec "$store"
+          findmnt -n -o FSTYPE,OPTIONS --mountpoint "$store" > "$ev/inspection-mount.txt"
+          test "$(findmnt -n -o OPTIONS --mountpoint "$store" | cut -d, -f1)" = ro
+          # No nested archive reader is admitted; do not decompress inner archives.
+          # Reserve one byte for the verifier's overflow detection read.
+          # Bound generated metadata, not raw image files, to 32 MiB per file.
+          ulimit -f 32768
+          timeout --kill-after=5s 180s sudo unshare --net -- setpriv --reuid "$uid" --regid "$gid" --clear-groups --no-new-privs env -i PATH=/usr/bin:/bin python3 -I "$guard" "$host_ns" "$PWD/ai_factory/oci_offline_evidence.py" "$store" --max-compressed-bytes 536870912 --max-expanded-bytes 2147483647 --logical-inventory > "$ev/offline-layer-review.json"
+          python3 -I - "$ev/offline-layer-review.json" <<'PY'
+          import json,sys
+          r=json.load(open(sys.argv[1]))
+          assert r["status"]=="layer_bytes_verified_review_only"
+          assert r["layer_count"]==14 and r["unique_layer_count"]==12
+          assert r["required_unique_payload_bytes"]==331915022
+          assert r["expanded_bytes"]<=2147483648
+          assert r["execution_authorized"] is False and r["release_authorized"] is False
+          assert r["whiteout_semantics_applied"] is True
+          assert r["final_inventory_verified"] is False
+          inv=r["logical_inventory"]
+          assert inv["status"]=="logical_inventory_candidate_review_required"
+          assert inv["entry_count"]==len(inv["entries"])
+          assert inv["package_metadata_count"]==len(inv["package_metadata"])
+          assert inv["embedded_archive_inventory_verified"] is False
+          assert inv["complete_sbom"] is False
+          assert r["embedded_inventory_verified"] is False
+          assert r["license_approved"] is False and r["security_approved"] is False
+          print("LOGICAL_FILESYSTEM_INVENTORY_REVIEW_ONLY",inv["entry_count"],"package metadata",inv["package_metadata_count"])
+          print("EMBEDDED_ARCHIVE_READER_NOT_ADMITTED; NO RUNTIME ADMISSION")
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-authorized-logical-inventory-receipts
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
