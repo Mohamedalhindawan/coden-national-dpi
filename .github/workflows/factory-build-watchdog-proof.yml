@@ -428,10 +428,9 @@ jobs:
                 printf "%s  %s\n" "$ch" "compressed-$i" | sha256sum -c - >/dev/null
               done
               reclaim() {
-                i="$1"; ch="$2"; eh="$3"
-                printf "%s  %s\n" "$ch" "compressed-$i" | sha256sum -c - >/dev/null || return 1
-                printf "%s  %s\n" "$eh" "expanded-$i" | sha256sum -c - >/dev/null || return 1
-                rm "compressed-$i"
+                printf "%s  %s\n" "$2" "compressed-$1" | sha256sum -c - >/dev/null || return 1
+                printf "%s  %s\n" "$3" "expanded-$1" | sha256sum -c - >/dev/null || return 1
+                rm "compressed-$1"
               }
               printf "%s\n" "$CODEN_STAGING_PLAN" | while read -r i c e ch eh expected; do
                 head -c "$e" /dev/zero > "expanded-$i"
