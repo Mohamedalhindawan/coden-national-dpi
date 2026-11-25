@@ -197,6 +197,7 @@ def inspect_carchive_toc(stream, *, max_declared_expanded_bytes):
     spans.sort()
     _require(all(a[1]<=b[0] for a,b in zip(spans,spans[1:])), "overlapping archive member ranges")
     return {"status":"carchive_toc_candidate_review_required","entries":rows,
+            "payload_bytes":offset,
             "runtime_option_count":len(options),"python_version":pyvers,
             "archive_bytes":length,"toc_bytes":toc_size,
             "metadata_bytes_read":4+cookie.size+toc_size,
@@ -314,7 +315,7 @@ def _hash_member(stream, offset, stored, compressed, budget, *, expected=None, c
         size += len(data)
         _require(expected is None or size <= expected, "embedded member exceeds declared size")
         h.update(data)
-        prefix = (prefix+data[:8])[:8]
+        prefix = (prefix+data[:512])[:512]
         if captured is not None:
             _require(size <= capture_limit, "embedded capture exceeds memory bound")
             captured.extend(data)
@@ -382,6 +383,7 @@ def _inspect_pyz(stream, budget):
         rows.append({"name":name,"type":kind,"offset":offset,"stored_bytes":stored})
     spans.sort()
     _require(all(a[1]<=b[0] for a,b in zip(spans,spans[1:])), "overlapping PYZ entry ranges")
+    _require_contiguous(spans,17,toc_offset)
     for row in rows:
         if row["type"]==3:
             row.update(sha256=None,actual_bytes=0)
@@ -402,11 +404,34 @@ def inspect_pyz_toc(stream, *, max_read_bytes):
             "embedded_inventory_verified":False,"release_authorized":False}
 
 
+def _require_contiguous(spans, start, end):
+    # Exact writer layout: no padding or unaccounted payload between members.
+    for a,b in sorted(spans):
+        _require(a==start and b>=a, "unaccounted or overlapping archive payload")
+        start=b
+    _require(start==end, "unaccounted archive payload")
+
+
+def _embedded_paths(rows):
+    paths={str(_safe_path(row["name"])):row for row in rows}
+    for path,row in paths.items():
+        _require(not any(str(p) in paths for p in PurePosixPath(path).parents),
+                 "archive member has a non-directory ancestor")
+        if row["type"]=="n":
+            target=row["lexical_target"]
+            # Do not follow link chains, including links in parent paths.
+            # Conservative: ambiguous chains need separate review.
+            _require(not any(paths.get(str(p),{}).get("type")=="n"
+                             for p in (PurePosixPath(target),*PurePosixPath(target).parents)),
+                     "embedded link chain or cycle requires review")
+
+
 def inspect_embedded_binary(stream, *, max_read_bytes):
     budget=_InspectionBudget(max_read_bytes)
     source=_BudgetStream(stream,budget)
     outer=inspect_carchive_toc(source,max_declared_expanded_bytes=max_read_bytes)
     budget.count_entries(len(outer["entries"])+outer["runtime_option_count"])
+    _require_contiguous([(r["offset"],r["offset"]+r["stored_bytes"]) for r in outer["entries"] if r["stored_bytes"]],0,outer["payload_bytes"])
     source.seek(0,os.SEEK_END)
     start=source.tell()-outer["archive_bytes"]
     pyz,unknown=[],[]
@@ -417,23 +442,33 @@ def inspect_embedded_binary(stream, *, max_read_bytes):
                               budget,expected=row["declared_expanded_bytes"],capture_limit=capture)
         prefix=data.pop("prefix")
         row.update(data)
+        row["content_kind"]="elf" if prefix.startswith(b"\x7fELF") else "opaque_bytes"
         if kind=="z":
+            row["content_kind"]="pyz"
             _require(len(pyz)==0, "multiple PYZ archives require independent review")
             pyz.append({"container_name":row["name"],"sha256":row["sha256"],
                         **_inspect_pyz(io.BytesIO(raw),budget)})
         elif kind=="n":
             try:
-                target=bytes(raw).rstrip(b"\0").decode("utf-8")
+                _require(raw is not None and raw.endswith(b"\0") and b"\0" not in raw[:-1], "invalid embedded link terminator")
+                target=bytes(raw[:-1]).decode("utf-8")
             except UnicodeError as exc:
                 raise ValueError("invalid embedded link target") from exc
             _require(not target.startswith("/"), "absolute embedded link target")
             row["lexical_target"]=_link_target(row["name"],target)
-        elif kind=="Z" or row["name"].lower().endswith((".zip",".whl",".pyz",".tar",".gz",".bz2",".xz",".7z")) or prefix.startswith((b"PK\x03\x04",b"PYZ\0",b"\x1f\x8b",b"BZh",b"\xfd7zXZ\0")):
+            row["content_kind"]="symlink"
+        elif kind=="Z" or row["name"].lower().endswith((".zip",".whl",".pyz",".tar",".gz",".bz2",".xz",".7z")) or prefix.startswith((b"PK\x03\x04",b"PK\x05\x06",b"PK\x07\x08",b"PYZ\0",b"\x1f\x8b",b"BZh",b"\xfd7zXZ\0",b"7z\xbc\xaf\x27\x1c")) or prefix[257:262]==b"ustar":
             # Do not recurse through unreviewed formats. Retain their identities only.
             unknown.append(row["name"])
+            row["content_kind"]="unreviewed_archive"
+        elif kind in ("m","M","s"):
+            row["content_kind"]="opaque_python_payload"
+    _embedded_paths(outer["entries"])
     return {**outer,"status":"embedded_archive_candidate_review_required",
             "pyz_archives":pyz,"pyz_toc_read":bool(pyz),"uninspected_nested_archives":unknown,
             "aggregate_read_bytes":budget.used,"nested_payload_bytes_decompressed":budget.decompressed,
+            "unknown_archive_admission":"BLOCKED" if unknown else "NOT_ESTABLISHED",
+            "content_kind_magic_is_not_full_format_validation":True,
             "symlink_targets_reviewed":True,"symlinks_followed":False,
             "embedded_inventory_verified":False,"release_authorized":False}
 
@@ -608,6 +643,26 @@ def _inventory_report(tree):
 
 
 class _StrictTarInfo(tarfile.TarInfo):
+    def _proc_member(self, archive):
+        # Bound metadata before tarfile can allocate its padded body or recurse.
+        # These are parser safety caps, not an assertion that all OCI tar
+        # variants are supported. Fail closed on sparse or excessive metadata.
+        _require(self.type != tarfile.GNUTYPE_SPARSE, "sparse tar metadata unsupported")
+        extended = self.type in (tarfile.XHDTYPE,tarfile.XGLTYPE,tarfile.SOLARIS_XHDTYPE,
+                                 tarfile.GNUTYPE_LONGNAME,tarfile.GNUTYPE_LONGLINK)
+        if not extended:
+            return super()._proc_member(archive)
+        depth=getattr(archive,"_coden_extended_depth",0)
+        total=getattr(archive,"_coden_extended_bytes",0)+self.size
+        _require(0<=self.size<=MAX_METADATA and total<=16*CHUNK and depth<8,
+                 "extended tar metadata bound exceeded")
+        archive._coden_extended_depth=depth+1
+        archive._coden_extended_bytes=total
+        try:
+            return super()._proc_member(archive)
+        finally:
+            archive._coden_extended_depth=depth
+
     @classmethod
     def fromtarfile(cls, archive):
         # Catch at the member boundary: newer 3.12 security updates use private
