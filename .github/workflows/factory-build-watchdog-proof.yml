@@ -219,3 +219,118 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+  synthetic-footprint-pressure:
+    if: github.event.repository.private == false && github.head_ref == 'fix/factory-staging-inventory-consistency-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    permissions:
+      actions: read
+    env:
+      BASE: docker.io/library/ubuntu@sha256:9a04f13b3f80ef056361e30868593b1cfd2279fe19e4081cb93a90bf56819d6a
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45530913977
+          name: r2-installation-footprint-review
+          path: input
+      - name: Stress measured scenario with only synthetic bytes and bounded writable tmpfs
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          name="coden-pressure-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          scratch="$name-scratch"
+          logpath="$PWD/evidence/container.raw.log"
+          cleanup() {
+            rc=$?
+            trap - EXIT
+            timeout 20s podman rm -f --ignore "$name" >/dev/null 2>&1 || rc=1
+            if podman volume exists "$scratch"; then timeout 20s podman volume rm -f "$scratch" >/dev/null 2>&1 || rc=1; fi
+            if podman container exists "$name" || podman volume exists "$scratch"; then echo cleanup_unverified > evidence/cleanup.txt; rc=1; else echo resources_removed > evidence/cleanup.txt; fi
+            printf 'final_exit_code=%s\n' "$rc" > evidence/exit.txt
+            exit "$rc"
+          }
+          trap cleanup EXIT
+          printf '%s  %s\n' '5e067dd0cb9bd08fd6dca8576b273bb45c954ecc83cc93970bb06ed4ad2ecc40' 'input/installation-footprint.json' | sha256sum -c -
+          jq -e '.actual_installation==false and .build_authorized==false and .scenarios[1].modeled_bytes==1002496000 and .scenarios[1].headroom_bytes==4136960' input/installation-footprint.json >/dev/null
+          test "$(id -u)" -ne 0
+          podman info --format json | jq -e '.host.security.rootless == true and .host.cgroupVersion == "v2" and (.host.cgroupControllers | contains(["cpu","memory","pids"]))' >/dev/null
+          podman pull --platform linux/amd64 "$BASE"
+          podman volume create --opt type=tmpfs --opt device=tmpfs --opt o=rw,exec,nosuid,nodev,size=960m,nr_inodes=61440,mode=1777 "$scratch" >/dev/null
+          export CODEN_SYNTHETIC_HOST_SECRET=never_forward_this_canary
+          podman create --name "$name" --pull=never --network none --http-proxy=false \
+            --read-only --read-only-tmpfs=false --cap-drop=all --security-opt=no-new-privileges \
+            --user 65534:65534 --cpus=2 --memory=4096m --memory-swap=4096m --pids-limit=128 \
+            --cgroupns=private --pid=private --ipc=private --timeout=90 \
+            --ulimit core=0:0 --ulimit nofile=256:256 --ulimit msgqueue=65536:65536 --ulimit memlock=0:0 \
+            --log-driver=k8s-file --log-opt max-size=1mb --log-opt "path=$logpath" \
+            --volume "$scratch:/scratch:rw,nocopy" --workdir /scratch --env HOME=/scratch \
+            "$BASE" /bin/sh -eu -c '
+              test "$(id -u)" = 65534
+              test -z "${CODEN_SYNTHETIC_HOST_SECRET:-}"
+              test "$(ls /sys/class/net | tr "\n" " ")" = "lo "
+              test "$(cat /sys/fs/cgroup/cpu.max)" = "200000 100000"
+              test "$(cat /sys/fs/cgroup/memory.max)" = 4294967296
+              test "$(cat /sys/fs/cgroup/memory.swap.max)" = 0
+              test "$(cat /sys/fs/cgroup/pids.max)" = 128
+              grep -Eq "^CapEff:[[:space:]]+0+$" /proc/self/status
+              grep -Eq "^NoNewPrivs:[[:space:]]+1$" /proc/self/status
+              test ! -e /var/run/docker.sock && test ! -e /run/podman/podman.sock
+              if touch /coden-should-not-write 2>/dev/null; then exit 11; fi
+              mkdir /scratch/files /scratch/dirs
+              # 31,312 entries model regular files, links and extra bytecode;
+              # 4,635 directories model wheel directories and cache dirs.
+              # These are placeholders, not an actual filesystem layout.
+              seq -f /scratch/files/%05g 1 31312 | xargs -r touch
+              seq -f /scratch/dirs/%05g 1 4635 | xargs -r mkdir
+              test "$(find /scratch/files -type f | wc -l)" = 31312
+              test "$(find /scratch/dirs -mindepth 1 -type d | wc -l)" = 4635
+              head -c 1002496000 /dev/zero > /scratch/payload
+              test "$(wc -c < /scratch/payload)" = 1002496000
+              printf "NEAR_CAPACITY\n"; df -Pk /scratch; df -Pi /scratch
+              test "$(df -Pk /scratch | awk "NR==2{print \$2}")" = 983040
+              test "$(df -Pi /scratch | awk "NR==2{print \$2}")" = 61440
+              # Attempt just 8 MiB beyond the modeled 3.95 MiB remaining.
+              # The quota, not host space or an artificial shell limit, must stop it.
+              if head -c 8388608 /dev/zero > /scratch/overflow; then exit 12; fi
+              test "$(wc -c < /scratch/overflow)" -lt 8388608
+              printf "OVERFLOW_REJECTED\n"; df -Pk /scratch
+              rm /scratch/overflow
+              printf "MEMORY_PEAK "; cat /sys/fs/cgroup/memory.peak
+              printf "MEMORY_CURRENT "; cat /sys/fs/cgroup/memory.current
+              printf "MEMORY_EVENTS\n"; cat /sys/fs/cgroup/memory.events
+              printf "PIDS_EVENTS\n"; cat /sys/fs/cgroup/pids.events
+              printf "CPU_STAT\n"; cat /sys/fs/cgroup/cpu.stat
+              printf "MOUNTS\n"; cat /proc/self/mountinfo
+              printf "SYNTHETIC_PRESSURE_PASS\n"
+            ' >/dev/null
+          podman inspect "$name" | jq -e '.[0] | .HostConfig.Privileged==false and .HostConfig.ReadonlyRootfs==true and .HostConfig.NetworkMode=="none" and ([.Mounts[]? | select(.Type=="bind")]|length==0)' >/dev/null
+          timeout 105s podman start -a "$name" > evidence/probe.log 2>&1
+          grep -qx SYNTHETIC_PRESSURE_PASS evidence/probe.log
+          grep -qx OVERFLOW_REJECTED evidence/probe.log
+          grep -q 'No space left on device' evidence/probe.log
+          test "$(podman inspect "$name" --format '{{.State.ExitCode}}')" = 0
+          test "$(podman inspect "$name" --format '{{.State.Running}}')" = false
+          test -f "$logpath" && test ! -L "$logpath"
+          test "$(stat -c %s "$logpath")" -le 1048576
+          python3 - <<'PY'
+          import json,re
+          from pathlib import Path
+          log=Path("evidence/probe.log").read_text()
+          peak=int(re.search(r"^MEMORY_PEAK (\d+)$",log,re.M)[1])
+          assert 1002496000<=peak<=4294967296
+          assert "oom 0" in log and "oom_kill 0" in log
+          report=dict(synthetic_only=True,payload_bytes=1002496000,placeholder_files=31312,placeholder_dirs=4635,
+                      observed_memory_peak_bytes=peak,overflow_rejected=True,actual_installation=False,
+                      aggregate_writable_budget_proven=False,actual_peak_build_capacity_proven=False,
+                      build_authorized=False,release_authorized=False)
+          Path("evidence/pressure-review.json").write_text(json.dumps(report,indent=2))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: synthetic-installation-footprint-pressure
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
