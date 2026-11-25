@@ -52,16 +52,27 @@ def inspect_wheel(raw, digest):
         entries = z.infolist()
         if len(entries) > 50000 or sum(e.file_size for e in entries) > 4 * CAP:
             raise ValueError('wheel expansion limit')
-        seen = set()
+        # Validate the complete namespace before decompressing any notice.
+        # ZipInfo.filename can truncate at NUL; compare the original spelling.
+        seen = {}
         for e in entries:
-            p = PurePosixPath(e.filename)
-            if (p.is_absolute() or '..' in p.parts or '\\' in e.filename
-                    or ':' in e.filename or e.filename in seen
+            spelling = e.filename[:-1] if e.is_dir() else e.filename
+            p = PurePosixPath(spelling)
+            if (not spelling or e.orig_filename != e.filename
+                    or p.is_absolute() or '..' in p.parts
+                    or any(part in ('', '.', '..') for part in spelling.split('/'))
+                    or any(ord(c) < 32 or ord(c) == 127 for c in spelling)
+                    or '\\' in spelling or ':' in spelling or p in seen
                     or stat.S_ISLNK(e.external_attr >> 16) or e.flag_bits & 1):
                 raise ValueError('unsafe wheel member')
-            seen.add(e.filename)
+            seen[p] = e.is_dir()
+        for p in seen:
+            if any(parent in seen and not seen[parent] for parent in p.parents):
+                raise ValueError('wheel file ancestor collision')
+        for e in entries:
             if e.is_dir():
                 continue
+            p = PurePosixPath(e.filename)
             name = p.name.upper()
             if (name == 'METADATA' or name.startswith(('LICENSE', 'LICENCE', 'NOTICE', 'COPYING', 'COPYRIGHT'))
                     or 'licenses' in p.parts):
