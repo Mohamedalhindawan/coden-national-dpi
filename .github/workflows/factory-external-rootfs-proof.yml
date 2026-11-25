@@ -66,12 +66,13 @@ jobs:
           image_mounted=false
           df -Pk "$root" > "$evidence/setup-blocks.txt"
           df -Pi "$root" > "$evidence/setup-inodes.txt"
+          podman version --format json > "$evidence/podman-version.json"
           podman create --name "$name" --network none --http-proxy=false \
             --read-only-tmpfs=false --cap-drop=all --cap-add=CHOWN,DAC_OVERRIDE,FOWNER,SYS_CHROOT \
             --security-opt=no-new-privileges --user 0:0 \
             --cpus=2 --memory=4096m --memory-swap=4096m --pids-limit=128 \
             --cgroupns=private --pid=private --ipc=none --timeout=60 \
-            --no-hosts --no-hostname \
+            --no-hosts --security-opt=mask=/etc/hostname:/run/.containerenv \
             --tmpfs /run:rw,nosuid,nodev,noexec,size=4m,nr_inodes=1024,mode=0755 \
             --tmpfs /dev:rw,nosuid,noexec,size=64m,nr_inodes=4096,mode=0755 \
             --ulimit core=0:0 --ulimit nofile=256:256 --ulimit msgqueue=65536:65536 --ulimit memlock=0:0 \
@@ -90,6 +91,10 @@ jobs:
               test "$(df -Pi / | awk "NR==2{print \$2}")" = 49152
               awk "\$5==\"/\" && \$0 ~ / - tmpfs / {ok=1} END{exit !ok}" /proc/self/mountinfo
               test -c /dev/null
+              for path in /etc/hostname /run/.containerenv; do
+                if (printf denied > "$path") 2>/dev/null; then exit 24; fi
+              done
+              printf "GENERATED_METADATA_WRITE_DENIED\n"
               printf test > /dev/null
               test -r /proc/1/stat
               test ! -e /run/podman/podman.sock && test ! -e /var/run/docker.sock
@@ -122,6 +127,7 @@ jobs:
           test "$(cat "$evidence/container-exit.txt")" = 0
           grep -qx EXTERNAL_ROOTFS_SYNTHETIC_PASS "$evidence/probe.log"
           grep -qx AUXILIARY_TMPFS_QUOTAS_PASS "$evidence/probe.log"
+          grep -qx GENERATED_METADATA_WRITE_DENIED "$evidence/probe.log"
           # Reject any extra writable ordinary-file mount, including generated single-file binds.
           # Standard character-device bind mounts and kernel pseudo-filesystems are classified
           # separately; their kernel-resource accounting is not inferred from this check.
