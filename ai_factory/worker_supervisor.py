@@ -227,7 +227,9 @@ def run_once(*, queue_db, journal, task_dir, output_root, worker_id,
             except (UnicodeError, ValueError, TypeError):
                 return _result("untrusted_worker_result")
             if parsed is None:
-                return _result("idle")
+                # A bound child must account for its selected task. A null
+                # receipt cannot establish that a claimed task was idle.
+                return _result("untrusted_worker_result" if task_id is not None else "idle")
             required = {"task_id", "status", "execution_authorized"}
             if not isinstance(parsed, dict) or set(parsed) not in (
                 required, required | {"directory"}
