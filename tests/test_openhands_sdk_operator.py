@@ -697,5 +697,73 @@ class ModeBBridgeContractTests(unittest.TestCase):
                 offline_worker.prepare_modeb_trial(root,"OPENHANDS_SYNTHETIC_1",branch="review/modeb",commit="a"*40)
 
 
+    def test_worker_fixture_trial_binds_source_and_exact_request_receipt(self):
+        import hashlib
+        from ai_factory import offline_worker
+        calls=[]
+        class Adapter:
+            def execute(self,request):
+                calls.append(request)
+                digest=hashlib.sha256(project.encoded(request).encode()).hexdigest()
+                return {"status":"fixture_completed","task_sha256":request["task_sha256"],
+                        "request_sha256":digest}
+            def close(self):
+                return {"fixture_cleanup":True}
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            path=root/"OPENHANDS_SYNTHETIC_1.json"
+            raw=json.dumps(self.task(),ensure_ascii=False).encode()
+            path.write_bytes(raw)
+            source={"branch":"review/modeb","commit":"a"*40,
+                    "task_file_sha256":hashlib.sha256(raw).hexdigest()}
+            result=offline_worker.run_modeb_fixture_trial(root,"OPENHANDS_SYNTHETIC_1",
+                branch=source["branch"],commit=source["commit"],
+                expected_task_file_sha256=source["task_file_sha256"],
+                allow_agent=True,fixture_only=True,fixture_adapter=Adapter())
+            self.assertEqual(result["status"],"fixture_completed_review_required")
+            self.assertEqual(calls[0]["source_identity"],source)
+            self.assertEqual(result["source_identity"],source)
+            self.assertEqual(result["request_sha256"],hashlib.sha256(project.encoded(calls[0]).encode()).hexdigest())
+            self.assertNotIn("تجريبي",repr(calls))
+            self.assertFalse(result["lease_claimed"])
+            self.assertFalse(result["queue_enqueued"])
+            self.assertFalse(result["release_authorized"])
+            self.assertEqual(list(root.iterdir()),[path])
+            with self.assertRaises(ValueError):
+                offline_worker.run_modeb_fixture_trial(root,"OPENHANDS_SYNTHETIC_1",
+                    branch=source["branch"],commit=source["commit"],
+                    expected_task_file_sha256="0"*64,allow_agent=True,fixture_only=True,fixture_adapter=Adapter())
+            self.assertEqual(len(calls),1)
+
+    def test_worker_fixture_rejects_stale_receipt_and_never_activates_real_adapter(self):
+        import hashlib
+        from ai_factory import offline_worker
+        calls=[]
+        class Adapter:
+            def execute(self,request):
+                calls.append("execute")
+                return {"status":"fixture_completed","task_sha256":request["task_sha256"],
+                        "request_sha256":"0"*64}
+            def close(self):
+                calls.append("close")
+                return {"fixture_cleanup":True}
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            raw=json.dumps(self.task()).encode()
+            (root/"OPENHANDS_SYNTHETIC_1.json").write_bytes(raw)
+            args={"branch":"review/modeb","commit":"a"*40,
+                  "expected_task_file_sha256":hashlib.sha256(raw).hexdigest(),
+                  "allow_agent":True,"fixture_adapter":Adapter()}
+            with patch.object(openhands_sdk_operator,"_official_sdk") as sdk:
+                self.assertEqual(offline_worker.run_modeb_fixture_trial(root,"OPENHANDS_SYNTHETIC_1",**args)["status"],"blocked_runtime_admission")
+                self.assertEqual(calls,[])
+                result=offline_worker.run_modeb_fixture_trial(root,"OPENHANDS_SYNTHETIC_1",fixture_only=True,**args)
+            sdk.assert_not_called()
+            self.assertEqual(result["status"],"fixture_receipt_rejected")
+            self.assertEqual(calls,["execute","close"])
+            self.assertFalse(result["automatic_retry_allowed"])
+            self.assertFalse(result["release_authorized"])
+
+
 if __name__ == "__main__":
     unittest.main()
