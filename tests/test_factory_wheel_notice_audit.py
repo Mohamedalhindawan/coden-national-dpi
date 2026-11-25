@@ -224,3 +224,66 @@ class IntegratedWheelBatchTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 inspect_wheel_batch(candidates, scratch=Path(tmp), inspect_native=True)
             self.assertEqual(list(Path(tmp).iterdir()), [])
+
+
+class FullLogicalIOTests(unittest.TestCase):
+    def test_repeated_reads_charged_and_partial_read_does_not_cross_limit(self):
+        from ai_factory.factory_wheel_notice_audit import WheelBudget, _MeteredArchive
+        budget = WheelBudget(expanded_limit=10, io_limit=10)
+        reader = _MeteredArchive(b"abcdef", budget)
+        self.assertEqual(reader.read(4), b"abcd")
+        reader.seek(0)
+        self.assertEqual(reader.read(4), b"abcd")
+        self.assertEqual(budget.archive_read_bytes, 8)
+        with self.assertRaises(ValueError):
+            reader.read(3)
+        self.assertEqual(reader.tell(), 4)
+        self.assertEqual(budget.archive_read_bytes, 8)
+        self.assertTrue(budget.failed)
+
+    def test_archive_hash_zip_headers_and_member_reads_share_io_budget(self):
+        from ai_factory.factory_wheel_notice_audit import WheelBudget
+        raw, expanded = recorded_wheel()
+        budget = WheelBudget()
+        result = inspect_wheel(raw, hashlib.sha256(raw).hexdigest(), budget=budget)
+        self.assertGreater(result["archive_read_bytes"], len(raw))
+        self.assertEqual(result["logical_io_bytes"], result["archive_read_bytes"]+expanded)
+        small = WheelBudget(io_limit=len(raw))
+        with self.assertRaises(ValueError):
+            inspect_wheel(raw, hashlib.sha256(raw).hexdigest(), budget=small)
+        self.assertTrue(small.failed)
+        self.assertLessEqual(small.logical_io_bytes, len(raw))
+
+    def test_stored_member_read_rejected_before_slice(self):
+        from ai_factory.factory_wheel_notice_audit import WheelBudget, _MeteredArchive, _member_blocks
+        data = b"x"*100
+        entry = zipfile.ZipInfo("object")
+        entry.compress_type = zipfile.ZIP_STORED
+        entry.file_size = len(data)
+        budget = WheelBudget(expanded_limit=5)
+        reader = _MeteredArchive(data,budget)
+        with self.assertRaises(ValueError):
+            list(_member_blocks(reader,entry,(0,len(data)),budget))
+        self.assertEqual(budget.archive_read_bytes,0)
+
+    def test_multidisk_eocd_and_trailing_data_rejected(self):
+        import struct
+        from ai_factory.factory_wheel_notice_audit import WheelBudget
+        raw,_ = recorded_wheel()
+        broken=bytearray(raw)
+        end=broken.rindex(b"PK\x05\x06")
+        struct.pack_into("<H",broken,end+4,1)
+        for data in (bytes(broken),raw+b"trailing"):
+            with self.subTest(length=len(data)),self.assertRaises(ValueError):
+                inspect_wheel(data,hashlib.sha256(data).hexdigest(),budget=WheelBudget())
+
+    def test_native_inspection_requires_explicit_fixture_scope(self):
+        import tempfile
+        from pathlib import Path
+        from ai_factory.factory_wheel_notice_audit import inspect_wheel_batch
+        pairs=[recorded_wheel(n) for n in ("one","two","three")]
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(ValueError,"native.*blocked"):
+                inspect_wheel_batch([(raw,hashlib.sha256(raw).hexdigest()) for raw,_ in pairs],
+                                    scratch=Path(tmp),inspect_native=True)
+            self.assertEqual(list(Path(tmp).iterdir()),[])
