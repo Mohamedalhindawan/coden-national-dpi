@@ -132,6 +132,15 @@ def _link_target(path, value):
     return "/".join(parts) or "."
 
 
+def _metadata_kind(name):
+    path = PurePosixPath(name)
+    if str(path) == "var/lib/dpkg/status":
+        return "deb"
+    if path.name == "METADATA" and path.parent.name.endswith(".dist-info"):
+        return "pypi"
+    return None
+
+
 def _package_metadata(path, raw):
     if path == "var/lib/dpkg/status":
         rows = []
@@ -175,8 +184,7 @@ def _entry_record(archive, entry, path):
         _require(source is not None, "regular member has no data")
         h = hashlib.sha256()
         first = b""
-        capture = name == "var/lib/dpkg/status" or (
-            path.name == "METADATA" and path.parent.name.endswith(".dist-info"))
+        capture = _metadata_kind(name)
         if capture:
             _require(entry.size <= MAX_METADATA, "package metadata exceeds bound")
         raw = bytearray()
@@ -193,6 +201,7 @@ def _entry_record(archive, entry, path):
         row.update(sha256=h.hexdigest(), elf=first==b"\x7fELF")
         if capture:
             row["package_metadata"] = _package_metadata(name, bytes(raw))
+            row["package_metadata_kind"] = capture
     else:
         raise ValueError("unsupported filesystem member; independent unpacker review required")
     return row
@@ -249,8 +258,14 @@ def _inventory_report(tree):
     packages = []
     for path,row in sorted(tree.items()):
         entries.append({k:v for k,v in row.items() if k != "package_metadata"})
-        packages.extend({**pkg,"metadata_path":path,"metadata_sha256":row["sha256"]}
-                        for pkg in row.get("package_metadata",[]))
+        kind = _metadata_kind(path)
+        if kind and row["kind"] in ("regular", "hardlink"):
+            # A hardlink inherits bytes, not the semantic role of its old path.
+            # Do not silently omit a package database whose source was not parsed.
+            _require(row.get("package_metadata_kind") == kind,
+                     "unparsed or mismatched package metadata hardlink")
+            packages.extend({**pkg,"metadata_path":path,"metadata_sha256":row["sha256"]}
+                            for pkg in row["package_metadata"])
     packages.sort(key=lambda x:(x["name"],x["version"],x["metadata_path"]))
     return {"status":"logical_inventory_candidate_review_required",
             "entries":entries,"entry_count":len(entries),
