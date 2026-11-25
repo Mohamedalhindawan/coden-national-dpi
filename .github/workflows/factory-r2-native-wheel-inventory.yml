@@ -258,3 +258,104 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+  staging-capacity-review:
+    needs: [static-inventory, python-static-review]
+    if: github.event.repository.private == false && github.head_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: r2-native-wheel-inventory
+          path: wheels
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: r2-python-standalone-static-review
+          path: interpreter
+      - name: Bind capacity estimate to exact reviewed inventory receipts
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          python - <<'PY'
+          import copy, hashlib, json
+          from pathlib import Path
+          from ai_factory.factory_staging_capacity import plan_staging
+
+          def load(path):
+              return json.loads(Path(path).read_text())
+
+          def require(ok, message):
+              if not ok:
+                  raise ValueError(message)
+
+          def bind(wheels, python, capacity):
+              require(wheels.get("complete") is True and wheels.get("installed") is False,
+                      "incomplete or installed wheel inventory")
+              require(python.get("producer_digest_verified") is True and
+                      python.get("executed") is False and python.get("extracted") is False,
+                      "unexpected Python review state")
+              require(python["sha256"] == "45816a2653b47a6cc48d8ada4ea1185758a4c2db389d012b31e0205e5ccb548b",
+                      "Python identity mismatch")
+              require((python["compressed_bytes"], python["expanded_regular_bytes"],
+                       python["archive_member_count"]) == (118484282,386276509,4525),
+                      "Python capacity mismatch")
+              records = wheels["records"]
+              require(len(records) == 131 and len({r["name"] for r in records}) == 131,
+                      "missing or duplicate wheel")
+              identity = sorted([r["name"],r["version"],r["wheel_sha256"]] for r in records)
+              digest = hashlib.sha256(json.dumps(identity,separators=(",",":")).encode()).hexdigest()
+              require(digest == "65775d2185597245ae1f2e7aa98820a4c92040bd21b4bc8e8725495dd2e6922f",
+                      "wheel identity mismatch")
+              keys = ("compressed_bytes","expanded_member_bytes","archive_member_count")
+              for r in records:
+                  require(all(type(r[k]) is int and r[k] > 0 for k in keys),
+                          "invalid wheel sizes")
+              totals = tuple(sum(r[k] for r in records) for k in keys)
+              require(totals == (105369096,301372095,14517), "wheel totals mismatch")
+              require(capacity.get("wheel_count") == 131 and capacity.get("crc_verified") is True and
+                      tuple(capacity[k] for k in keys) == totals, "capacity receipt mismatch")
+              return ([dict(name="cpython-standalone",compressed_bytes=python["compressed_bytes"],
+                            expanded_bytes=python["expanded_regular_bytes"],members=python["archive_member_count"])]
+                      + [dict(name=r["name"],compressed_bytes=r["compressed_bytes"],
+                              expanded_bytes=r["expanded_member_bytes"],members=r["archive_member_count"])
+                         for r in records])
+
+          w=load("wheels/inventory.json")
+          p=load("interpreter/python-candidate.json")
+          c=load("wheels/capacity.json")
+          inputs=bind(w,p,c)
+          require(len(inputs)==132, "input count mismatch")
+          # Regression probes: each modified receipt must be rejected.
+          cases=[]
+          x=copy.deepcopy(w); x["records"].pop(); cases.append((x,p,c))
+          x=copy.deepcopy(w); x["records"][0]["wheel_sha256"]="0"*64; cases.append((x,p,c))
+          x=copy.deepcopy(p); x["compressed_bytes"]+=1; cases.append((w,x,c))
+          x=copy.deepcopy(c); x["archive_member_count"]+=1; cases.append((w,p,x))
+          x=copy.deepcopy(w); x["complete"]=False; cases.append((x,p,c))
+          for case in cases:
+              try: bind(*case)
+              except ValueError: pass
+              else: raise AssertionError("invalid receipt admitted")
+          report=plan_staging(inputs,capacity_bytes=960*1024**2,reserve_bytes=128*1024**2)
+          report.update(input_count=len(inputs),receipt_negative_checks=len(cases),
+                        receipt_sha256={name:hashlib.sha256(Path(name).read_bytes()).hexdigest()
+                                        for name in ("wheels/inventory.json","interpreter/python-candidate.json","wheels/capacity.json")},
+                        reserve_is_provisional=True,actual_installation_allowed=False,
+                        dependency_order_verified=False,license_approved=False,
+                        aggregate_writable_budget_proven=False)
+          Path("evidence/staging-capacity.json").write_text(json.dumps(report,indent=2))
+          print("Review only; modeled peak:",report["peak_bytes"],"fits provisional reserve:",report["fits_model"])
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-staging-capacity-review
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
