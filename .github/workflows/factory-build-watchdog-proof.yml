@@ -107,3 +107,381 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+  detached-session-cgroup-proof:
+    if: github.event.repository.private == false && github.head_ref == 'fix/factory-staging-inventory-consistency-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    env:
+      BASE: docker.io/library/ubuntu@sha256:9a04f13b3f80ef056361e30868593b1cfd2279fe19e4081cb93a90bf56819d6a
+    steps:
+      - name: Independent watchdog covers detached synthetic child sessions in same cgroup
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          name="coden-detached-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          logpath="$PWD/evidence/container.raw.log"
+          cleanup() {
+            rc=$?
+            trap - EXIT
+            timeout 20s podman rm -f --ignore "$name" >/dev/null 2>&1 || rc=1
+            if podman container exists "$name"; then echo cleanup_unverified > evidence/cleanup.txt; rc=1; else echo resources_removed > evidence/cleanup.txt; fi
+            printf 'final_exit_code=%s\n' "$rc" > evidence/exit.txt
+            exit "$rc"
+          }
+          trap cleanup EXIT
+          test "$(id -u)" -ne 0
+          podman info --format json | jq -e '.host.security.rootless == true and .host.cgroupVersion == "v2" and (.host.cgroupControllers | contains(["cpu","memory","pids"]))' >/dev/null
+          podman pull --platform linux/amd64 "$BASE"
+          export CODEN_SYNTHETIC_HOST_SECRET=never_forward_this_canary
+          podman create --name "$name" --pull=never --network none --http-proxy=false \
+            --read-only --read-only-tmpfs=false --cap-drop=all --security-opt=no-new-privileges \
+            --user 65534:65534 --cpus=2 --memory=4096m --memory-swap=4096m --pids-limit=128 \
+            --cgroupns=private --pid=private --ipc=private --timeout=35 \
+            --ulimit core=0:0 --ulimit nofile=256:256 --ulimit msgqueue=65536:65536 --ulimit memlock=0:0 \
+            --log-driver=k8s-file --log-opt max-size=1mb --log-opt "path=$logpath" \
+            "$BASE" /bin/sh -eu -c '
+              test "$(id -u)" = 65534
+              test -z "${CODEN_SYNTHETIC_HOST_SECRET:-}"
+              test "$(ls /sys/class/net | tr "\n" " ")" = "lo "
+              test "$(cat /sys/fs/cgroup/cpu.max)" = "200000 100000"
+              test "$(cat /sys/fs/cgroup/memory.max)" = 4294967296
+              test "$(cat /sys/fs/cgroup/memory.swap.max)" = 0
+              test "$(cat /sys/fs/cgroup/pids.max)" = 128
+              grep -Eq "^CapEff:[[:space:]]+0+$" /proc/self/status
+              grep -Eq "^NoNewPrivs:[[:space:]]+1$" /proc/self/status
+              command -v setsid >/dev/null
+              sleep 75 &
+              setsid /bin/sh -c "sleep 75 & wait" &
+              sleep 1
+              printf "DETACHED_FIXTURE_READY\n"
+              wait
+            ' >/dev/null
+          podman inspect "$name" | jq -e '.[0] | .HostConfig.Privileged==false and .HostConfig.ReadonlyRootfs==true and .HostConfig.NetworkMode=="none" and ([.Mounts[]? | select(.Type=="bind")]|length==0)' >/dev/null
+          started=$(date +%s)
+          podman start "$name" >/dev/null
+          for _ in $(seq 1 10); do
+            if podman logs "$name" 2>&1 | grep -qx DETACHED_FIXTURE_READY; then break; fi
+            sleep 1
+          done
+          podman logs "$name" > evidence/probe.log 2>&1
+          grep -qx DETACHED_FIXTURE_READY evidence/probe.log
+          podman top "$name" hpid | tail -n +2 | awk '{print $1}' > evidence/host-pids.txt
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          pids={int(x) for x in Path("evidence/host-pids.txt").read_text().split()}
+          assert 4<=len(pids)<=128
+          records=[]
+          for pid in sorted(pids):
+              base=Path("/proc")/str(pid)
+              fields=(base/"stat").read_text().rsplit(") ",1)[1].split()
+              cgroups=(base/"cgroup").read_text().splitlines()
+              assert len(cgroups)==1 and cgroups[0].startswith("0::/")
+              records.append(dict(pid=pid,start_ticks=int(fields[19]),session_id=int(fields[3]),cgroup=cgroups[0][3:]))
+          assert len({r["session_id"] for r in records})>=2,"detached session not observed"
+          assert len({r["cgroup"] for r in records})==1,"not one container cgroup"
+          cg=Path("/sys/fs/cgroup")/records[0]["cgroup"].lstrip("/")
+          assert cg.is_dir() and cg != Path("/sys/fs/cgroup")
+          observed={int(x) for x in (cg/"cgroup.procs").read_text().split()}
+          assert pids==observed,"incomplete process accounting"
+          Path("evidence/process-snapshot.json").write_text(json.dumps(dict(records=records,cgroup=str(cg),members=sorted(observed)),indent=2))
+          PY
+          timeout 50s podman wait "$name" > evidence/container-exit.txt
+          elapsed=$(( $(date +%s) - started ))
+          test "$elapsed" -ge 30 && test "$elapsed" -le 50
+          test "$(podman inspect "$name" --format '{{.State.Running}}')" = false
+          python3 - "$elapsed" <<'PY'
+          import json,sys
+          from pathlib import Path
+          snap=json.loads(Path("evidence/process-snapshot.json").read_text())
+          for r in snap["records"]:
+              p=Path("/proc")/str(r["pid"])/"stat"
+              try: fields=p.read_text().rsplit(") ",1)[1].split()
+              except FileNotFoundError: continue
+              assert int(fields[19])!=r["start_ticks"],"original process identity persists"
+          cg=Path(snap["cgroup"])
+          if cg.exists():
+              assert not (cg/"cgroup.procs").read_text().strip(),"residual cgroup processes"
+              assert "populated 0" in (cg/"cgroup.events").read_text().splitlines(),"cgroup remains populated"
+          report=dict(synthetic_only=True,elapsed_seconds=int(sys.argv[1]),tracked_processes=len(snap["records"]),
+                      separate_sessions=len({r["session_id"] for r in snap["records"]}),all_snapshot_identities_absent=True,
+                      final_cgroup_empty_or_removed=True,actual_agent_tree_verified=False,
+                      aggregate_writable_budget_proven=False,build_authorized=False,release_authorized=False)
+          Path("evidence/review.json").write_text(json.dumps(report,indent=2))
+          PY
+          test -f "$logpath" && test ! -L "$logpath"
+          test "$(stat -c %s "$logpath")" -le 1048576
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: synthetic-detached-cgroup-proof
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  synthetic-footprint-pressure:
+    if: github.event.repository.private == false && github.head_ref == 'fix/factory-staging-inventory-consistency-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    permissions:
+      actions: read
+    env:
+      BASE: docker.io/library/ubuntu@sha256:9a04f13b3f80ef056361e30868593b1cfd2279fe19e4081cb93a90bf56819d6a
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45530913977
+          name: r2-installation-footprint-review
+          path: input
+      - name: Stress measured scenario with only synthetic bytes and bounded writable tmpfs
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          name="coden-pressure-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          scratch="$name-scratch"
+          logpath="$PWD/evidence/container.raw.log"
+          cleanup() {
+            rc=$?
+            trap - EXIT
+            timeout 20s podman rm -f --ignore "$name" >/dev/null 2>&1 || rc=1
+            if podman volume exists "$scratch"; then timeout 20s podman volume rm -f "$scratch" >/dev/null 2>&1 || rc=1; fi
+            if podman container exists "$name" || podman volume exists "$scratch"; then echo cleanup_unverified > evidence/cleanup.txt; rc=1; else echo resources_removed > evidence/cleanup.txt; fi
+            printf 'final_exit_code=%s\n' "$rc" > evidence/exit.txt
+            exit "$rc"
+          }
+          trap cleanup EXIT
+          printf '%s  %s\n' '5e067dd0cb9bd08fd6dca8576b273bb45c954ecc83cc93970bb06ed4ad2ecc40' 'input/installation-footprint.json' | sha256sum -c -
+          jq -e '.actual_installation==false and .build_authorized==false and .scenarios[1].modeled_bytes==1002496000 and .scenarios[1].headroom_bytes==4136960' input/installation-footprint.json >/dev/null
+          test "$(id -u)" -ne 0
+          podman info --format json | jq -e '.host.security.rootless == true and .host.cgroupVersion == "v2" and (.host.cgroupControllers | contains(["cpu","memory","pids"]))' >/dev/null
+          podman pull --platform linux/amd64 "$BASE"
+          podman volume create --opt type=tmpfs --opt device=tmpfs --opt o=rw,exec,nosuid,nodev,size=960m,nr_inodes=61440,mode=1777 "$scratch" >/dev/null
+          export CODEN_SYNTHETIC_HOST_SECRET=never_forward_this_canary
+          podman create --name "$name" --pull=never --network none --http-proxy=false \
+            --read-only --read-only-tmpfs=false --cap-drop=all --security-opt=no-new-privileges \
+            --user 65534:65534 --cpus=2 --memory=4096m --memory-swap=4096m --pids-limit=128 \
+            --cgroupns=private --pid=private --ipc=private --timeout=90 \
+            --ulimit core=0:0 --ulimit nofile=256:256 --ulimit msgqueue=65536:65536 --ulimit memlock=0:0 \
+            --log-driver=k8s-file --log-opt max-size=1mb --log-opt "path=$logpath" \
+            --volume "$scratch:/scratch:rw,nocopy" --workdir /scratch --env HOME=/scratch \
+            "$BASE" /bin/sh -eu -c '
+              test "$(id -u)" = 65534
+              test -z "${CODEN_SYNTHETIC_HOST_SECRET:-}"
+              test "$(ls /sys/class/net | tr "\n" " ")" = "lo "
+              test "$(cat /sys/fs/cgroup/cpu.max)" = "200000 100000"
+              test "$(cat /sys/fs/cgroup/memory.max)" = 4294967296
+              test "$(cat /sys/fs/cgroup/memory.swap.max)" = 0
+              test "$(cat /sys/fs/cgroup/pids.max)" = 128
+              grep -Eq "^CapEff:[[:space:]]+0+$" /proc/self/status
+              grep -Eq "^NoNewPrivs:[[:space:]]+1$" /proc/self/status
+              test ! -e /var/run/docker.sock && test ! -e /run/podman/podman.sock
+              if touch /coden-should-not-write 2>/dev/null; then exit 11; fi
+              mkdir /scratch/files /scratch/dirs
+              # 31,312 entries model regular files, links and extra bytecode;
+              # 4,635 directories model wheel directories and cache dirs.
+              # These are placeholders, not an actual filesystem layout.
+              seq -f /scratch/files/%05g 1 31312 | xargs -r touch
+              seq -f /scratch/dirs/%05g 1 4635 | xargs -r mkdir
+              test "$(find /scratch/files -type f | wc -l)" = 31312
+              test "$(find /scratch/dirs -mindepth 1 -type d | wc -l)" = 4635
+              head -c 1002496000 /dev/zero > /scratch/payload
+              test "$(wc -c < /scratch/payload)" = 1002496000
+              printf "NEAR_CAPACITY\n"; df -Pk /scratch; df -Pi /scratch
+              test "$(df -Pk /scratch | awk "NR==2{print \$2}")" = 983040
+              test "$(df -Pi /scratch | awk "NR==2{print \$2}")" = 61440
+              # Attempt just 8 MiB beyond the modeled 3.95 MiB remaining.
+              # The quota, not host space or an artificial shell limit, must stop it.
+              if head -c 8388608 /dev/zero > /scratch/overflow; then exit 12; fi
+              test "$(wc -c < /scratch/overflow)" -lt 8388608
+              printf "OVERFLOW_REJECTED\n"; df -Pk /scratch
+              rm /scratch/overflow
+              printf "MEMORY_PEAK "; cat /sys/fs/cgroup/memory.peak
+              printf "MEMORY_CURRENT "; cat /sys/fs/cgroup/memory.current
+              printf "MEMORY_EVENTS\n"; cat /sys/fs/cgroup/memory.events
+              printf "PIDS_EVENTS\n"; cat /sys/fs/cgroup/pids.events
+              printf "CPU_STAT\n"; cat /sys/fs/cgroup/cpu.stat
+              printf "MOUNTS\n"; cat /proc/self/mountinfo
+              printf "SYNTHETIC_PRESSURE_PASS\n"
+            ' >/dev/null
+          podman inspect "$name" | jq -e '.[0] | .HostConfig.Privileged==false and .HostConfig.ReadonlyRootfs==true and .HostConfig.NetworkMode=="none" and ([.Mounts[]? | select(.Type=="bind")]|length==0)' >/dev/null
+          timeout 105s podman start -a "$name" > evidence/probe.log 2>&1
+          grep -qx SYNTHETIC_PRESSURE_PASS evidence/probe.log
+          grep -qx OVERFLOW_REJECTED evidence/probe.log
+          grep -q 'No space left on device' evidence/probe.log
+          test "$(podman inspect "$name" --format '{{.State.ExitCode}}')" = 0
+          test "$(podman inspect "$name" --format '{{.State.Running}}')" = false
+          test -f "$logpath" && test ! -L "$logpath"
+          test "$(stat -c %s "$logpath")" -le 1048576
+          python3 - <<'PY'
+          import json,re
+          from pathlib import Path
+          log=Path("evidence/probe.log").read_text()
+          peak=int(re.search(r"^MEMORY_PEAK (\d+)$",log,re.M)[1])
+          assert 1002496000<=peak<=4294967296
+          assert "oom 0" in log and "oom_kill 0" in log
+          report=dict(synthetic_only=True,payload_bytes=1002496000,placeholder_files=31312,placeholder_dirs=4635,
+                      observed_memory_peak_bytes=peak,overflow_rejected=True,actual_installation=False,
+                      aggregate_writable_budget_proven=False,actual_peak_build_capacity_proven=False,
+                      build_authorized=False,release_authorized=False)
+          Path("evidence/pressure-review.json").write_text(json.dumps(report,indent=2))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: synthetic-installation-footprint-pressure
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  integrated-synthetic-staging-reclaim:
+    if: github.event.repository.private == false && github.head_ref == 'review/factory-v3-sprint04-integration-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    env:
+      BASE: docker.io/library/ubuntu@sha256:9a04f13b3f80ef056361e30868593b1cfd2279fe19e4081cb93a90bf56819d6a
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45530913977
+          name: r2-installation-footprint-review
+          path: input
+      - name: Exercise verified disposable-copy reclaim using exact measured page sizes
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          name="coden-staging-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          scratch="$name-scratch"
+          logpath="$PWD/evidence/container.raw.log"
+          cleanup() {
+            rc=$?
+            trap - EXIT
+            timeout 20s podman rm -f --ignore "$name" >/dev/null 2>&1 || rc=1
+            if podman volume exists "$scratch"; then timeout 20s podman volume rm -f "$scratch" >/dev/null 2>&1 || rc=1; fi
+            if podman container exists "$name" || podman volume exists "$scratch"; then echo cleanup_unverified > evidence/cleanup.txt; rc=1; else echo resources_removed > evidence/cleanup.txt; fi
+            printf 'final_exit_code=%s\n' "$rc" > evidence/exit.txt
+            exit "$rc"
+          }
+          trap cleanup EXIT
+          sha256sum -c <<'SUMS'
+          5e067dd0cb9bd08fd6dca8576b273bb45c954ecc83cc93970bb06ed4ad2ecc40  input/installation-footprint.json
+          b497df0778476e03b007ebab97338cd03e7c22efadf765e4c3e40cd603d4336a  input/per-wheel-footprint.json
+          SUMS
+          python3 - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          r=json.loads(Path("input/installation-footprint.json").read_text())
+          w=json.loads(Path("input/per-wheel-footprint.json").read_text())
+          assert len(w)==131 and len({x["name"] for x in w})==131 and r["build_authorized"] is False
+          pairs=[("interpreter",r["interpreter"]["compressed_page_bytes"],r["interpreter"]["regular_page_bytes"])]+[(x["name"],x["compressed_page_bytes"],x["regular_page_bytes"]) for x in w]
+          assert all(type(n) is int and 0<n<=512*1024**2 and n%4096==0 for _,c,e in pairs for n in (c,e))
+          def zero_hash(n):
+              h=hashlib.sha256()
+              chunk=bytes(1024*1024)
+              for _ in range(n//len(chunk)): h.update(chunk)
+              h.update(chunk[:n%len(chunk)])
+              return h.hexdigest()
+          rows=[]; current=sum(c for _,c,_ in pairs); peak=current
+          reserve=r["tracked_source_page_bytes"]+r["totals"]["record_extra_page_scenario"]+96*1024**2
+          assert reserve==136298496
+          for i,(n,c,e) in enumerate(sorted(pairs,key=lambda x:(-x[1],x[0])),1):
+              peak=max(peak,current+e)
+              rows.append(dict(index=i,name=n,compressed=c,expanded=e,compressed_sha=zero_hash(c),expanded_sha=zero_hash(e),transient=current+e+reserve))
+              current+=e-c
+          assert peak==r["staged_payload_peak_bytes"] and peak+reserve==868925440
+          Path("evidence/plan.json").write_text(json.dumps(dict(rows=rows,reserve_bytes=reserve,modeled_peak=peak+reserve,synthetic_only=True),indent=2))
+          Path("plan.tsv").write_text("".join(f'{x["index"]} {x["compressed"]} {x["expanded"]} {x["compressed_sha"]} {x["expanded_sha"]} {x["transient"]}\n' for x in rows))
+          PY
+          test "$(id -u)" -ne 0
+          podman info --format json | jq -e '.host.security.rootless == true and .host.cgroupVersion == "v2" and (.host.cgroupControllers | contains(["cpu","memory","pids"]))' >/dev/null
+          podman pull --platform linux/amd64 "$BASE"
+          podman volume create --opt type=tmpfs --opt device=tmpfs --opt o=rw,exec,nosuid,nodev,size=960m,nr_inodes=61440,mode=1777 "$scratch" >/dev/null
+          export CODEN_STAGING_PLAN="$(cat plan.tsv)"
+          export CODEN_SYNTHETIC_HOST_SECRET=never_forward_this_canary
+          podman create --name "$name" --pull=never --network none --http-proxy=false \
+            --read-only --read-only-tmpfs=false --cap-drop=all --security-opt=no-new-privileges \
+            --user 65534:65534 --cpus=2 --memory=4096m --memory-swap=4096m --pids-limit=128 \
+            --cgroupns=private --pid=private --ipc=private --timeout=150 \
+            --ulimit core=0:0 --ulimit nofile=256:256 --ulimit msgqueue=65536:65536 --ulimit memlock=0:0 \
+            --log-driver=k8s-file --log-opt max-size=1mb --log-opt "path=$logpath" \
+            --volume "$scratch:/scratch:rw,nocopy" --workdir /scratch --env HOME=/scratch --env CODEN_STAGING_PLAN \
+            "$BASE" /bin/sh -eu -c '
+              test "$(id -u)" = 65534
+              test -z "${CODEN_SYNTHETIC_HOST_SECRET:-}"
+              test "$(ls /sys/class/net | tr "\n" " ")" = "lo "
+              test "$(cat /sys/fs/cgroup/cpu.max)" = "200000 100000"
+              test "$(cat /sys/fs/cgroup/memory.max)" = 4294967296
+              test "$(cat /sys/fs/cgroup/memory.swap.max)" = 0
+              test "$(cat /sys/fs/cgroup/pids.max)" = 128
+              grep -Eq "^CapEff:[[:space:]]+0+$" /proc/self/status
+              grep -Eq "^NoNewPrivs:[[:space:]]+1$" /proc/self/status
+              test ! -e /var/run/docker.sock && test ! -e /run/podman/podman.sock
+              test ! -e /input && test ! -e /evidence
+              if touch /coden-should-not-write 2>/dev/null; then exit 11; fi
+              head -c 136298496 /dev/zero > reserve
+              printf "%s\n" "$CODEN_STAGING_PLAN" | while read -r i c e ch eh expected; do
+                head -c "$c" /dev/zero > "compressed-$i"
+                printf "%s  %s\n" "$ch" "compressed-$i" | sha256sum -c - >/dev/null
+              done
+              reclaim() {
+                printf "%s  %s\n" "$2" "compressed-$1" | sha256sum -c - >/dev/null || return 1
+                printf "%s  %s\n" "$3" "expanded-$1" | sha256sum -c - >/dev/null || return 1
+                rm "compressed-$1"
+              }
+              printf "%s\n" "$CODEN_STAGING_PLAN" | while read -r i c e ch eh expected; do
+                head -c "$e" /dev/zero > "expanded-$i"
+                if [ "$i" = 1 ]; then
+                  if reclaim "$i" "$ch" "$(printf "%064d" 0)" 2>/dev/null; then exit 12; fi
+                  test -f "compressed-$i"
+                  printf "NEGATIVE_RECLAIM_REJECTED\n"
+                fi
+                used=$(df -B1 /scratch | awk "NR==2{print \$3}")
+                test "$used" -ge "$expected" && test "$used" -le 1006632960
+                printf "STEP %s %s %s\n" "$i" "$expected" "$used"
+                reclaim "$i" "$ch" "$eh"
+                test ! -e "compressed-$i" && test -f "expanded-$i"
+              done
+              test "$(find . -maxdepth 1 -name "compressed-*" | wc -l)" = 0
+              test "$(find . -maxdepth 1 -name "expanded-*" | wc -l)" = 132
+              printf "MEMORY_PEAK "; cat /sys/fs/cgroup/memory.peak
+              df -B1 /scratch; df -Pi /scratch
+              cat /proc/self/mountinfo
+              printf "STAGING_RECLAIM_PASS\n"
+            ' >/dev/null
+          podman inspect "$name" | jq -e '.[0] | .HostConfig.Privileged==false and .HostConfig.ReadonlyRootfs==true and .HostConfig.NetworkMode=="none" and ([.Mounts[]? | select(.Type=="bind")]|length==0)' >/dev/null
+          timeout 165s podman start -a "$name" > evidence/probe.log 2>&1
+          grep -qx STAGING_RECLAIM_PASS evidence/probe.log
+          grep -qx NEGATIVE_RECLAIM_REJECTED evidence/probe.log
+          test "$(podman inspect "$name" --format '{{.State.ExitCode}}')" = 0
+          test "$(stat -c %s "$logpath")" -le 1048576
+          sha256sum -c <<'SUMS'
+          5e067dd0cb9bd08fd6dca8576b273bb45c954ecc83cc93970bb06ed4ad2ecc40  input/installation-footprint.json
+          b497df0778476e03b007ebab97338cd03e7c22efadf765e4c3e40cd603d4336a  input/per-wheel-footprint.json
+          SUMS
+          python3 - <<'PY'
+          import json,re
+          from pathlib import Path
+          log=Path("evidence/probe.log").read_text()
+          plan=json.loads(Path("evidence/plan.json").read_text())
+          steps=[tuple(map(int,m)) for m in re.findall(r"^STEP (\d+) (\d+) (\d+)$",log,re.M)]
+          assert len(steps)==132 and [x[0] for x in steps]==list(range(1,133))
+          assert all(m==row["transient"] and m<=a<=1006632960 for (_,m,a),row in zip(steps,plan["rows"]))
+          peak=max(a for _,_,a in steps)
+          memory=int(re.search(r"^MEMORY_PEAK (\d+)$",log,re.M)[1])
+          assert memory<=4294967296
+          Path("evidence/review.json").write_text(json.dumps(dict(synthetic_only=True,steps=132,negative_reclaim_checks=1,
+            modeled_peak_bytes=plan["modeled_peak"],observed_tmpfs_peak_bytes=peak,observed_memory_peak_bytes=memory,
+            original_receipts_unchanged=True,actual_installer_peak_measured=False,aggregate_writable_budget_proven=False,
+            build_authorized=False,release_authorized=False),indent=2))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: integrated-synthetic-staging-reclaim
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7

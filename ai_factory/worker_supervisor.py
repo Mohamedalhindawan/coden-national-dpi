@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import sqlite3
 import stat
 import subprocess
 import sys
@@ -94,10 +95,20 @@ def _monitor_bound_task(proc, *, queue_db, journal, task_id, timeout_seconds):
     """
     from .durable_queue import DurableQueue
 
-    queue = DurableQueue(queue_db)
+    def monitor_read(read):
+        try:
+            return read()
+        except (OSError, sqlite3.Error, ValueError, TypeError, KeyError) as exc:
+            # Lost durable state is not permission to keep executing.
+            # Stop only the owned process group; preserve the lease for review.
+            if proc.returncode is None:
+                _terminate_process_group(proc)
+            raise SupervisorError("worker queue monitoring failed; operator review required") from exc
+
+    queue = monitor_read(lambda: DurableQueue(queue_db))
     deadline = time.monotonic() + timeout_seconds
     while True:
-        state = queue.read(task_id)["status"]
+        state = monitor_read(lambda: queue.read(task_id)["status"])
         if state in ("cancel_requested", "cancelled", "needs_review"):
             if proc.returncode is None:
                 _terminate_process_group(proc)
@@ -137,9 +148,13 @@ def _monitor_bound_task(proc, *, queue_db, journal, task_id, timeout_seconds):
             proc.wait(timeout=min(0.10, remaining))
         except subprocess.TimeoutExpired:
             continue
+        except OSError as exc:
+            if proc.returncode is None:
+                _terminate_process_group(proc)
+            raise SupervisorError("worker wait failed; operator review required") from exc
         # Exit can race with a cancel request. Re-read at least once so a
         # successful child exit never masks an already registered cancel.
-        final_state = queue.read(task_id)["status"]
+        final_state = monitor_read(lambda: queue.read(task_id)["status"])
         if final_state in ("cancel_requested", "cancelled", "needs_review"):
             continue
         if final_state == "queued":
@@ -231,7 +246,12 @@ def run_once(*, queue_db, journal, task_dir, output_root, worker_id,
                 return _result("untrusted_worker_result")
             if task_id is not None:
                 from .durable_queue import DurableQueue
-                state = DurableQueue(db).read(task_id)["status"]
+                try:
+                    state = DurableQueue(db).read(task_id)["status"]
+                except (OSError, sqlite3.Error, ValueError, TypeError, KeyError) as exc:
+                    # The child has already exited; do not approve its receipt
+                    # when the final durable state cannot be independently read.
+                    raise SupervisorError("final worker state unverified; operator review required") from exc
                 expected = {
                     "awaiting_human_review": "awaiting_human_review",
                     "blocked": "blocked",

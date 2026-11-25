@@ -16,6 +16,7 @@ import json
 import os
 from pathlib import Path
 import stat
+import subprocess
 import sys
 import tempfile
 import zipfile
@@ -128,7 +129,7 @@ def review(task, candidate_root, output_root):
         visible = project.verify(archive, task["cases"])
         hidden = project.verify(archive, task["review_cases"])
     except (OSError, ValueError, RuntimeError, SyntaxError, RecursionError,
-            ArithmeticError):
+            ArithmeticError, subprocess.TimeoutExpired):
         # Keep the untrusted archive for operator inspection. Never create an
         # approval receipt or automatically replay the untrusted candidate.
         return _result("failed", work)
@@ -140,6 +141,11 @@ def review(task, candidate_root, output_root):
         "visible_cases": visible,
         "review_cases": hidden,
         "agent_files_examined": sorted(EXPECTED_FILES),
+        "source_files_sha256": {
+            path: hashlib.sha256(text.encode("utf-8")).hexdigest()
+            for path, text in sorted(source.items())
+        },
+        "task_sha256": hashlib.sha256(project.encoded(task).encode("utf-8")).hexdigest(),
         "agent_authored_tests_executed": False,
         "sandbox": "bubblewrap 0.12.0",
         "execution_authorized": False,
