@@ -42,6 +42,40 @@ def _result(status, attempted=False):
     }
 
 
+def review_qwen_route(*, model, base_url):
+    """Review-only SDK configuration for the previously probed Qwen3 alias.
+
+    This does not resolve DNS, contact the endpoint, bind a credential, import
+    SDK or permit a Conversation. The final isolated route and an operator-
+    owned authentication boundary still require independent runtime admission.
+    Never pass this incomplete configuration directly to a live SDK.
+    """
+    if (type(model) is not str or model != "openai/local-qwen"
+            or type(base_url) is not str or base_url != "http://qwen3:11434/v1"):
+        raise ValueError("only the reviewed local Qwen route is eligible")
+    return {
+        "status": "review_only_route",
+        "llm_options": {
+            "model": model,
+            "base_url": base_url,
+            "api_mode": "chat",
+            # Pinned SDK retry_mixin uses stop_after_attempt(num_retries).
+            "num_retries": 1,
+            "timeout": 35,
+            "drop_params": False,
+            "fallback_strategy": None,
+        },
+        "model_sha256": "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031",
+        "credentials_bound": False,
+        "network_verified": False,
+        "sdk_imported": False,
+        "agent_session_attempted": False,
+        "execution_authorized": False,
+        "release_authorized": False,
+        "automatic_retry_allowed": False,
+    }
+
+
 def _official_sdk():
     try:
         from openhands.sdk import LLM, Agent, Conversation, Tool
@@ -171,7 +205,7 @@ def _run_once(*, task, candidate_root, output_root, workspace, model,
 def _review_closed(task, export, outputs):
     try:
         accepted = openhands_multifile_review.review(task, export, outputs)
-    except (OSError, ValueError, TypeError, RuntimeError):
+    except (OSError, ValueError, TypeError, RuntimeError, subprocess.TimeoutExpired):
         return _result("artifact_review_required", attempted=True)
     return {**accepted, "agent_session_attempted": True,
             "execution_authorized": False, "release_authorized": False,
