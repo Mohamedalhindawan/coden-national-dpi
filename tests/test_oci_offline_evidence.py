@@ -227,3 +227,51 @@ class OfflineOCIReviewTests(unittest.TestCase):
                     ("backup/status",R,b"Package: demo\nStatus: install ok installed\nVersion: 1\nArchitecture: amd64\n",0o644),
                     ("var/lib/dpkg/status",H,"backup/status",0o644),
                 ]])
+
+    def test_embedded_toc_preflight_only_reads_names_and_bounds(self):
+        from ai_factory.oci_offline_evidence import inspect_carchive_toc
+        raw = self.carchive_fixture([("lib/demo.so",0,4,8,1,b"b"),
+                                     ("PYZ.pyz",4,12,12,0,b"z")])
+        result = inspect_carchive_toc(io.BytesIO(raw), max_declared_expanded_bytes=20)
+        self.assertEqual([x["name"] for x in result["entries"]], ["lib/demo.so","PYZ.pyz"])
+        self.assertEqual(result["declared_expanded_bytes"],20)
+        self.assertEqual(result["nested_payload_bytes_decompressed"],0)
+        self.assertFalse(result["embedded_inventory_verified"])
+        self.assertFalse(result["release_authorized"])
+
+    @staticmethod
+    def carchive_fixture(entries, payload=b"x"*16):
+        import struct
+        rows = []
+        for name,offset,length,expanded,compressed,kind in entries:
+            namebytes = name.encode()+b"\0"
+            n = 18+len(namebytes)
+            n += (-n)%16
+            rows.append(struct.pack("!IIIIBc",n,offset,length,expanded,compressed,kind)
+                        +namebytes+b"\0"*(n-18-len(namebytes)))
+        toc=b"".join(rows)
+        cookie=struct.pack("!8sIIII64s",b"MEI\x0c\x0b\x0a\x0b\x0e",
+                           len(payload)+len(toc)+88,len(payload),len(toc),313,b"libpython3.13.so.1.0")
+        return b"\x7fELF"+payload+toc+cookie
+
+    def test_embedded_toc_rejects_ambiguous_or_out_of_bounds_entries(self):
+        from ai_factory.oci_offline_evidence import inspect_carchive_toc
+        cases=[
+            [("a",0,4,4,0,b"b"),("a",4,4,4,0,b"b")],
+            [("../escape",0,4,4,0,b"b")],
+            [("/absolute",0,4,4,0,b"b")],
+            [("a",15,2,2,0,b"b")],
+            [("a",0,4,8,0,b"b")],
+            [("a",0,4,4,2,b"b")],
+            [("a",0,4,4,0,b"b"),("b",2,4,4,0,b"b")],
+            [("a",0,4,100,1,b"b")],
+        ]
+        for entries in cases:
+            with self.subTest(entries=entries):
+                with self.assertRaises(ValueError):
+                    inspect_carchive_toc(io.BytesIO(self.carchive_fixture(entries)),
+                                         max_declared_expanded_bytes=20)
+        valid=self.carchive_fixture([("a",0,4,4,0,b"b")])
+        for raw in (valid[:-1],valid+b"x",b"not archive"):
+            with self.assertRaises(ValueError):
+                inspect_carchive_toc(io.BytesIO(raw),max_declared_expanded_bytes=20)
