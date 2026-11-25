@@ -287,3 +287,28 @@ class FullLogicalIOTests(unittest.TestCase):
                 inspect_wheel_batch([(raw,hashlib.sha256(raw).hexdigest()) for raw,_ in pairs],
                                     scratch=Path(tmp),inspect_native=True)
             self.assertEqual(list(Path(tmp).iterdir()),[])
+
+    def test_reject_central_entry_start_disk_even_if_eocd_single_disk(self):
+        import struct
+        from ai_factory.factory_wheel_notice_audit import WheelBudget
+        raw,_ = recorded_wheel()
+        broken = bytearray(raw)
+        central = broken.index(b"PK\x01\x02")
+        struct.pack_into("<H",broken,central+34,1)
+        data = bytes(broken)
+        with self.assertRaises(ValueError):
+            inspect_wheel(data,hashlib.sha256(data).hexdigest(),budget=WheelBudget())
+
+    def test_shared_evidence_limit_rejects_second_wheel_before_return(self):
+        from ai_factory.factory_wheel_notice_audit import WheelBudget
+        raw,_=recorded_wheel("one")
+        probe=WheelBudget()
+        first=inspect_wheel(raw,hashlib.sha256(raw).hexdigest(),budget=probe)
+        self.assertGreater(first["evidence_bytes"],0)
+        budget=WheelBudget(evidence_limit=first["evidence_bytes"])
+        inspect_wheel(raw,hashlib.sha256(raw).hexdigest(),budget=budget)
+        raw2,_=recorded_wheel("two")
+        with self.assertRaisesRegex(ValueError,"evidence.*limit"):
+            inspect_wheel(raw2,hashlib.sha256(raw2).hexdigest(),budget=budget)
+        self.assertTrue(budget.failed)
+        self.assertEqual(budget.evidence_bytes,first["evidence_bytes"])
