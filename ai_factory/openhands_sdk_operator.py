@@ -128,7 +128,7 @@ def prepare_modeb_request(task):
 
 
 def run_modeb_once(*, task, allow_agent=False, fixture_only=False,
-                   fixture_adapter=None, cancelled=None):
+                   fixture_adapter=None, cancelled=None, source_identity=None):
     """Exercise the isolated-adapter contract using trusted injected fixtures.
 
     Never instantiates a real SDK, LocalWorkspace, process, or network client.
@@ -147,6 +147,19 @@ def run_modeb_once(*, task, allow_agent=False, fixture_only=False,
     if not fixture_only or fixture_adapter is None:
         return receipt("blocked_runtime_admission")
     request = prepare_modeb_request(task)
+    request_digest = None
+    if source_identity is not None:
+        from . import checkpoint
+        if (type(source_identity) is not dict
+                or set(source_identity) != {"branch", "commit", "task_file_sha256"}
+                or not source_identity["branch"] or not source_identity["commit"]
+                or type(source_identity["task_file_sha256"]) is not str
+                or not re.fullmatch(r"[0-9a-f]{64}", source_identity["task_file_sha256"])):
+            raise ValueError("invalid fixture source binding")
+        checkpoint._branch(source_identity["branch"])
+        checkpoint._commit(source_identity["commit"])
+        request["source_identity"] = dict(source_identity)
+        request_digest = hashlib.sha256(project.encoded(request).encode("utf-8")).hexdigest()
     try:
         if cancelled is not None and cancelled():
             return receipt("fixture_cancelled_review_required")
@@ -176,9 +189,14 @@ def run_modeb_once(*, task, allow_agent=False, fixture_only=False,
     if failure:
         return receipt("fixture_failed_review_required", True)
     expected = {"status": "fixture_completed", "task_sha256": MODEB_TASK_SHA256}
+    if request_digest is not None:
+        expected["request_sha256"] = request_digest
     if type(response) is not dict or response != expected:
         return receipt("fixture_receipt_rejected", True)
-    return receipt("fixture_completed_review_required", True)
+    result = receipt("fixture_completed_review_required", True)
+    if request_digest is not None:
+        result["request_sha256"] = request_digest
+    return result
 
 
 def _official_sdk():
