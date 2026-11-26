@@ -1,0 +1,67 @@
+{
+  "schema_version": "1.0",
+  "task_id": "CODEN-SELF-001",
+  "issue": 209,
+  "baseline_commit": "b1913fdd9709b3e1ad0b8cbe52dbe405cc2bba40",
+  "stage": "PHASE_1_REVIEW_ONLY",
+  "status": "BLOCKED_RUNTIME_ADMISSION",
+  "readiness": {
+    "phase_0_qualification_completed": false,
+    "repository_edit_adapter_admitted": false,
+    "independent_review_completed": false,
+    "issue_162_closed": false
+  },
+  "allowed_edit": {
+    "path": "tests/test_factory_queue_alerts.py",
+    "original_git_blob": "9a8b424014360d54d9696e6dfe53b68813e5d51c",
+    "original_sha256": "ecfb133587f040c9dce0da703f0c8bd10b98bda663efe27ac949e6d9d4788e89",
+    "original_bytes": 5003,
+    "append_only": true,
+    "max_new_test_methods": 4,
+    "max_added_bytes": 16384
+  },
+  "read_only_context": [
+    {
+      "path": "ai_factory/queue_alerts.py",
+      "git_blob": "7cbd808415c14f3ffc1f8788912f45edf44fa8e8",
+      "sha256": "a359da38ebc67b9994c70582b8d3cc52e97aa0aa7cfb2e9adb050adbbc177fbc"
+    },
+    {
+      "path": "ai_factory/queue_health.py",
+      "git_blob": "bcb59d93ae85c6d8c4d316767fe212dcd76b98e5",
+      "sha256": "bcb51f50fddf2ecaa2f32e6f6f2ac063cf8a500d9c659277100cb569c9d8f4d3"
+    }
+  ],
+  "review_gate": {
+    "path": "ai_factory/review_gate.py",
+    "git_blob": "17085cee65f241706409f24f7257bc59e5ff015c",
+    "sha256": "362afcc8bc0e9d32ec228165c5c49b38201b690adc4640f46f7bfca91c8a624b",
+    "function": "assess_self_development",
+    "trusted_reviewer_only": true,
+    "structural_validation_only": true
+  },
+  "objective": "Propose additional combined regression coverage for multiple simultaneous aggregate queue alerts. Preserve existing tests. Verify deterministic order, exact counts, privacy and read-only behavior. No code or workflow changes.",
+  "qualification": {
+    "task_path": "ai_factory/examples/openhands-multifile-task.json",
+    "canonical_sha256": "81706571edbff4228be140b398a0fddc5b4df84de50407b06f46c2397f009d0f",
+    "required_before_self_development": true
+  },
+  "test_command_for_independent_admitted_reviewer": "python -m unittest discover -s tests -p 'test_factory_queue_alerts.py' -v",
+  "baseline_ci": {
+    "run_id": 45908924816,
+    "passed": 594,
+    "skipped": 1,
+    "failures": 0
+  },
+  "limits": {
+    "paid_api_calls": 0,
+    "repository_write": false,
+    "network": false,
+    "automatic_retry": false,
+    "approval_mutation": false
+  },
+  "execution_authorized": false,
+  "release_authorized": false,
+  "agent_invoked": false,
+  "worker_enqueued": false
+}
