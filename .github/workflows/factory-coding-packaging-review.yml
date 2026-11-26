@@ -2251,14 +2251,14 @@ jobs:
           retention-days: 7
 
   split-identity-cgroup-preflight:
-    # New evidence only: cross-UID credential boundary and setsid descendant.
+    # One-shot synthetic evidence: cross-UID isolation, aggregate scratch quota and cgroup cleanup.
     # Generated synthetic processes; no distribution acquisition, SDK or Qwen.
-    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == 'cb2a23dd3fb2ac1436aba6138224ae0284de452a' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '66d7376e24deb8f70800ee37ac5cc8b6dbf229b5' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
     runs-on: ubuntu-24.04
     timeout-minutes: 4
     permissions: {}
     steps:
-      - name: Verify split synthetic identities and cgroup cleanup across process sessions
+      - name: Verify split identities, aggregate scratch ENOSPC and cgroup cleanup
         shell: bash
         run: |
           set -euo pipefail
@@ -2278,8 +2278,15 @@ jobs:
               printf '%s %s\n' "$unit" "$state"
             done > "$ev/cleanup.txt"
             if [[ -n "$base" ]]; then
-              sudo rm -f -- "$base/private/socket" "$base/private/credential" "$base/scratch/ready"
-              sudo rmdir "$base/private" "$base/scratch" "$base" || status=1
+              sudo rm -f -- "$base/private/socket" "$base/private/credential"
+              if mountpoint -q "$base/scratch"; then
+                sudo umount "$base/scratch" || status=1
+              fi
+              if ! mountpoint -q "$base/scratch"; then
+                sudo rmdir "$base/private" "$base/scratch" "$base" || status=1
+              else
+                status=1
+              fi
               test ! -e "$base" && echo FIXTURE_DIRECTORY_REMOVED >> "$ev/cleanup.txt"
             fi
             exit "$status"
@@ -2292,6 +2299,9 @@ jobs:
           sudo chmod 0755 "$base"
           sudo install -d -m 0700 -o "$bu" -g "$bg" "$base/private"
           sudo install -d -m 0700 -o "$tu" -g "$tg" "$base/scratch"
+          sudo mount -t tmpfs -o "size=960m,nosuid,nodev,noexec,mode=0700,uid=$tu,gid=$tg" tmpfs "$base/scratch"
+          sudo install -d -m 0700 -o "$tu" -g "$tg" "$base/scratch/tmp"
+          findmnt -n -o FSTYPE,OPTIONS --mountpoint "$base/scratch" > "$ev/scratch-mount.txt"
           # Each service receives half of the existing total limits; no heavy work.
           common=(-p CPUQuota=100% -p MemoryMax=2147483648 -p TasksMax=64
                   -p RuntimeMaxSec=60 -p TimeoutStopSec=2 -p KillMode=control-group
@@ -2328,7 +2338,7 @@ jobs:
           bp="$(sudo systemctl show "$broker" -p MainPID --value)"
           test "$bp" -gt 1
           tool_code="$(cat <<'PY'
-          import json,os,signal,socket,subprocess,sys,time
+          import errno,json,os,signal,socket,subprocess,sys,time
           from pathlib import Path
           private,scratch,bp=Path(sys.argv[1]),Path(sys.argv[2]),int(sys.argv[3])
           assert os.getuid()!=0
@@ -2353,6 +2363,36 @@ jobs:
           assert int(cpu[0])==int(cpu[1])
           assert (p/"memory.max").read_text().strip()=="2147483648"
           assert (p/"pids.max").read_text().strip()=="64"
+          # Exercise actual shared tmpfs capacity, not sparse file length or
+          # an application-level reservation. The only workload is trusted data.
+          v=os.statvfs(scratch); block=v.f_frsize
+          capacity=v.f_blocks*block
+          assert capacity==960*1024*1024 and block>0
+          assert all(os.stat(q).st_dev==os.stat(scratch).st_dev for q in
+                     (scratch/"tmp",Path("/tmp"),Path("/var/tmp")))
+          assert all(os.statvfs(q).f_blocks*os.statvfs(q).f_frsize==capacity for q in
+                     (Path("/tmp"),Path("/var/tmp")))
+          paths=(scratch/"quota-root",Path("/tmp/quota-tmp"),Path("/var/tmp/quota-overflow"))
+          before=os.statvfs(scratch).f_bavail*block
+          try:
+              with paths[0].open("xb") as a:
+                  os.posix_fallocate(a.fileno(),0,16*1024*1024)
+                  remain=os.statvfs(scratch).f_bavail*block
+                  assert before-remain>=16*1024*1024 and remain>2*block
+                  with paths[1].open("xb") as b:
+                      os.posix_fallocate(b.fileno(),0,remain-block)
+                      assert os.statvfs(scratch).f_bavail*block<=block
+                      with paths[2].open("xb") as c:
+                          try: os.posix_fallocate(c.fileno(),0,2*block)
+                          except OSError as exc: assert exc.errno==errno.ENOSPC
+                          else: raise AssertionError("aggregate quota did not reject overflow")
+          finally:
+              for q in paths: q.unlink(missing_ok=True)
+          after=os.statvfs(scratch).f_bavail*block
+          assert after==before and not list((scratch/"tmp").iterdir())
+          checks.update(scratch_capacity_bytes=capacity,shared_tmp_aliases=True,
+                        scratch_enospc=True,scratch_reclaimed=True,
+                        scratch_available_before=before,scratch_available_after=after)
           # The child changes its session and ignores SIGTERM. Process-group
           # cancellation alone cannot prove its absence.
           child=subprocess.Popen([sys.executable,"-I","-B","-c",
@@ -2372,9 +2412,10 @@ jobs:
           PY
           )"
           sudo systemd-run --quiet --unit="$tool" -p "User=$tu" -p "Group=$tg" \
-            -p "ReadWritePaths=$base/scratch" "${common[@]}" \
+            -p "BindPaths=$base/scratch/tmp:/tmp $base/scratch/tmp:/var/tmp" \
+            -p "ReadWritePaths=$base/scratch /tmp /var/tmp" "${common[@]}" \
             /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/python3 -I -B -c "$tool_code" "$base/private" "$base/scratch" "$bp"
-          for n in $(seq 1 60); do
+          for n in $(seq 1 200); do
             sudo journalctl -u "$tool" -o cat --no-pager | grep '^{' > "$ev/tool-receipt.json" || true
             test -s "$ev/tool-receipt.json" && break
             sleep .1
@@ -2383,7 +2424,8 @@ jobs:
           python3 - "$ev/tool-receipt.json" <<'PY'
           import json,sys
           d=json.load(open(sys.argv[1]))
-          assert all(d[k] is True for k in ("credential_read_denied","broker_proc_environ_denied","broker_signal_denied","broker_socket_denied","separate_session"))
+          assert all(d[k] is True for k in ("credential_read_denied","broker_proc_environ_denied","broker_signal_denied","broker_socket_denied","separate_session","shared_tmp_aliases","scratch_enospc","scratch_reclaimed"))
+          assert d["scratch_capacity_bytes"]==1006632960
           assert d["agent_ran"] is False and d["real_qwen_connected"] is False
           PY
           cg="$(sudo systemctl show "$tool" -p ControlGroup --value)"
@@ -2396,11 +2438,11 @@ jobs:
           # Broker survives stopping the tool service, proving distinct lifecycles.
           test "$(sudo systemctl show "$broker" -p ActiveState --value)" = active
           sudo systemctl stop "$broker"
-          printf '%s\n' '{"status":"SYNTHETIC_SPLIT_IDENTITY_AND_CGROUP_CLEANUP","tool_cgroup_empty_or_removed":true,"broker_survived_tool_stop":true,"real_runtime_isolation_verified":false,"release_authorized":false}' > "$ev/containment-receipt.json"
+          printf '%s\n' '{"status":"SYNTHETIC_SPLIT_IDENTITY_AND_CGROUP_CLEANUP","tool_cgroup_empty_or_removed":true,"broker_survived_tool_stop":true,"scratch_enospc_verified":true,"real_runtime_isolation_verified":false,"release_authorized":false}' > "$ev/containment-receipt.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: split-identity-cgroup-preflight-receipts
+          name: split-identity-scratch-quota-preflight-receipts
           path: evidence/
           if-no-files-found: error
           retention-days: 7
