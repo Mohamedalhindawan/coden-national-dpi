@@ -77,6 +77,20 @@ def _path(root, task_id):
     return folder / f"{task_id}.jsonl"
 
 
+def _unique_json_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate journal key")
+        result[key] = value
+    return result
+
+
+def _regular_journal(fd):
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        raise ValueError("invalid journal file")
+
+
 def _read_locked(fd):
     size = os.fstat(fd).st_size
     if size > MAX_BYTES or not stat.S_ISREG(os.fstat(fd).st_mode):
@@ -87,8 +101,8 @@ def _read_locked(fd):
     if len(raw) > MAX_BYTES or not raw or not raw.endswith(b"\n"):
         raise ValueError("missing or incomplete journal")
     try:
-        records = [json.loads(line) for line in raw.splitlines()]
-    except (ValueError, UnicodeError) as exc:
+        records = [json.loads(line, object_pairs_hook=_unique_json_keys) for line in raw.splitlines()]
+    except (ValueError, UnicodeError, RecursionError) as exc:
         raise ValueError("malformed journal") from exc
     if not 1 <= len(records) <= MAX_EVENTS:
         raise ValueError("invalid journal length")
@@ -218,8 +232,9 @@ def create(root, task_id, *, branch, commit):
 
 def read(root, task_id):
     path = _path(root, task_id)
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
+        _regular_journal(fd)
         fcntl.flock(fd, fcntl.LOCK_SH)
         records = _read_locked(fd)
         return dict(task_id=task_id, **_state(records))
@@ -235,8 +250,9 @@ def record(root, task_id, *, event, branch=None, commit=None, next_action=None, 
     _commit(commit)
     _action(next_action)
     key = _key(event_key) if event_key is not None else uuid4().hex
-    fd = os.open(path, os.O_RDWR | os.O_NOFOLLOW)
+    fd = os.open(path, os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
+        _regular_journal(fd)
         fcntl.flock(fd, fcntl.LOCK_EX)
         events = _read_locked(fd)
         for old in events:
