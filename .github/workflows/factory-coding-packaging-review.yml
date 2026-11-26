@@ -2958,7 +2958,7 @@ jobs:
 
   executable-scratch-synthetic-build-boundary:
     # One-shot generated data only; no candidate wheels, interpreter, model or build.
-    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '74f979e4a81d6190f6dd72bc939bcd69c3992d19' && github.event.pull_request.number == 210 && github.head_ref == 'parallel/fasttrack-integrated-20261127' && github.base_ref == 'parallel/chatgpt-r2-recovery-20261127' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == 'a4f49925d92c936763b38d606a9f177f59d6986d' && github.event.pull_request.number == 210 && github.head_ref == 'parallel/fasttrack-integrated-20261127' && github.base_ref == 'parallel/chatgpt-r2-recovery-20261127' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -3064,8 +3064,15 @@ jobs:
               else:
                   os.close(fd); raise AssertionError("PTY allocation unexpectedly allowed")
           try: subprocess.run([str(root/"probe.sh")],check=True,capture_output=True,timeout=3)
-          except PermissionError: pass
+          except PermissionError as exc:
+              assert exc.errno==errno.EACCES and exc.filename==str(root/"probe.sh"),exc
           else: raise AssertionError("execution from immutable staging allowed")
+          # Explicitly exercise anonymous subprocess pipes; other IPC stays blocked.
+          readfd,writefd=os.pipe()
+          try:
+              assert os.write(writefd,b"ok")==2 and os.read(readfd,2)==b"ok"
+          finally:
+              os.close(readfd); os.close(writefd)
           executable=scratch/"home"/"probe.sh"
           executable.write_bytes((root/"probe.sh").read_bytes())
           executable.chmod(0o700)
@@ -3093,9 +3100,16 @@ jobs:
               allocate(Path("/var/tmp")/"overflow.bin",used.f_frsize*(used.f_bavail+1))
           except OSError as exc: assert exc.errno==errno.ENOSPC
           else: raise AssertionError("writable quota exceeded")
-          print(json.dumps(dict(status="SYNTHETIC_EXECUTABLE_SCRATCH_PASS",auxiliary_denials=denials,rlimits_checked=4,private_ipc=True,pty_allocations_denied=2,immutable_direct_exec_denied=True,scratch_fixture_exec_verified=True,pty_accounting_proven=False,readonly_input_bytes=221937664,input_capacity_bytes=536870912,input_sha256=digest,writable_payload_bytes=888944418,writable_capacity_bytes=1006632960,observed_writable_used_bytes=used.f_frsize*(used.f_blocks-used.f_bfree),write_denials=2,overflow_errno=errno.ENOSPC,actual_installation=False,actual_peak_build_capacity_proven=False,aggregate_auxiliary_resources_proven=False,build_authorized=False,release_authorized=False),sort_keys=True))
+          print(json.dumps(dict(status="SYNTHETIC_EXECUTABLE_SCRATCH_PASS",auxiliary_denials=denials,rlimits_checked=4,private_ipc=True,pty_allocations_denied=2,immutable_direct_exec_denied=True,scratch_fixture_exec_verified=True,anonymous_pipe_verified=True,pty_accounting_proven=False,readonly_input_bytes=221937664,input_capacity_bytes=536870912,input_sha256=digest,writable_payload_bytes=888944418,writable_capacity_bytes=1006632960,observed_writable_used_bytes=used.f_frsize*(used.f_blocks-used.f_bfree),write_denials=2,overflow_errno=errno.ENOSPC,actual_installation=False,actual_peak_build_capacity_proven=False,aggregate_auxiliary_resources_proven=False,build_authorized=False,release_authorized=False),sort_keys=True))
           PY
           )"
+          # Fail closed if the runner's IPC group has another member not listed below.
+          python3 - <<'CHECK'
+          import subprocess
+          group={line.strip() for line in subprocess.check_output(["systemd-analyze","syscall-filter","@ipc"],text=True).splitlines() if line.strip() and not line.strip().startswith(("#","@"))}
+          denied=set("ipc memfd_create mq_getsetattr mq_notify mq_open mq_timedreceive mq_timedreceive_time64 mq_timedsend mq_timedsend_time64 mq_unlink msgctl msgget msgrcv msgsnd process_madvise process_vm_readv process_vm_writev semctl semget semop semtimedop semtimedop_time64 shmat shmctl shmdt shmget".split())
+          assert group and group-{"pipe","pipe2"}<=denied,sorted(group-denied-{"pipe","pipe2"})
+          CHECK
           timeout --kill-after=5s 90s sudo systemd-run --unit="$unit" --wait --pipe --quiet \
             -p "User=$uid" -p "Group=$gid" -p CPUQuota=200% -p MemoryMax=4294967296 -p MemorySwapMax=0 -p TasksMax=128 \
             -p RuntimeMaxSec=90 -p KillMode=control-group -p NoNewPrivileges=yes \
@@ -3105,7 +3119,7 @@ jobs:
             -p "BindPaths=$scratch/tmp:/tmp $scratch/tmp:/var/tmp" -p "ReadWritePaths=$scratch /tmp /var/tmp" \
             -p RestrictSUIDSGID=yes -p RestrictAddressFamilies=AF_UNIX \
             -p "InaccessiblePaths=/dev/pts" \
-            -p 'SystemCallFilter=~@ipc' -p SystemCallErrorNumber=EPERM \
+            -p 'SystemCallFilter=~ipc memfd_create mq_getsetattr mq_notify mq_open mq_timedreceive mq_timedreceive_time64 mq_timedsend mq_timedsend_time64 mq_unlink msgctl msgget msgrcv msgsnd process_madvise process_vm_readv process_vm_writev semctl semget semop semtimedop semtimedop_time64 shmat shmctl shmdt shmget' -p SystemCallErrorNumber=EPERM \
             -p LimitCORE=0 -p LimitMEMLOCK=0 -p LimitNOFILE=256 -p LimitMSGQUEUE=65536 \
             /usr/bin/env -i PATH=/usr/bin:/bin "HOME=$scratch/home" TMPDIR=/tmp LC_ALL=C /usr/bin/python3 -I -B -c "$script" "$store" "$scratch" "$host_ns" "$host_ipc" > "$ev/review.json"
           sha256sum "$store/input.bin" | awk '{print $1}' > "$ev/input-after.sha256"
