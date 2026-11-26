@@ -57,7 +57,8 @@ def validate_r2_contract(closure):
     _require(all(data[key] is False for key in ("adopted","security_approved","legal_approved",
                "installation_authorized","import_authorized","release_authorized")), "contract_is_not_admission")
     return {"status":"STATIC_R2_CONTRACT_MATCH_UNAPPROVED","runtime_external_records":126,
-            "root_count":4,"sdk_imported":False,"import_authorized":False,"release_authorized":False}
+            "root_count":4,"sdk_imported":False,"installation_authorized":False,
+            "import_authorized":False,"release_authorized":False}
 
 
 def _check_metadata_digest(path, expected):
@@ -112,7 +113,7 @@ def main(argv=None):
         else:
             result = validate_r2_contract(args.closure)
     except (OSError, ValueError, KeyError, TypeError):
-        print(json.dumps({"status":"BLOCKED","sdk_imported":False,
+        print(json.dumps({"status":"BLOCKED","sdk_imported":False,"installation_authorized":False,
                           "import_authorized":False,"release_authorized":False}))
         return 1
     print(json.dumps(result,sort_keys=True))
