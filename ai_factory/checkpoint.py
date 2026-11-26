@@ -71,9 +71,9 @@ def _key(value):
 
 def _path(root, task_id):
     _id(task_id)
-    folder = Path(root)
-    if folder.is_symlink():
-        raise ValueError("symlink checkpoint root is forbidden")
+    folder = Path(root).absolute()
+    if ".." in folder.parts or any(p.is_symlink() for p in (folder, *folder.parents)):
+        raise ValueError("untrusted checkpoint root")
     return folder / f"{task_id}.jsonl"
 
 
@@ -87,8 +87,9 @@ def _unique_json_keys(pairs):
 
 
 def _regular_journal(fd):
-    if not stat.S_ISREG(os.fstat(fd).st_mode):
-        raise ValueError("invalid journal file")
+    info = os.fstat(fd)
+    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+        raise ValueError("invalid or aliased journal file")
 
 
 def _read_locked(fd):
