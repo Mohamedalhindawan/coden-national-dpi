@@ -64,7 +64,11 @@ def run_batch(*, queue_db, journal, task_dir, output_root, worker_id,
         except BlockingIOError:
             return receipt("batch_busy")
         for _ in range(max_tasks):
-            before = reconcile.scan(db, journals, tasks)
+            try:
+                before = reconcile.scan(db, journals, tasks)
+            except (OSError, ValueError):
+                # Missing durable evidence cannot permit another dispatch or retry.
+                return receipt("reconciliation_required")
             if before["needs_attention"]:
                 return receipt("reconciliation_required")
             queued = {x["task_id"] for x in before["tasks"]
@@ -92,7 +96,11 @@ def run_batch(*, queue_db, journal, task_dir, output_root, worker_id,
                     result["automatic_retry_allowed"] is not False or
                     result["status"] != "awaiting_human_review"):
                 return receipt("worker_review_required")
-            after = reconcile.scan(db, journals, tasks)
+            try:
+                after = reconcile.scan(db, journals, tasks)
+            except (OSError, ValueError):
+                # Missing durable evidence cannot permit another dispatch or retry.
+                return receipt("reconciliation_required")
             if after["needs_attention"]:
                 return receipt("reconciliation_required")
             old = {x["task_id"]: x["condition"] for x in before["tasks"]}

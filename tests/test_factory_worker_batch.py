@@ -252,3 +252,37 @@ class WorkerBatchTests(unittest.TestCase):
         worker.assert_called_once()
         self.assertEqual(self.q.read("one")["attempts"], 0)
         self.assertFalse(result["automatic_retry_allowed"])
+
+    def test_pre_dispatch_reconciliation_read_failure_blocks_without_launch(self):
+        self.add("one")
+        with patch.object(reconcile, "scan", side_effect=ValueError("unreadable state")), \
+                patch.object(worker_supervisor, "run_once") as worker:
+            result = self.run_batch()
+        worker.assert_not_called()
+        self.assertEqual(result["status"], "reconciliation_required")
+        self.assertEqual(result["review_candidates"], 0)
+        self.assertFalse(result["automatic_retry_allowed"])
+        self.assertEqual(self.q.read("one")["attempts"], 0)
+
+    def test_post_dispatch_reconciliation_read_failure_stops_remaining_work(self):
+        from ai_factory import checkpoint
+        self.add("one")
+        self.add("two")
+        before = reconcile.scan(self.db, self.journal, self.tasks)
+        def finish(**kwargs):
+            selected = kwargs["task_id"]
+            lease = self.q.claim("operator", task_id=selected, lease_seconds=40)
+            checkpoint.record(self.journal, selected, event="checkpoint")
+            checkpoint.record(self.journal, selected, event="review_requested")
+            self.q.finish(selected, lease["lease_token"], "awaiting_human_review")
+            return {"status": "awaiting_human_review", "execution_authorized": False,
+                    "automatic_retry_allowed": False}
+        with patch.object(reconcile, "scan", side_effect=[before, OSError("read failed")]), \
+                patch.object(worker_supervisor, "run_once", side_effect=finish) as worker:
+            result = self.run_batch()
+        worker.assert_called_once()
+        self.assertEqual(result["status"], "reconciliation_required")
+        self.assertEqual(result["review_candidates"], 0)
+        self.assertFalse(result["automatic_retry_allowed"])
+        states = [self.q.read(x)["status"] for x in ("one", "two")]
+        self.assertCountEqual(states, ["awaiting_human_review", "queued"])
