@@ -116,5 +116,35 @@ class Factory84UnifiedRegistryTests(unittest.TestCase):
             factory_84_registry.build_view(data["base"], data["r29"], data["audit"])
 
 
+    def test_v1_1_repository_index_is_queryable_and_never_admits(self):
+        rows = factory_84_registry.load_v1_1()
+        self.assertEqual(len(rows), 128)
+        self.assertEqual(len({r["repository"].casefold() for r in rows}), 128)
+        self.assertEqual(sum(len(r["legacy_entry_ids"]) for r in rows), 84)
+        self.assertEqual(sum(len(r["plan_references"]) for r in rows), 89)
+        self.assertTrue(all(r["approved"] is False and r["enabled"] is False
+                            and r["installed_by_this_catalog"] is False for r in rows))
+        self.assertEqual(factory_84_registry.select_v1_1(rows, "autogen")[0]["decision"],
+                         "hold_archived")
+        self.assertEqual(len(factory_84_registry.select_v1_1(rows, "omniroute")), 1)
+
+    def test_v1_1_index_rejects_modified_bytes_and_symlink(self):
+        import tempfile
+        from unittest.mock import patch
+        raw = (ROOT / "factory_v1_1_repository_reconciliation.json").read_bytes()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "catalog.json"
+            path.write_bytes(raw + b" ")
+            with patch.object(factory_84_registry, "V1_1", path):
+                with self.assertRaises(ValueError):
+                    factory_84_registry.load_v1_1()
+            path.write_bytes(raw)
+            alias = Path(tmp) / "alias.json"
+            alias.symlink_to(path)
+            with patch.object(factory_84_registry, "V1_1", alias):
+                with self.assertRaises(ValueError):
+                    factory_84_registry.load_v1_1()
+
+
 if __name__ == "__main__":
     unittest.main()
