@@ -54,12 +54,12 @@ class WheelNoticeTests(unittest.TestCase):
                     inspect_wheel(raw, hashlib.sha256(raw).hexdigest())
 
 
-def recorded_wheel(name="demo", payload=b"fixture" * 100, alter=None, extras=()):
+def recorded_wheel(name="demo", payload=b"fixture" * 100, alter=None, extras=(), metadata=None):
     import base64
     import csv
     prefix = name + "-1.dist-info/"
     files = {name + "/__init__.py": payload,
-             prefix + "METADATA": b"Name: demo\nVersion: 1\n",
+             prefix + "METADATA": (f"Name: {name}\nVersion: 1\n".encode() if metadata is None else metadata),
              prefix + "WHEEL": b"Wheel-Version: 1.0\nTag: py3-none-any\n",
              prefix + "LICENSE": b"MIT fixture"}
     rows = [[p, "sha256=" + base64.urlsafe_b64encode(hashlib.sha256(b).digest()).decode().rstrip("="), str(len(b))]
@@ -78,6 +78,32 @@ def recorded_wheel(name="demo", payload=b"fixture" * 100, alter=None, extras=())
 
 
 class StrictWheelIntegrityTests(unittest.TestCase):
+    def test_strict_receipt_binds_archive_digest_and_distribution_identity(self):
+        from ai_factory.factory_wheel_notice_audit import WheelBudget
+        raw, _ = recorded_wheel("fastmcp_slim",
+                                metadata=b"Name: FastMCP-Slim\nVersion: 1\n")
+        digest = hashlib.sha256(raw).hexdigest()
+        result = inspect_wheel(raw, digest, budget=WheelBudget())
+        self.assertEqual(result["wheel_sha256"], digest)
+        self.assertEqual(result["distribution"], {"name": "fastmcp-slim", "version": "1"})
+        self.assertTrue(result["record_verified"])
+        self.assertFalse(result["release_authorized"])
+
+    def test_strict_rejects_record_consistent_but_wrong_or_ambiguous_metadata_identity(self):
+        from ai_factory.factory_wheel_notice_audit import WheelBudget
+        for metadata in (b"Name: different\nVersion: 1\n",
+                         b"Name: demo\nVersion: 2\n",
+                         b"Name: demo\nName: demo\nVersion: 1\n",
+                         b"Name: demo\nVersion: 1\nVersion: 1\n",
+                         b"Name: demo\n",
+                         b"Name: demo\nVersion: 1\n\n" + b"x" * (2 * 1024**2)):
+            with self.subTest(metadata=metadata[:60]):
+                raw, _ = recorded_wheel(metadata=metadata)
+                budget = WheelBudget()
+                with self.assertRaises(ValueError):
+                    inspect_wheel(raw, hashlib.sha256(raw).hexdigest(), budget=budget)
+                self.assertTrue(budget.failed)
+
     def test_three_wheels_share_one_nonresetting_budget(self):
         from ai_factory.factory_wheel_notice_audit import WheelBudget
         pairs = [recorded_wheel(name) for name in ("one", "two", "three")]
