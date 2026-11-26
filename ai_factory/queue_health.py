@@ -20,7 +20,7 @@ STATES = frozenset({"queued", "leased", "awaiting_human_review",
 def snapshot(queue_db, journal_dir, task_dir, *, now=None):
     stamp = durable_queue.DurableQueue._now(now)
     path = Path(queue_db)
-    if not path.is_file() or path.is_symlink() or path.parent.is_symlink():
+    if not path.is_file() or reconcile._untrusted_path(path):
         raise ValueError("existing trusted queue required")
     uri = "file:" + quote(str(path.absolute()), safe="/") + "?mode=ro"
     try:
@@ -28,7 +28,7 @@ def snapshot(queue_db, journal_dir, task_dir, *, now=None):
             db.execute("PRAGMA query_only=ON")
             db.execute("PRAGMA trusted_schema=OFF")
             rows = db.execute(
-                "SELECT status, lease_until FROM tasks LIMIT ?",
+                "SELECT task_id, status, lease_until FROM tasks LIMIT ?",
                 (reconcile.MAX_TASKS + 1,)).fetchall()
     except sqlite3.Error as exc:
         raise ValueError("unreadable queue health snapshot") from exc
@@ -36,7 +36,10 @@ def snapshot(queue_db, journal_dir, task_dir, *, now=None):
         raise ValueError("queue exceeds audit limit")
     counts = Counter()
     expired = 0
-    for status, deadline in rows:
+    task_states = Counter()
+    for task_id, status, deadline in rows:
+        reconcile.checkpoint._id(task_id)
+        task_states[(task_id, status)] += 1
         if status not in STATES:
             raise ValueError("unknown queue status")
         counts[status] += 1
@@ -53,6 +56,9 @@ def snapshot(queue_db, journal_dir, task_dir, *, now=None):
     reconciled = Counter(row["queue_status"] for row in report["tasks"]
                          if row["queue_status"] is not None)
     counts_consistent = counts == reconciled
+    reconciled_states = Counter((row["task_id"], row["queue_status"]) for row in report["tasks"]
+                                if row["queue_status"] is not None)
+    task_states_consistent = task_states == reconciled_states
     return {
         "queue_depth": counts["queued"],
         "leased": counts["leased"],
@@ -65,8 +71,9 @@ def snapshot(queue_db, journal_dir, task_dir, *, now=None):
         "cancel_requested": counts["cancel_requested"],
         "conditions": report["conditions"],
         "snapshot_counts_consistent": counts_consistent,
+        "snapshot_task_states_consistent": task_states_consistent,
         "snapshot_atomic": False,
-        "needs_attention": bool(not counts_consistent or expired or report["needs_attention"] or
+        "needs_attention": bool(not counts_consistent or not task_states_consistent or expired or report["needs_attention"] or
                                 counts["needs_review"] or counts["blocked"] or counts["failed"] or
                                 counts["cancel_requested"]),
         "worker_availability": "unverified",
