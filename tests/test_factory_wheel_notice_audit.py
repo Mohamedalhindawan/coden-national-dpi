@@ -528,3 +528,16 @@ class R2StaticPipelineTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 audit.inspect_r2_static_batch([(modified, digest), *inputs[1:]], scratch=tmp)
             self.assertEqual(list(Path(tmp).iterdir()), [])
+
+
+class LegacyAcquisitionGuardTests(unittest.TestCase):
+    def test_current_cli_cannot_open_archive_or_network_implicitly(self):
+        import contextlib
+        from unittest.mock import patch
+        from ai_factory import factory_wheel_notice_audit as audit
+        with patch.object(audit.zipfile, "ZipFile", side_effect=AssertionError("archive must not open")) as archive, \
+             patch.object(audit, "build_opener", side_effect=AssertionError("network forbidden")) as opener, \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(audit.main(), 1)
+        archive.assert_not_called()
+        opener.assert_not_called()

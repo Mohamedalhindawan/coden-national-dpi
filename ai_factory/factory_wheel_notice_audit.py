@@ -758,21 +758,19 @@ class NoRedirect(HTTPRedirectHandler):
 
 
 def main():
-    archive = Path('docs/evidence/openhands-077f3fad/fixed-source-provenance.zip')
-    with zipfile.ZipFile(archive) as z:
-        raw = z.read('resolved.lock')
-    if hashlib.sha256(raw).hexdigest() != LOCK_SHA:
-        raise ValueError('lock digest mismatch')
-    results = []
-    output = Path('wheel-review.json')
-    for name, version, digest, url in select_candidates(tomllib.loads(raw.decode()), TARGETS):
-        with build_opener(NoRedirect()).open(url, timeout=30) as response:
-            wheel = response.read(CAP + 1)
-        evidence = inspect_wheel(wheel, digest)
-        results.append(dict(name=name, version=version, wheel_sha256=digest, source=url, evidence=evidence))
-    output.write_text(json.dumps(dict(status='awaiting_human_review', selected_installed_wheels_verified=False, license_admission_approved=False, release_authorized=False, candidates=results), indent=2) + '\n')
-    print(f'Collected {len(results)} hash-verified candidate wheel evidence records; review required.')
+    """Fail closed: the historical network collection is not R2 admission.
+
+    Retained historical workflows are evidence at their original commits.
+    The current candidate must never acquire packages implicitly. The strict
+    inspect_r2_static_batch API remains available for a separately admitted
+    caller supplying exact, already-acquired bytes inside an approved boundary.
+    """
+    print(json.dumps({"status": "BLOCKED", "reason": "separate_r2_acquisition_required",
+                      "package_acquisition_authorized": False,
+                      "installation_authorized": False, "release_authorized": False},
+                     sort_keys=True))
+    return 1
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())
