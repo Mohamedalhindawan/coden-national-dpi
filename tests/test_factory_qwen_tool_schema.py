@@ -79,3 +79,47 @@ class ToolSchemaTests(unittest.TestCase):
         self.assertEqual(verdict["response_sha256"], hashlib.sha256(raw).hexdigest())
         self.assertNotIn("reason_code", verdict)
         self.assertFalse(verdict["tool_executed"])
+
+
+    def test_cli_refuses_symlink_response_and_preserves_existing_receipt(self):
+        import json
+        import subprocess
+        import sys
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "source.json"
+            source.write_text(json.dumps(response()))
+            alias = root / "alias.json"
+            alias.symlink_to(source)
+            receipt = root / "receipt.json"
+            def run(src, dst):
+                return subprocess.run([sys.executable, "-m", "ai_factory.factory_qwen_tool_schema",
+                    str(src), str(dst)], capture_output=True, text=True, timeout=5)
+            result = run(alias, receipt)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse(receipt.exists())
+            receipt.write_text("retained evidence")
+            result = run(source, receipt)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(receipt.read_text(), "retained evidence")
+
+    def test_cli_fresh_regular_input_produces_review_only_receipt(self):
+        import json
+        import subprocess
+        import sys
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "source.json"
+            source.write_text(json.dumps(response()))
+            receipt = root / "receipt.json"
+            result = subprocess.run([sys.executable, "-m", "ai_factory.factory_qwen_tool_schema",
+                str(source), str(receipt)], capture_output=True, text=True, timeout=5)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            data = json.loads(receipt.read_text())
+            self.assertEqual(data["status"], "schema_match")
+            self.assertFalse(data["tool_executed"])
+            self.assertFalse(data["release_authorized"])

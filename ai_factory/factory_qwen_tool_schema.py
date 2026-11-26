@@ -4,6 +4,8 @@ This module never dispatches tools, imports the SDK or authorizes execution.
 """
 import hashlib
 import json
+import os
+import stat
 from pathlib import Path
 import re
 import sys
@@ -107,15 +109,30 @@ def evaluate_response(raw, **expectations):
 def main():
     if len(sys.argv) != 3:
         raise SystemExit("provide response and receipt paths")
-    source, receipt = map(Path, sys.argv[1:])
-    with source.open("rb") as stream:
-        raw = stream.read(MAX_RESPONSE_BYTES + 1)
-    result = evaluate_response(raw)
-    receipt.write_text(json.dumps(result, indent=2) + "\n")
+    source, receipt = (Path(arg).absolute() for arg in sys.argv[1:])
+    try:
+        # Operator-owned directories only; reject existing links and traversal.
+        # This is not a guarantee against concurrent hostile parent replacement.
+        for path in (source, receipt):
+            if ".." in path.parts or any(p.is_symlink() for p in (path, *path.parents)):
+                raise ValueError("untrusted evidence path")
+        fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, "rb") as stream:
+            info = os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                raise ValueError("regular single-link input required")
+            raw = stream.read(MAX_RESPONSE_BYTES + 1)
+        result = evaluate_response(raw)
+        # Exclusive creation preserves retained evidence and rejects final links.
+        # Never replace an earlier receipt, even for a rejected response.
+        with receipt.open("x", encoding="utf-8") as output:
+            output.write(json.dumps(result, indent=2) + "\n")
+    except (OSError, ValueError):
+        print("Tool schema preflight: blocked evidence path")
+        return 1
     print("Tool schema preflight:", result["status"], result.get("reason_code", "accepted"))
-    if result["status"] != "schema_match":
-        raise SystemExit(1)
+    return 0 if result["status"] == "schema_match" else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
