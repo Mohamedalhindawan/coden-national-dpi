@@ -390,5 +390,129 @@ class LeasedModeBFixtureTests(unittest.TestCase):
         self.assertEqual(self.queue.read(self.task_id)["status"], "needs_review")
 
 
+    def _integrated_broker_fixture(self, *, wrong_peer=False, cancel=False):
+        """Actual local socket framing + durable queue; no SDK/model calls."""
+        import socket
+        import struct
+        import threading
+        from ai_factory import factory_qwen_tool_benchmark as bench
+
+        if not hasattr(socket, "SO_PEERCRED"):
+            self.skipTest("Linux peer credentials required")
+        token = b"synthetic-integration-grant"
+        broker = bench.PreflightBroker(token_sha256=hashlib.sha256(token).hexdigest(),
+                                       case_id="count")
+        client, peer = socket.socketpair()
+        self.addCleanup(client.close)
+        self.addCleanup(peer.close)
+        identity = (os.getpid() + int(wrong_peer), os.getuid(), os.getgid())
+        peer.settimeout(2)
+        evidence, requests, errors = [], [], []
+
+        def exact(stream, size):
+            raw = bytearray()
+            while len(raw) < size:
+                block = stream.recv(size - len(raw))
+                if not block:
+                    raise EOFError("incomplete fixture frame")
+                raw.extend(block)
+            return bytes(raw)
+
+        def server():
+            try:
+                with peer:
+                    if wrong_peer:
+                        self.assertEqual(peer.recv(1), b"")
+                        return
+                    size = struct.unpack("!I", exact(peer, 4))[0]
+                    self.assertTrue(0 < size <= 16384)
+                    requests.append(json.loads(exact(peer, size)))
+                    self.assertEqual(peer.recv(1), b"")
+                    case = bench.CASES["count"]
+                    raw = json.dumps({"model": "local-qwen",
+                        "choices": [{"finish_reason": "tool_calls", "message": {
+                            "role": "assistant", "content": None, "tool_calls": [{
+                                "id": "call_fixture", "type": "function", "function": {
+                                    "name": case["expected_tool"],
+                                    "arguments": json.dumps(case["expected_args"])}}]}}],
+                        "usage": {"completion_tokens": 22}}).encode()
+                    peer.sendall(struct.pack("!HI", 200, len(raw)) + raw)
+            except Exception as exc:
+                errors.append(type(exc).__name__)
+
+        worker = self
+
+        class Adapter:
+            def execute(self, request):
+                worker.assertEqual(request["source_identity"]["commit"], worker.commit)
+                worker.assertEqual(request["allowed_files"],
+                                   ["README.md", "app/logic.py", "tests/test_logic.py"])
+                worker.assertFalse(request["external_network_allowed"])
+                worker.assertFalse(request["release_authorized"])
+                result = broker.execute_ipc(token=token, channel=client,
+                    expected_peer=identity, fixture_only=True, deadline_seconds=2)
+                evidence.append(result)
+                if result["status"] != "fixture_preflight_match":
+                    raise ValueError("broker fixture rejected")
+                if cancel:
+                    worker.queue.request_cancel(worker.task_id)
+                return worker.acknowledge(request)
+
+            def close(self):
+                closed = client.fileno() == -1
+                client.close()
+                return {"fixture_cleanup": closed}
+
+        self.adapter = Adapter()
+        thread = threading.Thread(target=server, daemon=True)
+        thread.start()
+        try:
+            self.enqueue()
+            result = self.work()
+        finally:
+            client.close()
+            thread.join(3)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(errors, [])
+        self.assertEqual(len(evidence), 1)
+        self.assertFalse(evidence[0]["qwen_connected"])
+        self.assertFalse(evidence[0]["tool_executed"])
+        self.assertFalse(result["release_authorized"])
+        self.assertEqual(requests, [] if wrong_peer else [bench.request_for("count")])
+        self.assertEqual(client.fileno(), -1)
+        if wrong_peer or cancel:
+            self.assertEqual(result["status"], "needs_review")
+            self.assertEqual(self.queue.recover_expired(now=10**12), 1)
+            self.assertEqual(self.queue.read(self.task_id)["status"], "needs_review")
+        else:
+            self.assertEqual(result["status"], "fixture_completed_review_required")
+            self.assertEqual(self.queue.read(self.task_id)["status"], "awaiting_human_review")
+        self.assertEqual(evidence[0]["status"],
+                         "fixture_peer_rejected" if wrong_peer else "fixture_preflight_match")
+        self.assertIsNone(self.work())
+        self.assertEqual(self.queue.read(self.task_id)["attempts"], 1)
+
+    def test_integrated_queue_bridge_broker_and_review_only_skill(self):
+        from ai_factory import factory_skill_catalog, factory_84_registry
+        rows = factory_84_registry.load_v1_1()
+        self.assertEqual(len(rows), 128)
+        self.assertTrue(all(not row["enabled"] for row in rows))
+        skill = factory_skill_catalog.choose("multifile")
+        source = Path(offline_worker.__file__).resolve().parents[1] / skill["skill_path"]
+        workspace = Path(self.tmp.name) / "skill-review"
+        workspace.mkdir(mode=0o700)
+        staged = factory_skill_catalog.stage_reviewed(
+            "multifile", workspace, hashlib.sha256(source.read_bytes()).hexdigest())
+        self.assertFalse(staged["execution_authorized"])
+        self.assertFalse(staged["runtime_invoked"])
+        self._integrated_broker_fixture()
+
+    def test_integrated_broker_wrong_peer_quarantines_worker(self):
+        self._integrated_broker_fixture(wrong_peer=True)
+
+    def test_integrated_broker_success_then_cancel_quarantines_worker(self):
+        self._integrated_broker_fixture(cancel=True)
+
+
 if __name__ == "__main__":
     unittest.main()
