@@ -36,9 +36,32 @@ def _unique_keys(pairs):
     return result
 
 
+def _open_metadata(path):
+    """Open a leaf through pinned directory descriptors, never following symlinks.
+
+    This is path hygiene, not a sandbox or an authenticated staging root.
+    """
+    path = os.fspath(path)
+    _require(isinstance(path, str) and path and not path.endswith("/"),
+             "invalid_metadata_path")
+    parts = [part for part in path.split("/") if part not in ("", ".")]
+    _require(parts and ".." not in parts, "invalid_metadata_path")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    directory = os.open("/" if path.startswith("/") else ".", flags)
+    try:
+        for part in parts[:-1]:
+            child = os.open(part, flags, dir_fd=directory)
+            os.close(directory)
+            directory = child
+        return os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                       dir_fd=directory)
+    finally:
+        os.close(directory)
+
+
 def validate_r2_contract(closure):
     """Read bounded regular data and require the exact independent digest."""
-    with os.fdopen(os.open(closure, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as stream:
+    with os.fdopen(_open_metadata(closure), "rb") as stream:
         info = os.fstat(stream.fileno())
         _require(stat.S_ISREG(info.st_mode) and info.st_size <= MAX_CONTRACT,
                  "invalid_contract_file")
@@ -63,7 +86,7 @@ def validate_r2_contract(closure):
 
 def _check_metadata_digest(path, expected):
     # Metadata only: never open a wheel, execute a build or discover imports.
-    with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as stream:
+    with os.fdopen(_open_metadata(path), "rb") as stream:
         info = os.fstat(stream.fileno())
         _require(stat.S_ISREG(info.st_mode) and 0 < info.st_size <= MAX_BUNDLE_METADATA,
                  "invalid_bundle_metadata_file")
