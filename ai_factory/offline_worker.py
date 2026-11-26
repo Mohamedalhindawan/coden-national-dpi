@@ -178,12 +178,14 @@ def _verified_modeb_task(checkout_root, lease):
 
 
 def work_modeb_fixture_once(queue, checkout_root, *, worker_id, fixture_adapter,
-                            lease_seconds=60):
+                            lease_seconds=60, checkpoint_root=None):
     """Process only the pinned Mode B fixture in an operator-owned fixture queue.
 
     The trusted adapter is injected, with no SDK or model path. Cancellation
     and lease validity are checked at dispatch and receipt boundaries, not
     asynchronously inside adapter code. An uncertain attempt is never retried.
+    Optional journal linkage is for operator-owned stores; queue and journal
+    are separate durable writes, not an atomic cross-store transaction.
     """
     from . import openhands_sdk_operator
 
@@ -197,15 +199,35 @@ def work_modeb_fixture_once(queue, checkout_root, *, worker_id, fixture_adapter,
     source = {"branch": lease["branch"], "commit": lease["commit"],
               "task_file_sha256": lease["task_sha256"]}
     verified = False
+    journal_linked = False
 
     def receipt(status):
         return dict(_public(lease, status), source_identity=source, lease_claimed=True,
-                    source_checkout_verified=verified, automatic_retry_allowed=False,
+                    source_checkout_verified=verified, journal_linked=journal_linked,
+                    automatic_retry_allowed=False,
                     release_authorized=False)
 
     def check_lease():
         queue.heartbeat(task_id, token, extend_seconds=lease_seconds)
         return False  # The bridge treats a raised verification error as a stop.
+
+    if checkpoint_root is not None:
+        # An explicitly linked journal must match the selected lease before
+        # any adapter call. Missing/invalid evidence leaves the lease for review.
+        try:
+            root = Path(checkpoint_root).absolute()
+            journal_path = root / f"{task_id}.jsonl"
+            if (".." in root.parts or any(p.is_symlink() for p in (root, *root.parents))
+                    or journal_path.is_symlink() or not journal_path.is_file()):
+                raise ValueError("trusted existing checkpoint required")
+            journal = checkpoint.read(root, task_id)
+            if (journal["status"] != "prepared" or journal["last_branch"] != lease["branch"]
+                    or journal["last_commit"] != lease["commit"]):
+                raise ValueError("checkpoint identity mismatch")
+            checkpoint_root = root
+            journal_linked = True
+        except (OSError, ValueError, TypeError, KeyError, RecursionError):
+            return receipt("needs_review")
 
     try:
         task = _verified_modeb_task(checkout_root, lease)
@@ -218,6 +240,10 @@ def work_modeb_fixture_once(queue, checkout_root, *, worker_id, fixture_adapter,
         result = None
     else:
         try:
+            if journal_linked:
+                check_lease()
+                checkpoint.record(checkpoint_root, task_id, event="checkpoint",
+                                  next_action="modeb_fixture_dispatch", event_key="modeb_fixture_start")
             result = openhands_sdk_operator.run_modeb_once(
                 task=task, source_identity=source, allow_agent=True, fixture_only=True,
                 fixture_adapter=fixture_adapter, cancelled=check_lease)
@@ -232,8 +258,16 @@ def work_modeb_fixture_once(queue, checkout_root, *, worker_id, fixture_adapter,
     else:
         outcome = "blocked"
     try:
+        if journal_linked:
+            check_lease()
+            checkpoint.record(
+                checkpoint_root, task_id,
+                event="review_requested" if outcome == "awaiting_human_review" else "blocked",
+                next_action="human_review" if outcome == "awaiting_human_review" else "inspect_fixture",
+                event_key="modeb_fixture_review" if outcome == "awaiting_human_review" else "modeb_fixture_block",
+            )
         queue.finish(task_id, token, outcome)
-    except (ValueError, OSError, sqlite3.Error):
+    except (ValueError, OSError, sqlite3.Error, TypeError, RecursionError):
         # Expired/cancelled lease or uncertain store write: preserve for review.
         return receipt("needs_review")
     if result and outcome == "awaiting_human_review":
