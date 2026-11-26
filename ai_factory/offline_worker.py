@@ -11,7 +11,9 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import sqlite3
 import stat
+import subprocess
 import sys
 
 from . import checkpoint, durable_queue, project
@@ -36,8 +38,8 @@ def _task_file(tasks_dir, task_id):
     return folder / (task_id + ".json")
 
 
-def _read_task(tasks_dir, task_id):
-    path = _task_file(tasks_dir, task_id).absolute()
+def _read_task_bytes(path):
+    path = path.absolute()
     if ".." in path.parts:
         raise ValueError("unexpected parent traversal in task path")
     # O_NOFOLLOW on only the leaf cannot prevent an intermediate symlink.
@@ -65,6 +67,11 @@ def _read_task(tasks_dir, task_id):
             raise ValueError("task exceeds size limit")
     finally:
         os.close(fd)
+    return data
+
+
+def _read_task(tasks_dir, task_id):
+    data = _read_task_bytes(_task_file(tasks_dir, task_id))
     digest = hashlib.sha256(data).hexdigest()
     task = json.loads(data.decode("utf-8"), object_pairs_hook=_unique_keys)
     return task, digest
@@ -130,6 +137,104 @@ def run_modeb_fixture_trial(tasks_dir, task_id, *, branch, commit,
         fixture_only=fixture_only, fixture_adapter=fixture_adapter, cancelled=cancelled)
     return dict(result, source_identity=source, queue_enqueued=False,
                 lease_claimed=False, source_checkout_verified=False)
+
+
+def _verified_modeb_task(checkout_root, lease):
+    """Read one tracked task from a trusted, operator-owned SHA-1 checkout.
+
+    The operator admits the commit and owns the Git metadata and queue. Verify
+    the selected branch, commit and task bytes only, not unrelated worktree
+    files. The parsed bytes below are the only checkout data sent to the bridge.
+    """
+    root = Path(checkout_root).absolute()
+    task_path = "ai_factory/examples/openhands-multifile-task.json"
+
+    def git(*args):
+        # Do not inherit Git overrides, credentials or partial-clone transports.
+        return subprocess.run(
+            ["git", "--no-replace-objects", *args], cwd=root,
+            env={"PATH": os.defpath, "GIT_CONFIG_NOSYSTEM": "1",
+                 "GIT_CONFIG_GLOBAL": os.devnull, "GIT_ALLOW_PROTOCOL": "",
+                 "GIT_TERMINAL_PROMPT": "0", "GIT_CEILING_DIRECTORIES": str(root.parent)},
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            check=True, timeout=5).stdout
+
+    branch_ref = ("refs/heads/" + lease["branch"] + "\n").encode()
+    commit = lease["commit"]
+    if (git("rev-parse", "--is-inside-work-tree", "--show-prefix") != b"true\n\n"
+            or git("symbolic-ref", "HEAD") != branch_ref
+            or git("rev-parse", "--verify", "HEAD^{commit}") != (commit + "\n").encode()):
+        raise ValueError("checkout identity mismatch")
+    raw = _read_task_bytes(root / task_path)
+    if hashlib.sha256(raw).hexdigest() != lease["task_sha256"]:
+        raise ValueError("queued task identity mismatch")
+    # Git's SHA-1 object id includes the object type, decimal size and NUL.
+    blob = hashlib.sha1(b"blob " + str(len(raw)).encode() + b"\0" + raw,
+                        usedforsecurity=False).hexdigest()
+    expected_entry = f"100644 blob {blob}\t{task_path}\0".encode()
+    if git("ls-tree", "-z", commit, "--", task_path) != expected_entry:
+        raise ValueError("task differs from committed regular file")
+    return json.loads(raw.decode("utf-8"), object_pairs_hook=_unique_keys)
+
+
+def work_modeb_fixture_once(queue, checkout_root, *, worker_id, fixture_adapter,
+                            lease_seconds=60):
+    """Process only the pinned Mode B fixture in an operator-owned fixture queue.
+
+    The trusted adapter is injected, with no SDK or model path. Cancellation
+    and lease validity are checked at dispatch and receipt boundaries, not
+    asynchronously inside adapter code. An uncertain attempt is never retried.
+    """
+    from . import openhands_sdk_operator
+
+    if fixture_adapter is None:
+        raise ValueError("trusted fixture adapter required")
+    task_id = "OPENHANDS_SYNTHETIC_1"
+    lease = queue.claim(worker_id, task_id=task_id, lease_seconds=lease_seconds)
+    if lease is None:
+        return None
+    token = lease["lease_token"]
+    source = {"branch": lease["branch"], "commit": lease["commit"],
+              "task_file_sha256": lease["task_sha256"]}
+    verified = False
+
+    def receipt(status):
+        return dict(_public(lease, status), source_identity=source, lease_claimed=True,
+                    source_checkout_verified=verified, automatic_retry_allowed=False,
+                    release_authorized=False)
+
+    def check_lease():
+        queue.heartbeat(task_id, token, extend_seconds=lease_seconds)
+        return False  # The bridge treats a raised verification error as a stop.
+
+    try:
+        task = _verified_modeb_task(checkout_root, lease)
+        verified = True
+    except (OSError, ValueError, subprocess.SubprocessError):
+        result = None
+    else:
+        try:
+            result = openhands_sdk_operator.run_modeb_once(
+                task=task, source_identity=source, allow_agent=True, fixture_only=True,
+                fixture_adapter=fixture_adapter, cancelled=check_lease)
+        except Exception:
+            # Dispatch may already have occurred. Leave the lease for quarantine.
+            return receipt("needs_review")
+
+    if result and result["fixture_adapter_attempted"]:
+        if result["status"] != "fixture_completed_review_required":
+            return dict(receipt("needs_review"), bridge_status=result["status"])
+        outcome = "awaiting_human_review"
+    else:
+        outcome = "blocked"
+    try:
+        queue.finish(task_id, token, outcome)
+    except (ValueError, OSError, sqlite3.Error):
+        # Expired/cancelled lease or uncertain store write: preserve for review.
+        return receipt("needs_review")
+    if result and outcome == "awaiting_human_review":
+        return dict(result, **receipt(result["status"]))
+    return dict(receipt("blocked"), bridge_status=result["status"] if result else None)
 
 
 def submit(queue, checkpoint_root, tasks_dir, task_id, *, branch, commit):

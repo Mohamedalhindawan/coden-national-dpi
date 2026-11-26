@@ -2,10 +2,11 @@
 import hashlib
 import json
 import os
+import subprocess
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from ai_factory import checkpoint, durable_queue, project, reconcile
 from ai_factory import offline_worker
@@ -231,6 +232,140 @@ class OfflineWorkerTests(unittest.TestCase):
         self.assertEqual(result["status"], "awaiting_human_review")
         self.assertTrue((result["directory"] / "review.json").exists())
         self.assertFalse(result["execution_authorized"])
+
+
+class LeasedModeBFixtureTests(unittest.TestCase):
+    task_id = "OPENHANDS_SYNTHETIC_1"
+    task_path = Path("ai_factory/examples/openhands-multifile-task.json")
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        root = Path(self.tmp.name)
+        self.checkout = root / "checkout"
+        self.checkout.mkdir()
+        self.git("init", "-b", "review/fixture")
+        self.path = self.checkout / self.task_path
+        self.path.parent.mkdir(parents=True)
+        self.raw = (Path(offline_worker.__file__).resolve().parents[1] / self.task_path).read_bytes()
+        self.path.write_bytes(self.raw)
+        self.git("add", "--", str(self.task_path))
+        self.git("-c", "user.name=Fixture", "-c", "user.email=test@example.invalid",
+                 "-c", "commit.gpgsign=false", "commit", "-m", "synthetic fixture")
+        self.commit = self.git("rev-parse", "HEAD")
+        self.queue = durable_queue.DurableQueue(root / "queue.db")
+        self.adapter = Mock()
+        self.adapter.execute.side_effect = self.acknowledge
+        self.adapter.close.return_value = {"fixture_cleanup": True}
+
+    def git(self, *args):
+        return subprocess.check_output(["git", *args], cwd=self.checkout,
+                                       stderr=subprocess.DEVNULL, text=True).strip()
+
+    def acknowledge(self, request):
+        return {"status": "fixture_completed", "task_sha256": request["task_sha256"],
+                "request_sha256": hashlib.sha256(project.encoded(request).encode()).hexdigest()}
+
+    def enqueue(self, *, branch="review/fixture", commit=None, raw=None):
+        digest = hashlib.sha256(self.raw if raw is None else raw).hexdigest()
+        self.queue.enqueue(self.task_id, branch, commit or self.commit, digest)
+
+    def work(self, **kwargs):
+        return offline_worker.work_modeb_fixture_once(
+            self.queue, self.checkout, worker_id="synthetic_worker",
+            fixture_adapter=self.adapter, **kwargs)
+
+    def test_verified_task_is_claimed_once_and_receipt_matches_adapter_request(self):
+        self.enqueue()
+        receipt = self.work()
+        self.assertEqual(receipt["status"], "fixture_completed_review_required")
+        self.assertTrue(receipt["lease_claimed"])
+        self.assertTrue(receipt["source_checkout_verified"])
+        request, = self.adapter.execute.call_args.args
+        self.assertEqual(request["source_identity"]["commit"], self.commit)
+        self.assertEqual(receipt["request_sha256"], self.acknowledge(request)["request_sha256"])
+        self.assertFalse(receipt["qwen_connected"])
+        self.assertFalse(receipt["release_authorized"])
+        self.queue = durable_queue.DurableQueue(self.queue.path)
+        self.assertIsNone(self.work())
+        self.assertEqual(self.queue.read(self.task_id)["attempts"], 1)
+        self.assertEqual(self.queue.read(self.task_id)["status"], "awaiting_human_review")
+        self.adapter.execute.assert_called_once()
+        self.adapter.close.assert_called_once()
+
+    def test_second_worker_cannot_dispatch_while_first_adapter_is_active(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Event
+
+        self.enqueue()
+        entered, resume = Event(), Event()
+        def pause_then_reply(request):
+            entered.set()
+            if not resume.wait(5):
+                raise TimeoutError()
+            return self.acknowledge(request)
+
+        self.adapter.execute.side_effect = pause_then_reply
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            running = executor.submit(self.work)
+            try:
+                self.assertTrue(entered.wait(5))
+                self.assertIsNone(self.work())
+            finally:
+                resume.set()
+            self.assertEqual(running.result()["status"], "fixture_completed_review_required")
+        self.adapter.execute.assert_called_once()
+
+    def assert_blocked_before_dispatch(self):
+        self.assertEqual(self.work()["status"], "blocked")
+        self.assertEqual(self.queue.read(self.task_id)["status"], "blocked")
+        self.adapter.execute.assert_not_called()
+
+    def test_rejects_different_checked_out_branch_at_same_commit(self):
+        self.enqueue()
+        self.git("switch", "-c", "review/other")
+        self.assert_blocked_before_dispatch()
+
+    def test_rejects_wrong_commit(self):
+        self.enqueue(commit="a"*40)
+        self.assert_blocked_before_dispatch()
+
+    def test_rejects_modified_file_even_if_queue_hash_matches_modified_bytes(self):
+        self.path.write_bytes(self.raw + b" ")
+        self.enqueue(raw=self.path.read_bytes())
+        self.assert_blocked_before_dispatch()
+
+    def test_rejects_wrong_queue_digest_with_clean_git_file(self):
+        self.enqueue(raw=b"other")
+        self.assert_blocked_before_dispatch()
+
+    def test_rejects_symlink_to_file_with_same_bytes(self):
+        self.enqueue()
+        copy = self.checkout / "copy.json"
+        self.path.rename(copy)
+        self.path.symlink_to(copy)
+        self.assert_blocked_before_dispatch()
+
+    def test_cancel_during_fixture_quarantines_without_replay(self):
+        self.enqueue()
+        def cancel_then_reply(request):
+            self.queue.request_cancel(self.task_id)
+            return self.acknowledge(request)
+        self.adapter.execute.side_effect = cancel_then_reply
+        self.assertEqual(self.work()["status"], "needs_review")
+        self.assertEqual(self.queue.read(self.task_id)["status"], "cancel_requested")
+        self.assertEqual(self.queue.recover_expired(now=10**12), 1)
+        self.assertIsNone(self.work())
+        self.adapter.execute.assert_called_once()
+
+    def test_bad_receipt_requires_review_after_lease_expiry(self):
+        self.enqueue()
+        self.adapter.execute.side_effect = None
+        self.adapter.execute.return_value = {}
+        self.assertEqual(self.work()["status"], "needs_review")
+        self.assertEqual(self.queue.recover_expired(now=10**12), 1)
+        self.assertIsNone(self.work())
+        self.assertEqual(self.queue.read(self.task_id)["status"], "needs_review")
 
 
 if __name__ == "__main__":
