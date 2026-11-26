@@ -162,5 +162,38 @@ class FactoryAccelerationSkillsTests(unittest.TestCase):
             self.assertEqual(list(target.iterdir()), [])
 
 
+    def test_failed_skill_write_rolls_back_only_owned_staging(self):
+        row = factory_skill_catalog.choose("multifile")
+        digest = hashlib.sha256((ROOT / row["skill_path"]).read_bytes()).hexdigest()
+        real_open = Path.open
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            def fail_after_create(path, *args, **kwargs):
+                if path.name == "SKILL.md" and args and args[0] == "xb":
+                    with real_open(path, "xb") as stream:
+                        stream.write(b"partial")
+                    raise OSError("synthetic interrupted write")
+                return real_open(path, *args, **kwargs)
+            with patch.object(Path, "open", fail_after_create):
+                with self.assertRaises(OSError):
+                    factory_skill_catalog.stage_reviewed("multifile", root, digest)
+            self.assertEqual(list(root.iterdir()), [])
+            result = factory_skill_catalog.stage_reviewed("multifile", root, digest)
+            self.assertEqual(result["status"], "REVIEW_ONLY_STAGED")
+            self.assertFalse(result["execution_authorized"])
+
+    def test_staging_refuses_lexical_parent_traversal(self):
+        row = factory_skill_catalog.choose("multifile")
+        digest = hashlib.sha256((ROOT / row["skill_path"]).read_bytes()).hexdigest()
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            (base / "other").mkdir()
+            target = base / "private"
+            target.mkdir(mode=0o700)
+            with self.assertRaises(ValueError):
+                factory_skill_catalog.stage_reviewed("multifile", base / "other" / ".." / "private", digest)
+            self.assertEqual(list(target.iterdir()), [])
+
+
 if __name__ == "__main__":
     unittest.main()
