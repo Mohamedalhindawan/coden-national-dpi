@@ -514,5 +514,83 @@ class LeasedModeBFixtureTests(unittest.TestCase):
         self._integrated_broker_fixture(cancel=True)
 
 
+    def _journal_fixture(self, *, wrong_identity=False, missing=False):
+        self.enqueue()
+        journal = Path(self.tmp.name) / "journal"
+        journal.mkdir()
+        if not missing:
+            checkpoint.create(journal, self.task_id, branch="review/fixture",
+                              commit="a"*40 if wrong_identity else self.commit)
+        tasks = Path(self.tmp.name) / "diagnostic-tasks"
+        tasks.mkdir()
+        (tasks / (self.task_id + ".json")).write_bytes(self.raw)
+        return journal, tasks
+
+    def test_modeb_journal_and_health_consistent_after_fixture_success(self):
+        from ai_factory import queue_health
+        journal, tasks = self._journal_fixture()
+        self.assertEqual(queue_health.snapshot(self.queue.path, journal, tasks)["queue_depth"], 1)
+        receipt = self.work(checkpoint_root=journal)
+        self.assertEqual(receipt["status"], "fixture_completed_review_required")
+        self.assertTrue(receipt["journal_linked"])
+        self.assertFalse(receipt["release_authorized"])
+        state = checkpoint.read(journal, self.task_id)
+        self.assertEqual(state["status"], "awaiting_human_review")
+        self.assertEqual(state["event_count"], 3)
+        health = queue_health.snapshot(self.queue.path, journal, tasks)
+        self.assertEqual(health["conditions"], {"consistent_review": 1})
+        self.assertEqual(health["awaiting_human_review"], 1)
+        self.assertFalse(health["execution_authorized"])
+        self.assertIsNone(self.work(checkpoint_root=journal))
+        self.adapter.execute.assert_called_once()
+
+    def test_modeb_missing_or_mismatched_journal_never_dispatches(self):
+        journal, tasks = self._journal_fixture(wrong_identity=True)
+        receipt = self.work(checkpoint_root=journal)
+        self.assertEqual(receipt["status"], "needs_review")
+        self.assertFalse(receipt["journal_linked"])
+        self.adapter.execute.assert_not_called()
+        self.adapter.close.assert_not_called()
+        self.assertEqual(self.queue.recover_expired(now=10**12), 1)
+        self.assertIsNone(self.work(checkpoint_root=journal))
+        self.assertEqual(reconcile.scan(self.queue.path, journal, tasks)["conditions"],
+                         {"identity_mismatch": 1})
+
+    def test_modeb_failed_journal_write_after_dispatch_preserves_lease(self):
+        journal, tasks = self._journal_fixture()
+        record = checkpoint.record
+        def fail_review(*args, **kwargs):
+            if kwargs.get("event") == "review_requested":
+                raise OSError("synthetic journal write failure")
+            return record(*args, **kwargs)
+        with patch.object(checkpoint, "record", side_effect=fail_review):
+            receipt = self.work(checkpoint_root=journal)
+        self.assertEqual(receipt["status"], "needs_review")
+        self.assertEqual(checkpoint.read(journal, self.task_id)["status"], "checkpointed")
+        self.assertEqual(self.queue.read(self.task_id)["status"], "leased")
+        self.assertEqual(self.queue.recover_expired(now=10**12), 1)
+        self.assertEqual(reconcile.scan(self.queue.path, journal, tasks)["conditions"],
+                         {"manual_review_required": 1})
+        self.assertIsNone(self.work(checkpoint_root=journal))
+        self.adapter.execute.assert_called_once()
+
+    def test_modeb_cancel_retains_journal_and_requires_manual_reconciliation(self):
+        from ai_factory import queue_health
+        journal, tasks = self._journal_fixture()
+        def cancel_then_reply(request):
+            self.queue.request_cancel(self.task_id)
+            return self.acknowledge(request)
+        self.adapter.execute.side_effect = cancel_then_reply
+        receipt = self.work(checkpoint_root=journal)
+        self.assertEqual(receipt["status"], "needs_review")
+        self.assertEqual(checkpoint.read(journal, self.task_id)["status"], "checkpointed")
+        health = queue_health.snapshot(self.queue.path, journal, tasks)
+        self.assertEqual(health["conditions"], {"cancel_stop_reconciliation_required": 1})
+        self.assertTrue(health["needs_attention"])
+        self.assertEqual(self.queue.recover_expired(now=10**12), 1)
+        self.assertIsNone(self.work(checkpoint_root=journal))
+        self.adapter.execute.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()
