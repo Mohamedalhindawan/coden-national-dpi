@@ -165,5 +165,25 @@ class CheckpointTests(unittest.TestCase):
             checkpoint.read(self.root, "task_1")
 
 
+    def test_busy_journal_read_and_append_return_without_waiting(self):
+        import fcntl
+        self.create()
+        path = self.root / "task_1.jsonl"
+        before = path.read_bytes()
+        base = [sys.executable, "-m", "ai_factory.checkpoint", "--store", str(self.root)]
+        with path.open("rb") as locked:
+            fcntl.flock(locked, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            for args in (["show", "task_1"],
+                         ["record", "task_1", "--event", "checkpoint"]):
+                with self.subTest(args=args):
+                    result = subprocess.run(base + args,
+                        cwd=Path(__file__).resolve().parents[1], capture_output=True, timeout=2)
+                    self.assertEqual(result.returncode, 2)
+                    self.assertIn(b"Checkpoint error", result.stderr)
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(checkpoint.record(self.root, "task_1", event="checkpoint")["status"],
+                         "checkpointed")
+
+
 if __name__ == "__main__":
     unittest.main()
