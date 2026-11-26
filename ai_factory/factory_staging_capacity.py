@@ -75,3 +75,29 @@ def plan_retained_staging(records, *, additional_bytes, capacity_bytes=960 * 102
             'fits_model': required <= capacity_bytes, 'reclaim_assumed': False,
             'actual_peak_build_capacity_proven': False,
             'build_authorized': False, 'release_authorized': False}
+
+
+def plan_readonly_staging(records, *, input_capacity_bytes, additional_bytes,
+                          capacity_bytes=960 * 1024**2, reserve_bytes=0,
+                          page_bytes=4096):
+    """Estimate separately capped immutable inputs and writable payload.
+
+    The input boundary must be independently established: this model does not
+    mount files, validate a runner, or grant permission to build or install.
+    """
+    if type(input_capacity_bytes) is not int or input_capacity_bytes <= 0:
+        raise ValueError('invalid read-only input budget')
+    if type(additional_bytes) is not int or additional_bytes < 0:
+        raise ValueError('invalid additional allowance')
+    modeled = plan_staging(records, capacity_bytes=capacity_bytes,
+                           reserve_bytes=reserve_bytes, page_bytes=page_bytes)
+    inputs = modeled['initial_bytes']
+    required = modeled['concurrent_bytes'] - inputs + additional_bytes + reserve_bytes
+    return {'readonly_input_bytes': inputs,
+            'input_headroom_bytes': input_capacity_bytes - inputs,
+            'required_writable_bytes': required,
+            'writable_headroom_bytes': capacity_bytes - required,
+            'fits_model': inputs <= input_capacity_bytes and required <= capacity_bytes,
+            'readonly_boundary_verified': False,
+            'actual_peak_build_capacity_proven': False,
+            'build_authorized': False, 'release_authorized': False}
