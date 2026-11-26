@@ -146,5 +146,31 @@ class Factory84UnifiedRegistryTests(unittest.TestCase):
                     factory_84_registry.load_v1_1()
 
 
+    def test_gateway_review_index_links_six_candidates_without_activation(self):
+        rows = factory_84_registry.load_gateway_review()
+        self.assertEqual(len(rows), 6)
+        self.assertEqual(dict(Counter(r["role"] for r in rows)),
+                         {"agent_orchestration": 1, "model_gateway": 3, "mcp": 2})
+        for row in rows:
+            self.assertEqual(row["discovery_decision"], "proposed_only")
+            self.assertFalse(row["approved"])
+            self.assertFalse(row["enabled"])
+            self.assertFalse(row["installed"])
+            self.assertEqual(row["integration_test"], "not_run")
+        self.assertEqual(len([r for r in rows if r["repository"].endswith("OmniRoute")]), 1)
+
+    def test_gateway_review_index_rejects_tampered_bytes(self):
+        import tempfile
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "review.json"
+            data = fixture("factory_v1_1_gateway_mcp_review.json")
+            data["entries"][0]["enabled"] = True
+            path.write_text(json.dumps(data), encoding="utf-8")
+            with patch.object(factory_84_registry, "GATEWAY_REVIEW", path):
+                with self.assertRaises(ValueError):
+                    factory_84_registry.load_gateway_review()
+
+
 if __name__ == "__main__":
     unittest.main()
