@@ -92,3 +92,28 @@ class QueueHealthTests(unittest.TestCase):
         self.assertTrue(result["snapshot_counts_consistent"])
         self.assertFalse(result["snapshot_atomic"])
         self.assertFalse(result["execution_authorized"])
+
+
+    def test_health_detects_same_count_task_identity_change(self):
+        from unittest.mock import patch
+        from ai_factory import reconcile
+        self.add("one")
+        real_scan = reconcile.scan
+        def changed(*args, **kwargs):
+            report = real_scan(*args, **kwargs)
+            report["tasks"][0]["task_id"] = "different_task"
+            return report
+        with patch.object(reconcile, "scan", side_effect=changed):
+            result = self.health()
+        self.assertTrue(result["snapshot_counts_consistent"])
+        self.assertFalse(result["snapshot_task_states_consistent"])
+        self.assertTrue(result["needs_attention"])
+        self.assertNotIn("different_task", json.dumps(result))
+        self.assertFalse(result["automatic_retry_allowed"])
+
+    def test_health_stable_task_identity_is_not_atomicity(self):
+        self.add("one")
+        result = self.health()
+        self.assertTrue(result["snapshot_task_states_consistent"])
+        self.assertFalse(result["snapshot_atomic"])
+        self.assertNotIn("task_id", json.dumps(result))
