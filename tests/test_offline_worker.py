@@ -661,5 +661,69 @@ class LeasedModeBFixtureTests(unittest.TestCase):
         self._run_bound_metadata_fixture(tamper=True)
 
 
+    def _strict_metadata_adapter(self, request, *, fault=None):
+        metadata = request["runtime_metadata_request"]
+        self.assertEqual(metadata["task_sha256"], request["task_sha256"])
+        self.assertEqual(metadata["allowed_providers"], ["local_qwen"])
+        self.assertFalse(metadata["allow_external_api"])
+        digest = hashlib.sha256(json.dumps(metadata, sort_keys=True,
+            separators=(",", ":"), ensure_ascii=True).encode("ascii")).hexdigest()
+        evidence = {
+            "schema": "coden.runtime.bound_report.v1", "request_sha256": digest,
+            "task_id": metadata["task_id"], "provider_id": "local_qwen",
+            "model_id": "local-qwen", "transport": "local",
+            "status": "blocked", "error_code": "policy_denied", "artifact_sha256": None,
+            "input_tokens": 0, "output_tokens": 0, "duration_ms": 0, "cost_usd": "0",
+        }
+        result = self.acknowledge(request)
+        if fault == "missing":
+            return result
+        if fault == "digest":
+            evidence["request_sha256"] = "0"*64
+        elif fault == "usage":
+            evidence["output_tokens"] = 1
+        elif fault == "success":
+            evidence.update(status="completed", error_code=None, artifact_sha256="a"*64)
+        result["runtime_report_json"] = json.dumps(evidence).encode("utf-8")
+        return result
+
+    def test_strict_fixture_metadata_is_checked_by_bridge_before_review(self):
+        journal, tasks = self._journal_fixture()
+        self.adapter.execute.side_effect = self._strict_metadata_adapter
+        result = self.work(checkpoint_root=journal, require_runtime_metadata=True)
+        self.assertEqual(result["status"], "fixture_completed_review_required")
+        self.assertTrue(result["runtime_metadata_validated"])
+        self.assertEqual(result["runtime_metadata_status"], "blocked")
+        self.assertFalse(result["qwen_connected"])
+        self.assertFalse(result["release_authorized"])
+        self.assertEqual(self.queue.read(self.task_id)["status"], "awaiting_human_review")
+        self.assertIsNone(self.work(checkpoint_root=journal, require_runtime_metadata=True))
+        self.adapter.execute.assert_called_once()
+
+    def test_strict_fixture_metadata_rejects_missing_or_forged_report(self):
+        for fault in ("missing", "digest", "usage", "success"):
+            with self.subTest(fault=fault), tempfile.TemporaryDirectory() as tmp:
+                self.queue = durable_queue.DurableQueue(Path(tmp) / "queue.db")
+                self.enqueue()
+                self.adapter.reset_mock()
+                self.adapter.execute.side_effect = lambda req: self._strict_metadata_adapter(req, fault=fault)
+                result = self.work(require_runtime_metadata=True)
+                self.assertEqual(result["status"], "needs_review")
+                self.assertEqual(result["bridge_status"], "fixture_receipt_rejected")
+                self.assertFalse(result["release_authorized"])
+                self.adapter.execute.assert_called_once()
+                self.adapter.close.assert_called_once()
+                self.assertEqual(self.queue.recover_expired(now=10**12), 1)
+                self.assertIsNone(self.work(require_runtime_metadata=True))
+                self.assertEqual(self.queue.read(self.task_id)["attempts"], 1)
+
+    def test_strict_fixture_scope_requires_boolean_before_claim(self):
+        self.enqueue()
+        with self.assertRaises(ValueError):
+            self.work(require_runtime_metadata="yes")
+        self.assertEqual(self.queue.read(self.task_id)["attempts"], 0)
+        self.adapter.execute.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
