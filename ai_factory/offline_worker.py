@@ -178,7 +178,8 @@ def _verified_modeb_task(checkout_root, lease):
 
 
 def work_modeb_fixture_once(queue, checkout_root, *, worker_id, fixture_adapter,
-                            lease_seconds=60, checkpoint_root=None):
+                            lease_seconds=60, checkpoint_root=None,
+                            require_runtime_metadata=False):
     """Process only the pinned Mode B fixture in an operator-owned fixture queue.
 
     The trusted adapter is injected, with no SDK or model path. Cancellation
@@ -189,6 +190,8 @@ def work_modeb_fixture_once(queue, checkout_root, *, worker_id, fixture_adapter,
     """
     from . import openhands_sdk_operator
 
+    if type(require_runtime_metadata) is not bool:
+        raise ValueError("explicit boolean metadata scope required")
     if fixture_adapter is None:
         raise ValueError("trusted fixture adapter required")
     task_id = "OPENHANDS_SYNTHETIC_1"
@@ -246,7 +249,8 @@ def work_modeb_fixture_once(queue, checkout_root, *, worker_id, fixture_adapter,
                                   next_action="modeb_fixture_dispatch", event_key="modeb_fixture_start")
             result = openhands_sdk_operator.run_modeb_once(
                 task=task, source_identity=source, allow_agent=True, fixture_only=True,
-                fixture_adapter=fixture_adapter, cancelled=check_lease)
+                fixture_adapter=fixture_adapter, cancelled=check_lease,
+                require_runtime_metadata=require_runtime_metadata)
         except Exception:
             # Dispatch may already have occurred. Leave the lease for quarantine.
             return receipt("needs_review")
