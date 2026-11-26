@@ -172,5 +172,28 @@ class Factory84UnifiedRegistryTests(unittest.TestCase):
                     factory_84_registry.load_gateway_review()
 
 
+    def test_gateway_cli_returns_filtered_review_only_metadata(self):
+        from contextlib import redirect_stdout
+        import io
+        output = io.StringIO()
+        with redirect_stdout(output):
+            result = factory_84_registry.main(["--gateway-review", "--contains", "omniroute", "--json"])
+        self.assertEqual(result, 0)
+        rows = json.loads(output.getvalue())
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["repository"], "cheaper-inference/OmniRoute")
+        self.assertFalse(rows[0]["enabled"])
+
+    def test_gateway_cli_refuses_conflicting_catalog_modes(self):
+        from contextlib import redirect_stderr
+        import io
+        with redirect_stderr(io.StringIO()):
+            for args in (["--gateway-review", "--v1-1"],
+                         ["--gateway-review", "--priority", "P0"]):
+                with self.subTest(args=args), self.assertRaises(SystemExit) as caught:
+                    factory_84_registry.main(args)
+                self.assertEqual(caught.exception.code, 2)
+
+
 if __name__ == "__main__":
     unittest.main()
