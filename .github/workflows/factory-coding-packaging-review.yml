@@ -2613,3 +2613,113 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+  split-staging-synthetic-boundary:
+    # One-shot generated data only; no candidate wheels, interpreter, model or build.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '696e0fe08c7299fc6583be73a0260cc6b6ef2396' && github.event.pull_request.number == 210 && github.head_ref == 'parallel/fasttrack-integrated-20261127' && github.base_ref == 'parallel/chatgpt-r2-recovery-20261127' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Prove separate bounded read-only input and shared writable staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          unit="coden-split-staging-$GITHUB_RUN_ID.service"
+          store=""; scratch=""
+          cleanup() {
+            status=$?
+            trap - EXIT
+            sudo systemctl stop "$unit" >/dev/null 2>&1 || true
+            state="$(sudo systemctl show "$unit" -p ActiveState --value 2>/dev/null || true)"
+            case "$state" in inactive|failed) ;; *) status=1;; esac
+            printf 'SERVICE_%s\n' "$state" > "$ev/cleanup.txt"
+            for dir in "$scratch" "$store"; do
+              [[ -n "$dir" ]] || continue
+              if mountpoint -q "$dir"; then
+                sudo umount "$dir" || { status=1; continue; }
+              fi
+              sudo rmdir "$dir" || { status=1; continue; }
+              echo MOUNT_UNMOUNTED_AND_REMOVED >> "$ev/cleanup.txt"
+            done
+            exit "$status"
+          }
+          trap cleanup EXIT
+          uid="$(id -u nobody)"; gid="$(id -g nobody)"
+          host_ns="$(readlink /proc/self/ns/net)"
+          store="$(sudo mktemp -d /opt/coden-split-input.XXXXXXXX)"
+          scratch="$(sudo mktemp -d /opt/coden-split-scratch.XXXXXXXX)"
+          sudo mount -t tmpfs -o "size=512m,nr_inodes=8192,nosuid,nodev,noexec,mode=0755,uid=$(id -u),gid=$(id -g)" tmpfs "$store"
+          sudo mount -t tmpfs -o "size=960m,nr_inodes=61440,nosuid,nodev,noexec,mode=0700,uid=$uid,gid=$gid" tmpfs "$scratch"
+          sudo mkdir "$scratch/home" "$scratch/tmp"
+          sudo chown "$uid:$gid" "$scratch/home" "$scratch/tmp"
+          sudo chmod 0700 "$scratch/home" "$scratch/tmp"
+          # Dense opaque bytes matching the rounded retained input estimate.
+          head -c 221937664 /dev/zero > "$store/input.bin"
+          chmod 0444 "$store/input.bin"
+          sha256sum "$store/input.bin" | awk '{print $1}' > "$ev/input-before.sha256"
+          sudo mount -o remount,ro,nosuid,nodev,noexec "$store"
+          script="$(cat <<'PY'
+          import errno,hashlib,json,os,socket,sys
+          from pathlib import Path
+          root,scratch,host=Path(sys.argv[1]),Path(sys.argv[2]),sys.argv[3]
+          a,b=os.statvfs(root),os.statvfs(scratch)
+          assert a.f_frsize*a.f_blocks==536870912 and a.f_flag&os.ST_RDONLY
+          assert b.f_frsize*b.f_blocks==1006632960 and b.f_files==61440
+          assert os.stat(root).st_dev!=os.stat(scratch).st_dev
+          assert all(os.stat(p).st_dev==os.stat(scratch).st_dev for p in (scratch/"home",scratch/"tmp",Path("/tmp"),Path("/var/tmp")))
+          assert os.getuid()!=0 and set(os.getgroups())<={os.getgid()}
+          st=dict(x.split(":",1) for x in Path("/proc/self/status").read_text().splitlines() if ":" in x)
+          assert int(st["CapEff"],16)==0 and st["NoNewPrivs"].strip()=="1"
+          assert os.readlink("/proc/self/ns/net")!=host and sorted(n for _,n in socket.if_nameindex())==["lo"]
+          assert not any(os.path.lexists(x) for x in ("/run/docker.sock","/var/run/docker.sock","/run/podman/podman.sock"))
+          cg=next(x.split(":",2)[2] for x in Path("/proc/self/cgroup").read_text().splitlines() if x.startswith("0::"))
+          p=Path("/sys/fs/cgroup")/cg.lstrip("/")
+          cpu=(p/"cpu.max").read_text().split()
+          assert int(cpu[0])==2*int(cpu[1]) and (p/"memory.max").read_text().strip()=="4294967296" and (p/"pids.max").read_text().strip()=="128" and (p/"memory.swap.max").read_text().strip()=="0"
+          for path,mode in ((root/"input.bin","ab"),(root/"new.bin","xb")):
+              try:
+                  with path.open(mode) as f: f.write(b"x")
+              except OSError as exc: assert exc.errno in (errno.EROFS,errno.EACCES,errno.EPERM)
+              else: raise AssertionError("read-only input modified")
+          with (root/"input.bin").open("rb") as f: digest=hashlib.file_digest(f,"sha256").hexdigest()
+          # Model conservative writable payload + allowance + reserve, not actual installer.
+          def allocate(path,size):
+              block=b"\0"*(1024*1024)
+              with path.open("xb") as f:
+                  while size:
+                      chunk=min(size,len(block))
+                      f.write(block[:chunk]); size-=chunk
+          allocate(scratch/"home"/"fixture.bin",444472209)
+          allocate(Path("/tmp")/"fixture.bin",444472209)
+          used=os.statvfs(scratch)
+          assert used.f_frsize*(used.f_blocks-used.f_bfree)>=888944418
+          # Force an allocation one page beyond available capacity; bounded by the tmpfs.
+          try:
+              allocate(Path("/var/tmp")/"overflow.bin",used.f_frsize*(used.f_bavail+1))
+          except OSError as exc: assert exc.errno==errno.ENOSPC
+          else: raise AssertionError("writable quota exceeded")
+          print(json.dumps(dict(status="SYNTHETIC_SPLIT_STAGING_PASS",readonly_input_bytes=221937664,input_capacity_bytes=536870912,input_sha256=digest,writable_payload_bytes=888944418,writable_capacity_bytes=1006632960,observed_writable_used_bytes=used.f_frsize*(used.f_blocks-used.f_bfree),write_denials=2,overflow_errno=errno.ENOSPC,actual_installation=False,actual_peak_build_capacity_proven=False,aggregate_auxiliary_resources_proven=False,build_authorized=False,release_authorized=False),sort_keys=True))
+          PY
+          )"
+          timeout --kill-after=5s 90s sudo systemd-run --unit="$unit" --wait --pipe --quiet \
+            -p "User=$uid" -p "Group=$gid" -p CPUQuota=200% -p MemoryMax=4294967296 -p MemorySwapMax=0 -p TasksMax=128 \
+            -p RuntimeMaxSec=90 -p KillMode=control-group -p NoNewPrivileges=yes \
+            -p CapabilityBoundingSet= -p AmbientCapabilities= -p PrivateNetwork=yes \
+            -p PrivateDevices=yes -p ProtectHome=tmpfs -p ProtectSystem=strict \
+            -p 'TemporaryFileSystem=/run:ro' -p 'TemporaryFileSystem=/dev/shm:ro' \
+            -p "BindPaths=$scratch/tmp:/tmp $scratch/tmp:/var/tmp" -p "ReadWritePaths=$scratch /tmp /var/tmp" \
+            -p RestrictSUIDSGID=yes \
+            /usr/bin/env -i PATH=/usr/bin:/bin "HOME=$scratch/home" TMPDIR=/tmp LC_ALL=C /usr/bin/python3 -I -B -c "$script" "$store" "$scratch" "$host_ns" > "$ev/review.json"
+          sha256sum "$store/input.bin" | awk '{print $1}' > "$ev/input-after.sha256"
+          cmp "$ev/input-before.sha256" "$ev/input-after.sha256"
+          jq -e --arg h "$(cat "$ev/input-before.sha256")" '.status=="SYNTHETIC_SPLIT_STAGING_PASS" and .input_sha256==$h and .release_authorized==false' "$ev/review.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: synthetic-split-staging-receipts
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
