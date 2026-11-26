@@ -653,6 +653,10 @@ def compare_r2_historical_receipt(receipt):
     def count(value):
         return type(value) is int and value >= 0
 
+    # Derive batch totals from the individual historical pins, avoiding a
+    # second independently maintained set of size/count constants.
+    expected_compressed, expected_expanded, expected_members = (
+        sum(row[i] for row in _R2_HISTORICAL_COUNTS.values()) for i in range(3))
     require(type(receipt) is dict)
     require(receipt.get("record_verified") is True)
     for key in ("fixture_native", "native_internal_io_verified",
@@ -660,8 +664,8 @@ def compare_r2_historical_receipt(receipt):
         require(receipt.get(key) is False)
     for key in ("native_count", "native_output_bytes", "native_input_reserved_bytes"):
         require(type(receipt.get(key)) is int and receipt[key] == 0)
-    require(type(receipt.get("compressed_bytes")) is int and receipt["compressed_bytes"] == 4724399)
-    require(type(receipt.get("expanded_bytes")) is int and receipt["expanded_bytes"] == 16094120)
+    require(type(receipt.get("compressed_bytes")) is int and receipt["compressed_bytes"] == expected_compressed)
+    require(type(receipt.get("expanded_bytes")) is int and receipt["expanded_bytes"] == expected_expanded)
     wheels = receipt.get("wheels")
     require(type(wheels) is list and len(wheels) == 3)
     expected = {name: (version, digest, native) for name, version, digest, native in _R2_HISTORICAL_WHEELS}
@@ -682,9 +686,9 @@ def compare_r2_historical_receipt(receipt):
         require(count(c) and c > 0 and count(e))
         compressed += c
         expanded += e
-        require(compressed <= 4724399 and expanded <= 16094120)
+        require(compressed <= expected_compressed and expanded <= expected_expanded)
         files = wheel.get("files")
-        require(type(files) is dict and 0 < len(files) <= 329 - members)
+        require(type(files) is dict and 0 < len(files) <= expected_members - members)
         require((c, e, len(files)) == _R2_HISTORICAL_COUNTS[name])
         members += len(files)
         file_bytes = 0
@@ -705,13 +709,47 @@ def compare_r2_historical_receipt(receipt):
             row = files.get(path)
             require(type(row) is dict and row["bytes"] == size and row["sha256"] == sha
                     and row["record_hash_verified"] is True and row["elf_magic"] is False)
-    require(seen == set(expected) and compressed == 4724399 and expanded == 16094120 and members == 329)
+    require(seen == set(expected) and compressed == expected_compressed and expanded == expected_expanded and members == expected_members)
     return {"status": "HISTORICAL_RECEIPT_MATCH_UNAPPROVED", "matched_wheels": 3,
             "regular_files": members, "receipt_origin_verified": False,
             "complete_historical_member_match_verified": False,
             "license_approved": False, "security_approved": False,
             "installation_authorized": False, "import_authorized": False,
             "release_authorized": False}
+
+
+def inspect_r2_static_batch(candidates, *, scratch):
+    """Bind strict scanner output to the pinned historical R2 comparison.
+
+    Accept exactly the three expected (bytes, SHA-256) inputs, supplied by
+    the operator after separate acquisition and environment approval.
+    This function does not fetch, install, import or invoke native tooling.
+    No caller-supplied receipt is accepted. A match is not approval.
+    """
+    expected = {digest: _R2_HISTORICAL_COUNTS[name][0]
+                for name, _, digest, _ in _R2_HISTORICAL_WHEELS}
+    if type(candidates) not in (list, tuple) or len(candidates) != 3:
+        raise ValueError("exact R2 static input set required")
+    seen = set()
+    checked = []
+    for pair in candidates:
+        if type(pair) not in (tuple, list) or len(pair) != 2:
+            raise ValueError("invalid R2 static input")
+        raw, digest = pair
+        if (type(raw) is not bytes or type(digest) is not str
+                or digest not in expected or digest in seen
+                or len(raw) != expected[digest]):
+            raise ValueError("R2 static input identity or length mismatch")
+        seen.add(digest)
+        checked.append((raw, digest))
+    if seen != set(expected):
+        raise ValueError("incomplete R2 static input set")
+    # Actual archive hashes, RECORD rows, expansion and member bytes are
+    # verified by the existing shared-budget scanner, not by the precheck.
+    receipt = inspect_wheel_batch(checked, scratch=scratch,
+                                  inspect_native=False, fixture_native=False)
+    comparison = compare_r2_historical_receipt(receipt)
+    return {"receipt": receipt, "comparison": comparison}
 
 
 class NoRedirect(HTTPRedirectHandler):
