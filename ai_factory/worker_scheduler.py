@@ -71,6 +71,10 @@ def run_batch(*, queue_db, journal, task_dir, output_root, worker_id,
                       if x["condition"] == "consistent_queued"}
             if not queued:
                 return receipt("idle" if count == 0 else "queue_drained")
+            order = before["queued_order"]
+            if len(order) != len(queued) or set(order) != queued:
+                return receipt("reconciliation_required")
+            selected = order[0]
             if deadline is not None and (
                 deadline - _monotonic() < timeout_seconds + worker_supervisor.MIN_GRACE_SECONDS
             ):
@@ -79,7 +83,7 @@ def run_batch(*, queue_db, journal, task_dir, output_root, worker_id,
                 result = worker_supervisor.run_once(
                     queue_db=db, journal=journals, task_dir=tasks, output_root=outputs,
                     worker_id=worker_id, timeout_seconds=timeout_seconds,
-                    lease_seconds=lease_seconds)
+                    lease_seconds=lease_seconds, task_id=selected)
             except (OSError, ValueError):
                 return receipt("worker_review_required")
             if (not isinstance(result, dict) or
@@ -94,8 +98,7 @@ def run_batch(*, queue_db, journal, task_dir, output_root, worker_id,
             old = {x["task_id"]: x["condition"] for x in before["tasks"]}
             new = {x["task_id"]: x["condition"] for x in after["tasks"]}
             changed = {k for k in old if old[k] != new.get(k)}
-            if (old.keys() != new.keys() or len(changed) != 1 or
-                    not changed <= queued or
+            if (old.keys() != new.keys() or changed != {selected} or
                     any(new[k] != "consistent_review" for k in changed)):
                 return receipt("worker_review_required")
             count += 1
