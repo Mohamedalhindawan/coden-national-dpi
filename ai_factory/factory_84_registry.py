@@ -25,6 +25,8 @@ AUDIT = ROOT / "configs" / "factory_84_source_availability_audit_2026-11-23.json
 V1_1 = ROOT / "configs" / "factory_v1_1_repository_reconciliation.json"
 # Git blob identity is a repository consistency pin, not signature or trust approval.
 V1_1_GIT_BLOB = "80a6aeb9c9305db15463cea1f07e45051d9dea52"
+GATEWAY_REVIEW = ROOT / "configs" / "factory_v1_1_gateway_mcp_review.json"
+GATEWAY_REVIEW_BLOB = "e4012a6cd2575fa7d29b740831cc0f4804b12563"
 COUNTS = {"P0": 26, "P1": 39, "P2": 19}
 SOURCE_ID = re.compile(r"^(?:source-\d{3}|r29-\d{2})$")
 REQUIREMENT = re.compile(r"^ADD-(\d{2})$")
@@ -179,13 +181,8 @@ def select(items, *, priority=None, wave=None, requires=None, source_id=None, te
     ]
 
 
-def load_v1_1() -> list[dict]:
-    """Read exact pinned supplemental discovery index; no admission or execution.
-
-    The checkout and its parent directories must be operator controlled.
-    Historical 84-source/47-requirement queries remain independent.
-    """
-    path = Path(V1_1)
+def _read_pinned_catalog(path, expected_blob):
+    path = Path(path)
     if ".." in path.parts or any(p.is_symlink() for p in (path, *path.parents)):
         raise ValueError("untrusted v1.1 catalog path")
     with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as stream:
@@ -197,9 +194,18 @@ def load_v1_1() -> list[dict]:
         raise ValueError("v1.1 catalog size mismatch")
     blob = hashlib.sha1(b"blob " + str(len(raw)).encode("ascii") + b"\0" + raw,
                         usedforsecurity=False).hexdigest()
-    if blob != V1_1_GIT_BLOB:
+    if blob != expected_blob:
         raise ValueError("v1.1 catalog blob mismatch")
-    data = json.loads(raw)
+    return json.loads(raw)
+
+
+def load_v1_1() -> list[dict]:
+    """Read exact pinned supplemental discovery index; no admission or execution.
+
+    The checkout and its parent directories must be operator controlled.
+    Historical 84-source/47-requirement queries remain independent.
+    """
+    data = _read_pinned_catalog(V1_1, V1_1_GIT_BLOB)
     rows = data["entries"]
     if (len(rows) != 128 or len({r["repository"].casefold() for r in rows}) != 128
             or sum(len(r["legacy_entry_ids"]) for r in rows) != 84
@@ -213,6 +219,38 @@ def load_v1_1() -> list[dict]:
                    for r in rows)):
         raise ValueError("v1.1 discovery scope drift")
     return rows
+
+
+def load_gateway_review() -> list[dict]:
+    """Join pinned review metadata to discovery, never to execution authority."""
+    data = _read_pinned_catalog(GATEWAY_REVIEW, GATEWAY_REVIEW_BLOB)
+    catalog = {row["repository"].casefold(): row for row in load_v1_1()}
+    rows = data["entries"]
+    if (data.get("status") != "REVIEW_ONLY_UNAPPROVED"
+            or data.get("candidate_count") != 6 or len(rows) != 6
+            or data.get("first_trial_route") != {
+                "model": "openai/local-qwen", "base_url": "http://qwen3:11434/v1",
+                "fallback": False, "external_provider_allowed": False}):
+        raise ValueError("gateway review scope mismatch")
+    seen = set()
+    result = []
+    for row in rows:
+        key = row["repository"].casefold()
+        discovery = catalog.get(key)
+        if (key in seen or discovery is None or discovery["decision"] != "proposed_only"
+                or any(row.get(k) is not False for k in
+                       ("approved", "enabled", "installed", "source_to_artifact_verified"))
+                or row.get("security_review") != "pending"
+                or row.get("license_review") != "pending"
+                or row.get("integration_test") != "not_run"
+                or not re.fullmatch(r"[0-9a-f]{40}", row["commit"])):
+            raise ValueError("gateway candidate drift or admission attempt")
+        seen.add(key)
+        result.append(dict(row, discovery_decision=discovery["decision"]))
+    if Counter(r["role"] for r in result) != {
+            "agent_orchestration": 1, "model_gateway": 3, "mcp": 2}:
+        raise ValueError("gateway role inventory mismatch")
+    return result
 
 
 def select_v1_1(items, term=""):
