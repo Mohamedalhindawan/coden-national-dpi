@@ -465,3 +465,66 @@ class R2HistoricalReceiptComparisonTests(unittest.TestCase):
                         files["synthetic/replaced"] = files.pop(path)
                     with self.assertRaises(ValueError):
                         compare_r2_historical_receipt(receipt)
+
+
+class R2StaticPipelineTests(unittest.TestCase):
+    def synthetic_inputs(self):
+        # Real generated ZIP/RECORD bytes; only historical expected pins are
+        # substituted. No fabricated scanner receipt or real package bytes.
+        pins, counts, members, inputs = [], {}, {}, []
+        for name in ("fixtureone", "fixturetwo", "fixturethree"):
+            payload = b"\x7fELFsynthetic" if name == "fixtureone" else b"fixture"
+            raw, expanded = recorded_wheel(name, payload=payload)
+            digest = hashlib.sha256(raw).hexdigest()
+            inputs.append((raw, digest))
+            native = {name + "/__init__.py": (len(payload), hashlib.sha256(payload).hexdigest())} if name == "fixtureone" else {}
+            pins.append((name, "1", digest, native))
+            with zipfile.ZipFile(io.BytesIO(raw)) as z:
+                counts[name] = (len(raw), expanded, len(z.namelist()))
+                members[name] = {}
+                for suffix in ("METADATA", "LICENSE"):
+                    path = name + "-1.dist-info/" + suffix
+                    content = z.read(path)
+                    members[name][path] = (len(content), hashlib.sha256(content).hexdigest())
+        return inputs, pins, counts, members
+
+    def test_static_pipeline_scans_and_compares_real_generated_wheels(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from ai_factory import factory_wheel_notice_audit as audit
+        inputs, pins, counts, members = self.synthetic_inputs()
+        with tempfile.TemporaryDirectory() as tmp, patch.multiple(
+                audit, _R2_HISTORICAL_WHEELS=tuple(pins),
+                _R2_HISTORICAL_COUNTS=counts, _R2_HISTORICAL_MEMBERS=members):
+            result = audit.inspect_r2_static_batch(inputs, scratch=tmp)
+            self.assertEqual(result["comparison"]["status"], "HISTORICAL_RECEIPT_MATCH_UNAPPROVED")
+            self.assertEqual(result["comparison"]["regular_files"], 15)
+            receipt = result["receipt"]
+            self.assertTrue(receipt["record_verified"])
+            self.assertEqual(receipt["native_count"], 0)
+            self.assertTrue(receipt["wheels"][0]["files"]["fixtureone/__init__.py"]["elf_magic"])
+            self.assertEqual(receipt["logical_io_bytes"],
+                             receipt["archive_read_bytes"] + receipt["expanded_bytes"])
+            self.assertFalse(result["comparison"]["installation_authorized"])
+            self.assertFalse(result["comparison"]["release_authorized"])
+            self.assertEqual(list(Path(tmp).iterdir()), [])
+
+    def test_static_pipeline_rejects_unknown_pin_and_changed_archive(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from ai_factory import factory_wheel_notice_audit as audit
+        inputs, pins, counts, members = self.synthetic_inputs()
+        with tempfile.TemporaryDirectory() as tmp, patch.multiple(
+                audit, _R2_HISTORICAL_WHEELS=tuple(pins),
+                _R2_HISTORICAL_COUNTS=counts, _R2_HISTORICAL_MEMBERS=members):
+            raw, digest = inputs[0]
+            with patch.object(audit, "inspect_wheel_batch", wraps=audit.inspect_wheel_batch) as scanner:
+                with self.assertRaises(ValueError):
+                    audit.inspect_r2_static_batch([(raw, "0"*64), *inputs[1:]], scratch=tmp)
+                scanner.assert_not_called()
+            modified = bytes([raw[0] ^ 1]) + raw[1:]
+            with self.assertRaises(ValueError):
+                audit.inspect_r2_static_batch([(modified, digest), *inputs[1:]], scratch=tmp)
+            self.assertEqual(list(Path(tmp).iterdir()), [])
