@@ -195,5 +195,28 @@ class FactoryAccelerationSkillsTests(unittest.TestCase):
             self.assertEqual(list(target.iterdir()), [])
 
 
+    def test_manifest_rejects_undeclared_capability_fields(self):
+        manifest = json.loads(factory_skill_catalog.MANIFEST.read_text(encoding="utf-8"))
+        for location in ("root", "entry"):
+            with self.subTest(location=location):
+                candidate = copy.deepcopy(manifest)
+                obj = candidate if location == "root" else candidate["skills"][0]
+                obj["automatic_mcp_activation"] = True
+                with self.assertRaises(ValueError):
+                    factory_skill_catalog.validate(candidate)
+
+    def test_manifest_load_rejects_duplicate_permission_keys(self):
+        original = factory_skill_catalog.MANIFEST.read_text(encoding="utf-8")
+        raw = original.replace('"automatic_runtime_execution": false,',
+            '"automatic_runtime_execution": true, "automatic_runtime_execution": false,', 1)
+        self.assertNotEqual(raw, original)
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest = Path(tmp) / "manifest.json"
+            manifest.write_text(raw, encoding="utf-8")
+            with patch.object(factory_skill_catalog, "MANIFEST", manifest):
+                with self.assertRaises(ValueError):
+                    factory_skill_catalog.load()
+
+
 if __name__ == "__main__":
     unittest.main()
