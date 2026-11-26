@@ -1,9 +1,11 @@
 """Static, review-only license evidence; never install or execute a wheel."""
 import base64
 import csv
+from email.parser import BytesHeaderParser
 import hashlib
 import io
 import json
+import re
 from pathlib import Path, PurePosixPath
 import stat
 import struct
@@ -97,6 +99,34 @@ def _inspect_legacy_notices(raw, digest):
 
 CHUNK = 64 * 1024
 MAX_RECORD = 2 * 1024 * 1024
+MAX_METADATA = 2 * 1024 * 1024
+
+
+def _distribution_identity(raw, prefix):
+    """Conservative identity check, not a full Core Metadata validator.
+
+    Unusual version spellings require review rather than implicit equivalence.
+    No package code, external parser dependency or installation is involved.
+    """
+    metadata = BytesHeaderParser().parsebytes(raw)
+    names = metadata.get_all("Name", [])
+    versions = metadata.get_all("Version", [])
+    if metadata.defects or len(names) != 1 or len(versions) != 1:
+        raise ValueError("missing or ambiguous wheel metadata identity")
+    name, version = names[0], versions[0]
+    if (not isinstance(name, str) or not isinstance(version, str)
+            or len(name) > 200 or len(version) > 128
+            or not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?", name)
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.!+_]*", version)):
+        raise ValueError("unsupported wheel metadata identity")
+    directory = prefix.removesuffix(".dist-info/")
+    directory_name, separator, directory_version = directory.rpartition("-")
+    normalize = lambda value: re.sub(r"[-_.]+", "-", value).lower()
+    canonical_name = normalize(name)
+    if (not separator or normalize(directory_name) != canonical_name
+            or directory_version != version):
+        raise ValueError("wheel METADATA and dist-info identity mismatch")
+    return {"name": canonical_name, "version": version}
 
 
 class WheelBudget:
@@ -418,6 +448,16 @@ def _inspect_record(raw, digest, budget, *, native_session=None):
             rows[name] = (algo, encoded)
         if set(rows) != set(files) - signatures:
             raise ValueError("RECORD member coverage mismatch")
+        metadata_path = prefix + "METADATA"
+        if files[metadata_path].file_size > MAX_METADATA:
+            raise ValueError("METADATA size limit")
+        metadata_bytes = b"".join(_member_blocks(reader, files[metadata_path],
+                                               spans[metadata_path], budget))
+        algo, expected = rows[metadata_path]
+        actual = base64.urlsafe_b64encode(hashlib.new(algo, metadata_bytes).digest()).decode("ascii").rstrip("=")
+        if actual != expected:
+            raise ValueError("METADATA RECORD hash mismatch")
+        distribution = _distribution_identity(metadata_bytes, prefix)
         receipt = {}
         for e in entries:
             name = e.filename
@@ -425,7 +465,12 @@ def _inspect_record(raw, digest, budget, *, native_session=None):
             sha = hashlib.sha256()
             verifier = hashlib.new(algo) if algo and algo != "sha256" else sha
             first = b""
-            blocks = (record_bytes,) if name == record else _member_blocks(reader, e, spans[name], budget)
+            if name == record:
+                blocks = (record_bytes,)
+            elif name == metadata_path:
+                blocks = (metadata_bytes,)
+            else:
+                blocks = _member_blocks(reader, e, spans[name], budget)
             native_file = None
             native = None
             try:
@@ -461,7 +506,8 @@ def _inspect_record(raw, digest, budget, *, native_session=None):
                     row["native"] = native
                 budget._retain_evidence(name,row)
                 receipt[name] = row
-    return {"record_verified": True, "compressed_bytes": len(raw),
+    return {"record_verified": True, "wheel_sha256": digest,
+            "distribution": distribution, "compressed_bytes": len(raw),
             "expanded_bytes": budget.expanded_bytes - before, "files": receipt,
             "archive_read_bytes": budget.archive_read_bytes-read_before,
             "logical_io_bytes": budget.logical_io_bytes-io_before,
