@@ -752,6 +752,70 @@ def inspect_r2_static_batch(candidates, *, scratch):
     return {"receipt": receipt, "comparison": comparison}
 
 
+# Exact upstream source notice at 077f3fad6d31cd852be5c87176e0a93c3b446126.
+# Git blob b0bd86a6335a564bd3766666bebbf014fd6a8013, 1079 bytes.
+ROOT_NOTICE_SHA256 = "14a9b631c658eee682c6c2973525fbdf808c3457176bc47513052c559cc5ce86"
+_ROOT_OUTPUTS = frozenset(("openhands-sdk", "openhands-tools",
+                           "openhands-workspace", "openhands-agent-server"))
+
+
+def inspect_root_wheel_outputs(candidates):
+    """Review exactly four generated roots without installing or executing them.
+
+    Reuse the strict shared archive budget (8 MiB compressed, 128 MiB
+    expanded and logical I/O, 16 MiB evidence). A larger valid output or
+    different notice layout requires separate review, not a fallback.
+    Caller supplies already-collected bytes; hashes are measured candidate
+    identities, not independently authorized build outputs. This does not
+    establish source equivalence, Requires-Dist closure, native absence
+    beyond the ELF/extension checks, or legal/security approval.
+    """
+    if type(candidates) not in (list, tuple) or len(candidates) != len(_ROOT_OUTPUTS):
+        raise ValueError("exact four root wheel outputs required")
+    budget = WheelBudget()
+    receipts = {}
+    digests = set()
+    for pair in candidates:
+        if type(pair) not in (tuple, list) or len(pair) != 2:
+            raise ValueError("invalid root wheel output")
+        raw, digest = pair
+        if (type(raw) is not bytes or type(digest) is not str
+                or not re.fullmatch(r"[0-9a-f]{64}", digest)
+                or digest in digests):
+            raise ValueError("invalid or duplicate root output digest")
+        receipt = inspect_wheel(raw, digest, budget=budget)
+        name = receipt["distribution"]["name"]
+        version = receipt["distribution"]["version"]
+        if name not in _ROOT_OUTPUTS or name in receipts or version != "1.63.1":
+            raise ValueError("unexpected root output distribution")
+        files = receipt["files"]
+        prefix = name.replace("-", "_") + "-" + version + ".dist-info/"
+        notice = files.get(prefix + "licenses/LICENSE")
+        if (notice is None or notice["sha256"] != ROOT_NOTICE_SHA256
+                or notice["record_hash_verified"] is not True):
+            raise ValueError("missing or mismatched root source license notice")
+        if receipt["legacy_signature_files"] or any(
+                row["elf_magic"] or re.search(r"\.(?:so(?:\.[0-9]+)*|pyd|dll|dylib)$", path, re.I)
+                for path, row in files.items()):
+            raise ValueError("unexpected native member or legacy signature")
+        digests.add(digest)
+        receipts[name] = receipt
+    if set(receipts) != _ROOT_OUTPUTS:
+        raise ValueError("incomplete root output set")
+    return {"status": "ROOT_WHEEL_OUTPUT_REVIEW_ONLY", "root_count": 4,
+            "wheels": [receipts[name] for name in sorted(receipts)],
+            "compressed_bytes": budget.compressed_bytes,
+            "expanded_bytes": budget.expanded_bytes,
+            "logical_io_bytes": budget.logical_io_bytes,
+            "evidence_bytes": budget.evidence_bytes,
+            "record_verified": True, "source_notice_match": True,
+            "source_to_wheel_verified": False,
+            "metadata_dependencies_verified": False, "license_approved": False,
+            "security_approved": False, "build_authorized": False,
+            "installation_authorized": False, "import_authorized": False,
+            "release_authorized": False}
+
+
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
         raise ValueError('redirect denied')
