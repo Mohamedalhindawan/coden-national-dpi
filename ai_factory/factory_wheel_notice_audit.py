@@ -376,7 +376,7 @@ def _member_blocks(reader, e, span, budget):
         raise ValueError("wheel member size or CRC mismatch")
 
 
-def _inspect_record(raw, digest, budget, *, native_session=None):
+def _inspect_record(raw, digest, budget, *, native_session=None, root_contract=None):
     budget._admit(len(raw))
     reader = _MeteredArchive(raw,budget)
     read_before = budget.archive_read_bytes
@@ -458,6 +458,8 @@ def _inspect_record(raw, digest, budget, *, native_session=None):
         if actual != expected:
             raise ValueError("METADATA RECORD hash mismatch")
         distribution = _distribution_identity(metadata_bytes, prefix)
+        root_requirement_count = (_review_root_metadata(metadata_bytes, distribution["name"], root_contract)
+                                  if root_contract is not None else None)
         receipt = {}
         for e in entries:
             name = e.filename
@@ -506,7 +508,7 @@ def _inspect_record(raw, digest, budget, *, native_session=None):
                     row["native"] = native
                 budget._retain_evidence(name,row)
                 receipt[name] = row
-    return {"record_verified": True, "wheel_sha256": digest,
+    result = {"record_verified": True, "wheel_sha256": digest,
             "distribution": distribution, "compressed_bytes": len(raw),
             "expanded_bytes": budget.expanded_bytes - before, "files": receipt,
             "archive_read_bytes": budget.archive_read_bytes-read_before,
@@ -516,20 +518,25 @@ def _inspect_record(raw, digest, budget, *, native_session=None):
             "evidence_bytes": budget.evidence_bytes-evidence_before,
             "legacy_signature_files": sorted(signatures & set(files)),
             "legacy_signatures_verified": False, "release_authorized": False}
+    if root_requirement_count is not None:
+        result["metadata_requirement_count"] = root_requirement_count
+    return result
 
 
-def inspect_wheel(raw, digest, *, budget=None):
+def inspect_wheel(raw, digest, *, budget=None, _root_contract=None):
     """Use explicit shared budget for strict RECORD evidence; never install.
 
     No-budget callers retain the historical notice-only interface. Those
     receipts cannot satisfy the new R2 admission gate.
     """
     if budget is None:
+        if _root_contract is not None:
+            raise ValueError("root metadata review requires strict budget")
         return _inspect_legacy_notices(raw, digest)
     if type(budget) is not WheelBudget or type(raw) is not bytes:
         raise ValueError("strict wheel audit requires bytes and WheelBudget")
     try:
-        return _inspect_record(raw, digest, budget)
+        return _inspect_record(raw, digest, budget, root_contract=_root_contract)
     except BaseException as exc:
         budget._failed = True
         if isinstance(exc, (zipfile.BadZipFile, zlib.error, csv.Error, UnicodeError, struct.error)):
@@ -759,7 +766,102 @@ _ROOT_OUTPUTS = frozenset(("openhands-sdk", "openhands-tools",
                            "openhands-workspace", "openhands-agent-server"))
 
 
-def inspect_root_wheel_outputs(candidates):
+# Exact R2 lock, not a caller-selected dependency policy.
+ROOT_METADATA_LOCK_SHA256 = "93447ba7c43d7c8bffe1bb66d99abad1eaffcbd0d11fe1ef5bb776c7155998a3"
+
+
+def _root_requirement_key(value):
+    """Canonicalize only the restricted requirement grammar present in R2.
+
+    Reject arbitrary URLs, compound markers, and other spellings outside
+    the reviewed subset rather than guessing PEP 508 equivalence.
+    """
+    if type(value) is not str or len(value) > 1024 or not value.isascii():
+        raise ValueError("unsupported root requirement")
+    value = re.sub(r"\r?\n[ \t]+", " ", value)
+    requirement, sep, marker = value.partition(";")
+    match = re.fullmatch(
+        r"[ \t]*([A-Za-z0-9][A-Za-z0-9._-]*)(?:[ \t]*\[([A-Za-z0-9._,\- \t]+)\])?[ \t]*([^;\r\n]*)",
+        requirement)
+    if not match:
+        raise ValueError("unsupported root requirement")
+    name, extras, specifiers = match.groups()
+    normalize = lambda v: re.sub(r"[-_.]+", "-", v).lower()
+    extra_keys = []
+    if extras:
+        for item in extras.split(","):
+            item = item.strip(" \t")
+            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", item):
+                raise ValueError("invalid requirement extra")
+            extra_keys.append(normalize(item))
+    spec_keys = []
+    specifiers = specifiers.strip(" \t")
+    if specifiers:
+        for spec in specifiers.split(","):
+            part = re.fullmatch(r"[ \t]*(>=|<=|==|!=|~=|>|<)[ \t]*([0-9][A-Za-z0-9.*!+_-]*)[ \t]*", spec)
+            if not part:
+                raise ValueError("unsupported root version constraint")
+            spec_keys.append(part[1] + part[2])
+    marker_extra = ""
+    if sep:
+        part = re.fullmatch(r"""[ \t]*extra[ \t]*==[ \t]*(['"])([A-Za-z0-9][A-Za-z0-9._-]*)\1[ \t]*""", marker)
+        if not part:
+            raise ValueError("unsupported root requirement marker")
+        marker_extra = normalize(part[2])
+    if len(set(extra_keys)) != len(extra_keys) or len(set(spec_keys)) != len(spec_keys):
+        raise ValueError("duplicate requirement component")
+    return normalize(name), tuple(sorted(extra_keys)), tuple(sorted(spec_keys)), marker_extra
+
+
+def _root_metadata_contract(lock_bytes):
+    if (type(lock_bytes) is not bytes or len(lock_bytes) > 4 * 1024**2
+            or hashlib.sha256(lock_bytes).hexdigest() != ROOT_METADATA_LOCK_SHA256):
+        raise ValueError("root metadata lock digest mismatch")
+    data = tomllib.loads(lock_bytes.decode("utf-8"))
+    contract = {}
+    for pkg in data["package"]:
+        name = pkg["name"]
+        if name not in _ROOT_OUTPUTS:
+            continue
+        if name in contract or pkg["version"] != "1.63.1":
+            raise ValueError("unexpected root in lock")
+        metadata = pkg["metadata"]
+        expected = []
+        for row in metadata["requires-dist"]:
+            if set(row) - {"name", "extras", "specifier", "marker", "editable"}:
+                raise ValueError("unsupported lock requirement")
+            if "editable" in row and (row["editable"] != row["name"] or row["name"] not in _ROOT_OUTPUTS):
+                raise ValueError("unexpected editable reference")
+            requirement = row["name"]
+            if row.get("extras"):
+                requirement += "[" + ",".join(row["extras"]) + "]"
+            requirement += row.get("specifier", "")
+            if "marker" in row:
+                requirement += "; " + row["marker"]
+            expected.append(_root_requirement_key(requirement))
+        extras = metadata["provides-extras"]
+        if len(set(expected)) != len(expected) or len(set(extras)) != len(extras):
+            raise ValueError("duplicate root lock metadata")
+        contract[name] = (tuple(sorted(expected)), tuple(sorted(extras)))
+    if set(contract) != _ROOT_OUTPUTS:
+        raise ValueError("incomplete root metadata lock")
+    return contract
+
+
+def _review_root_metadata(raw, name, contract):
+    if name not in contract:
+        raise ValueError("unexpected root metadata identity")
+    parsed = BytesHeaderParser().parsebytes(raw)
+    requirements = [_root_requirement_key(v) for v in parsed.get_all("Requires-Dist", [])]
+    extras = parsed.get_all("Provides-Extra", [])
+    if (parsed.defects or len(set(requirements)) != len(requirements)
+            or len(set(extras)) != len(extras)
+            or (tuple(sorted(requirements)), tuple(sorted(extras))) != contract[name]):
+        raise ValueError("root metadata requirements or extras mismatch")
+    return len(requirements)
+
+
+def inspect_root_wheel_outputs(candidates, *, lock_bytes=None):
     """Review exactly four generated roots without installing or executing them.
 
     Reuse the strict shared archive budget (8 MiB compressed, 128 MiB
@@ -767,11 +869,13 @@ def inspect_root_wheel_outputs(candidates):
     different notice layout requires separate review, not a fallback.
     Caller supplies already-collected bytes; hashes are measured candidate
     identities, not independently authorized build outputs. This does not
-    establish source equivalence, Requires-Dist closure, native absence
-    beyond the ELF/extension checks, or legal/security approval.
+    establish source equivalence, resolved dependency closure, native absence
+    beyond the ELF/extension checks, or legal/security approval. Supplying
+    the exact pinned lock bytes additionally compares METADATA declarations.
     """
     if type(candidates) not in (list, tuple) or len(candidates) != len(_ROOT_OUTPUTS):
         raise ValueError("exact four root wheel outputs required")
+    contract = _root_metadata_contract(lock_bytes) if lock_bytes is not None else None
     budget = WheelBudget()
     receipts = {}
     digests = set()
@@ -783,7 +887,7 @@ def inspect_root_wheel_outputs(candidates):
                 or not re.fullmatch(r"[0-9a-f]{64}", digest)
                 or digest in digests):
             raise ValueError("invalid or duplicate root output digest")
-        receipt = inspect_wheel(raw, digest, budget=budget)
+        receipt = inspect_wheel(raw, digest, budget=budget, _root_contract=contract)
         name = receipt["distribution"]["name"]
         version = receipt["distribution"]["version"]
         if name not in _ROOT_OUTPUTS or name in receipts or version != "1.63.1":
@@ -810,7 +914,9 @@ def inspect_root_wheel_outputs(candidates):
             "evidence_bytes": budget.evidence_bytes,
             "record_verified": True, "source_notice_match": True,
             "source_to_wheel_verified": False,
-            "metadata_dependencies_verified": False, "license_approved": False,
+            "metadata_dependencies_verified": contract is not None,
+            "metadata_requirement_count": sum(r.get("metadata_requirement_count", 0) for r in receipts.values()),
+            "license_approved": False,
             "security_approved": False, "build_authorized": False,
             "installation_authorized": False, "import_authorized": False,
             "release_authorized": False}
