@@ -57,3 +57,21 @@ def plan_staging(records, *, capacity_bytes=960 * 1024**2, reserve_bytes=0,
             'fits_model': peak + reserve_bytes <= capacity_bytes,
             'steps': steps, 'actual_peak_build_capacity_proven': False,
             'build_authorized': False, 'release_authorized': False}
+
+
+def plan_retained_staging(records, *, additional_bytes, capacity_bytes=960 * 1024**2,
+                          reserve_bytes=0, page_bytes=4096):
+    """Model coexistence of all inputs without assuming any archive can be deleted.
+
+    Caller-supplied additional_bytes accounts for estimated source/output storage;
+    it is not a measured bound. This function neither deletes nor admits inputs.
+    """
+    if type(additional_bytes) is not int or additional_bytes < 0:
+        raise ValueError('invalid additional allowance')
+    modeled = plan_staging(records, capacity_bytes=capacity_bytes,
+                           reserve_bytes=reserve_bytes, page_bytes=page_bytes)
+    required = modeled['concurrent_bytes'] + additional_bytes + reserve_bytes
+    return {'required_bytes': required, 'headroom_bytes': capacity_bytes - required,
+            'fits_model': required <= capacity_bytes, 'reclaim_assumed': False,
+            'actual_peak_build_capacity_proven': False,
+            'build_authorized': False, 'release_authorized': False}
