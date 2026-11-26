@@ -184,3 +184,32 @@ def assess_bound_local(request, report, *, expected_model_id):
         raise ValueError("bound request digest mismatch")
     return dict(result, request_digest_matches=True,
                 report_origin_verified=False, model_identity_verified=False)
+
+
+def assess_bound_local_json(request, raw, *, expected_model_id):
+    """Validate bounded, untrusted UTF-8 metadata bytes, without executing them.
+
+    Reject duplicate keys at every depth, non-standard JSON constants, malformed
+    encoding and trailing documents. A valid report still proves no origin or
+    actual model execution. The caller must bound transport reads separately.
+    """
+    if type(raw) is not bytes or not 0 < len(raw) <= 8192:
+        raise ValueError("invalid bound report byte length")
+
+    def unique_keys(pairs):
+        obj = {}
+        for key, value in pairs:
+            if key in obj:
+                raise ValueError("duplicate report field")
+            obj[key] = value
+        return obj
+
+    def invalid_constant(value):
+        raise ValueError("invalid JSON constant")
+
+    try:
+        report = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_keys,
+                            parse_constant=invalid_constant)
+        return assess_bound_local(request, report, expected_model_id=expected_model_id)
+    except (UnicodeError, ValueError, TypeError, OverflowError, RecursionError) as exc:
+        raise ValueError("invalid bound report metadata") from exc
