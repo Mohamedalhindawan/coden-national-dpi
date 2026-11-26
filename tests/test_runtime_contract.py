@@ -148,6 +148,37 @@ class RuntimeContractTests(unittest.TestCase):
                                                       artifact_sha256=None))
 
 
+    def test_bound_local_report_requires_exact_request_and_model(self):
+        import hashlib
+        import json
+        req = request()
+        digest = hashlib.sha256(json.dumps(req, sort_keys=True, separators=(",", ":"),
+                                          ensure_ascii=True).encode("ascii")).hexdigest()
+        evidence = report(schema="coden.runtime.bound_report.v1", request_sha256=digest)
+        result = runtime_contract.assess_bound_local(req, evidence, expected_model_id="qwen_local")
+        self.assertTrue(result["request_digest_matches"])
+        self.assertFalse(result["report_origin_verified"])
+        self.assertFalse(result["artifact_verified"])
+        self.assertFalse(result["execution_authorized"])
+        self.assertFalse(result["provider_approved"])
+        for changed in (request(task_sha256="c"*64), request(max_tokens_total=4096)):
+            with self.assertRaises(ValueError):
+                runtime_contract.assess_bound_local(changed, evidence, expected_model_id="qwen_local")
+        with self.assertRaises(ValueError):
+            runtime_contract.assess_bound_local(req, evidence, expected_model_id="other_model")
+
+    def test_bound_local_report_never_accepts_external_or_positive_cost_scope(self):
+        import hashlib
+        import json
+        for req in (request(allow_external_api=True), request(max_cost_usd="0.01"),
+                    request(allowed_providers=["local_qwen", "fallback"])):
+            digest = hashlib.sha256(json.dumps(req, sort_keys=True, separators=(",", ":"),
+                                              ensure_ascii=True).encode("ascii")).hexdigest()
+            evidence = report(schema="coden.runtime.bound_report.v1", request_sha256=digest)
+            with self.assertRaises(ValueError):
+                runtime_contract.assess_bound_local(req, evidence, expected_model_id="qwen_local")
+
+
 
 if __name__ == "__main__":
     unittest.main()
