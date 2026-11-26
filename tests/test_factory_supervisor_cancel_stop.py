@@ -51,6 +51,36 @@ class MonitoredSupervisorCancellationTests(unittest.TestCase):
         args.update(kwargs)
         return worker_supervisor.run_once(**args)
 
+    def test_intermediate_symlink_rejected_before_worker_spawn(self):
+        self.create()
+        alias = self.root / "alias"
+        alias.symlink_to(self.root / "operator", target_is_directory=True)
+        # The immediate parent is a normal directory; an earlier component is a symlink.
+        nested = self.journal / "nested"
+        nested.mkdir()
+        with patch.object(worker_supervisor.subprocess, "Popen") as start:
+            with self.assertRaises(ValueError):
+                self.run_target(journal=alias / "journal" / "nested")
+            start.assert_not_called()
+
+    def test_deeply_nested_worker_receipt_fails_closed(self):
+        self.create()
+        proc = MagicMock()
+        proc.returncode = 0
+        proc.wait.return_value = 0
+
+        def begin(_cmd, **kwargs):
+            lease = self.q.claim("fixture_worker", task_id="target", lease_seconds=30)
+            self.q.finish("target", lease["lease_token"], "blocked")
+            kwargs["stdout"].write(b"[" * 1500 + b"0" + b"]" * 1500)
+            return proc
+
+        with patch.object(worker_supervisor.subprocess, "Popen", side_effect=begin):
+            result = self.run_target()
+        self.assertEqual(result["status"], "untrusted_worker_result")
+        self.assertFalse(result["execution_authorized"])
+        self.assertFalse(result["automatic_retry_allowed"])
+
     def test_interrupt_after_launch_stops_owned_child_in_both_modes(self):
         self.create()
         for selected in ("target", None):
