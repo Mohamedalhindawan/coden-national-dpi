@@ -291,3 +291,105 @@ class BoundedQwenIpcTests(unittest.TestCase):
             self.assertEqual(result["status"],"fixture_transport_failed")
             self.assertFalse(result["release_authorized"])
             self.assertEqual(client.fileno(),-1)
+
+
+class LoopbackHttpFixtureTests(unittest.TestCase):
+    TOKEN = QwenPreflightBrokerTests.TOKEN
+    make = QwenPreflightBrokerTests.make
+    response = BoundedQwenIpcTests.response
+
+    def connected(self):
+        import socket
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            listener.bind(("127.0.0.1", 0))
+            listener.listen(1)
+            client = socket.create_connection(listener.getsockname(), timeout=1)
+            self.addCleanup(client.close)
+            peer, _ = listener.accept()
+        self.addCleanup(peer.close)
+        peer.settimeout(1)
+        return client, peer
+
+    def exchange(self, response):
+        client, peer = self.connected()
+        peer.sendall(response)
+        peer.shutdown(1)
+        result = self.make().execute_http_fixture(
+            channel=client, token=self.TOKEN, expected_port=client.getpeername()[1],
+            fixture_only=True)
+        self.assertEqual(client.fileno(), -1)
+        return result
+
+    def test_fixed_http_request_and_bounded_success(self):
+        import http.client
+        from concurrent.futures import ThreadPoolExecutor
+
+        client, peer = self.connected()
+
+        def serve():
+            with peer.makefile("rb") as stream:
+                request_line = stream.readline(256)
+                headers = http.client.parse_headers(stream)
+                payload = stream.read(int(headers["Content-Length"]))
+            body = self.response()
+            response_head = f"HTTP/1.1 200 OK\r\nContent-Length: {len(body)}\r\n\r\n"
+            peer.sendall(response_head.encode() + body)
+            peer.shutdown(1)
+            return request_line, headers, payload
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            exchange = executor.submit(serve)
+            result = self.make().execute_http_fixture(
+                channel=client, token=self.TOKEN, expected_port=client.getpeername()[1],
+                fixture_only=True, deadline_seconds=2)
+            request_line, headers, payload = exchange.result()
+        self.assertEqual(result["status"], "fixture_preflight_match")
+        self.assertFalse(result["qwen_connected"])
+        self.assertEqual(request_line, b"POST /v1/chat/completions HTTP/1.1\r\n")
+        self.assertEqual(headers["Content-Length"], str(len(payload)))
+        self.assertNotIn("Authorization", headers)
+        self.assertNotIn(self.TOKEN, headers.as_bytes() + payload)
+        self.assertEqual(client.fileno(), -1)
+        self.assertEqual(json.loads(payload), request_for("count"))
+
+    def test_http_rejects_ambiguous_or_oversized_framing(self):
+        for fields, body in (
+            (b"Content-Length: 262145", b""),
+            (b"Content-Length: 2\r\nContent-Length: 2", b"{}"),
+            (b"Transfer-Encoding: chunked\r\nContent-Length: 0", b""),
+            (b"Content-Encoding: gzip\r\nContent-Length: 0", b""),
+            (b"Content-Length: 64", b"partial"),
+            (b"Content-Length: 0", b"extra"),
+            (b"X-Fill: " + b"a"*8192 + b"\r\nContent-Length: 0", b""),
+        ):
+            with self.subTest(fields=fields[:50]):
+                result = self.exchange(b"HTTP/1.1 200 OK\r\n" + fields + b"\r\n\r\n" + body)
+                self.assertEqual(result["status"], "fixture_transport_failed")
+                self.assertFalse(result["automatic_retry_allowed"])
+
+    def test_http_rejects_redirect_and_never_opens_another_connection(self):
+        result = self.exchange(b"HTTP/1.1 302 Found\r\nLocation: http://invalid.test/\r\nContent-Length: 0\r\n\r\n")
+        self.assertEqual(result["reason_code"], "http_status_rejected")
+
+    def test_http_peer_scope_and_deadline(self):
+        import threading
+        for mode, status in (("disabled", "blocked_runtime_admission"),
+                             ("peer", "fixture_peer_rejected"),
+                             ("cancel", "cancelled"), ("timeout", "timeout")):
+            with self.subTest(mode=mode):
+                client, peer = self.connected()
+                port = client.getpeername()[1]
+                event = threading.Event()
+                timer = threading.Timer(.05, event.set)
+                if mode == "cancel":
+                    timer.start()
+                try:
+                    result = self.make().execute_http_fixture(
+                        channel=client, token=self.TOKEN, expected_port=1 if mode=="peer" else port,
+                        fixture_only=mode!="disabled", deadline_seconds=.3, cancel_event=event)
+                finally:
+                    timer.cancel()
+                self.assertEqual(result["status"], status)
+                self.assertEqual(client.fileno(), -1)
+                if mode in ("disabled", "peer"):
+                    self.assertEqual(peer.recv(1), b"")

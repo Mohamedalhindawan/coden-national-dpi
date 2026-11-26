@@ -1,6 +1,8 @@
 """Bounded synthetic model benchmark. No tools or SDK are executed."""
 import hashlib
 import hmac
+import http.client
+import io
 import json
 import re
 import select
@@ -79,14 +81,59 @@ def audit_http_case(case_id, *, status_code=None, raw=b"", failure=None):
     return _audit_local_case(case_id, raw)
 
 
-class _IpcCancelled(Exception):
+class _FixtureCancelled(Exception):
     pass
+
+
+def _stream_io(channel, end, cancel_event):
+    """Nonblocking transfers share one deadline for all writes and reads."""
+    channel.setblocking(False)
+
+    def check():
+        if cancel_event is not None and cancel_event.is_set():
+            raise _FixtureCancelled()
+        remaining = end - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError()
+        return remaining
+
+    def ready(write):
+        while True:
+            interval = min(check(), .05)
+            rd, wr, _ = select.select([] if write else [channel],
+                                      [channel] if write else [], [], interval)
+            check()
+            if wr or rd:
+                return
+
+    def send_all(data):
+        view = memoryview(data)
+        while view:
+            ready(True)
+            try:
+                n = channel.send(view)
+            except BlockingIOError:
+                continue
+            if not n:
+                raise ValueError("fixture stream closed")
+            view = view[n:]
+
+    def read_some(size):
+        while True:
+            ready(False)
+            try:
+                return channel.recv(size)
+            except BlockingIOError:
+                continue
+
+    return send_all, read_some
 
 
 class PreflightBroker:
     """One-shot authorization policy for a trusted synthetic transport fixture.
 
-    No HTTP client, listener, credential store or SDK is started here. The
+    The launcher supplies connected fixture streams. No DNS, outbound dial,
+    listener, credential store or SDK is started here. The
     token is a test grant, never an upstream provider credential. This is
     process-local replay protection, not a durable or cross-UID auth boundary.
     The future admitted transport must independently enforce connection and
@@ -161,7 +208,7 @@ class PreflightBroker:
             return self._receipt("fixture_preflight_match",
                                  response_sha256=verdict["response_sha256"],
                                  completion_tokens=verdict["completion_tokens"])
-        except _IpcCancelled:
+        except _FixtureCancelled:
             return self._receipt("cancelled")
         except TimeoutError:
             return self._receipt("timeout")
@@ -205,46 +252,13 @@ class PreflightBroker:
                     or not 0 < deadline_seconds <= 35
                     or (cancel_event is not None and type(cancel_event) is not threading.Event)):
                 return self._receipt("invalid_fixture_transport")
-            end = min(time.monotonic() + deadline_seconds, self._expires)
-            channel.setblocking(False)
-
-            def check():
-                if cancel_event is not None and cancel_event.is_set():
-                    raise _IpcCancelled()
-                remaining = end - time.monotonic()
-                if remaining <= 0:
-                    raise TimeoutError()
-                return remaining
-
-            def ready(write):
-                while True:
-                    interval = min(check(), .05)
-                    rd, wr, _ = select.select([] if write else [channel],
-                                              [channel] if write else [], [], interval)
-                    check()
-                    if wr if write else rd:
-                        return
-
-            def send_all(data):
-                view = memoryview(data)
-                while view:
-                    ready(True)
-                    try:
-                        n = channel.send(view)
-                    except BlockingIOError:
-                        continue
-                    if not n:
-                        raise ValueError("fixture stream closed")
-                    view = view[n:]
+            send_all, read_some = _stream_io(channel, min(time.monotonic() + deadline_seconds,
+                                                          self._expires), cancel_event)
 
             def receive(size):
                 data = bytearray()
                 while len(data) < size:
-                    ready(False)
-                    try:
-                        block = channel.recv(min(4096, size - len(data)))
-                    except BlockingIOError:
-                        continue
+                    block = read_some(min(4096, size - len(data)))
                     if not block:
                         raise ValueError("truncated fixture frame")
                     data.extend(block)
@@ -265,19 +279,89 @@ class PreflightBroker:
                     raise ValueError("fixture response too large")
                 response = receive(length)
                 # One frame only, no unsolicited bytes or second response.
-                while True:
-                    ready(False)
-                    try:
-                        tail = channel.recv(1)
-                    except BlockingIOError:
-                        continue
-                    if tail:
-                        raise ValueError("trailing fixture data")
-                    break
+                if read_some(1):
+                    raise ValueError("trailing fixture data")
                 return code, response
 
             return self.execute(token=token, transport=exchange, fixture_only=True,
                                 cancelled=None if cancel_event is None else cancel_event.is_set)
+
+    def execute_http_fixture(self, *, token, channel, expected_port, fixture_only=False,
+                             deadline_seconds=35, cancel_event=None):
+        """Own a TCP stream preconnected by the trusted launcher to its loopback fixture.
+
+        The launcher owns the synthetic server and its port. Loopback is a route
+        restriction, not server authentication. No dial, DNS, redirects, proxy,
+        provider credentials, SDK or model fallback.
+        """
+        if type(channel) is not socket.socket:
+            return self._receipt("invalid_fixture_transport")
+        with channel:
+            if fixture_only is not True:
+                return self._receipt("blocked_runtime_admission")
+            if (type(deadline_seconds) not in (float, int) or not 0 < deadline_seconds <= 35
+                    or (cancel_event is not None and type(cancel_event) is not threading.Event)):
+                return self._receipt("invalid_fixture_transport")
+            try:
+                if (type(expected_port) is not int or not 1024 <= expected_port <= 65535
+                        or channel.family != socket.AF_INET or channel.type != socket.SOCK_STREAM
+                        or channel.getsockname()[0] != "127.0.0.1"
+                        or channel.getpeername() != ("127.0.0.1", expected_port)):
+                    return self._receipt("fixture_peer_rejected")
+            except OSError:
+                return self._receipt("fixture_peer_rejected")
+
+            def exchange(*, url, request, timeout_seconds, max_response_bytes):
+                if url != "http://qwen3:11434/v1/chat/completions":
+                    raise ValueError("unexpected route")
+                end = min(time.monotonic() + min(deadline_seconds, timeout_seconds), self._expires)
+                send_all, read_some = _stream_io(channel, end, cancel_event)
+                body = json.dumps(request, separators=(",", ":"), allow_nan=False).encode()
+                if len(body) > 16 * 1024:
+                    raise ValueError("request too large")
+                head = (f"POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1:{expected_port}\r\n"
+                        f"Content-Type: application/json\r\nConnection: close\r\nContent-Length: {len(body)}\r\n\r\n")
+                send_all(head.encode("ascii") + body)
+                return _read_fixture_http(read_some, max_response_bytes)
+
+            return self.execute(token=token, fixture_only=True, transport=exchange,
+                                cancelled=None if cancel_event is None else cancel_event.is_set)
+
+
+def _read_fixture_http(read_some, max_body):
+    # Deliberately narrow profile: one fixed-length, identity-encoded reply,
+    # closed after its body. Bound headers before handing them to the parser.
+    header_limit = 8192
+    buf = bytearray()
+    while b"\r\n\r\n" not in buf:
+        if len(buf) >= header_limit:
+            raise ValueError("response headers too large")
+        block = read_some(min(4096, header_limit - len(buf)))
+        if not block:
+            raise ValueError("incomplete response headers")
+        buf.extend(block)
+    head, body = buf.split(b"\r\n\r\n", 1)
+    lines = head.split(b"\r\n")
+    status = re.fullmatch(rb"HTTP/1\.[01] ([2-5][0-9]{2})(?: [ -~]*)?", lines[0])
+    if not status or any(not re.fullmatch(rb"[!#$%&'*+.^_`|~0-9a-zA-Z-]+:[\t -~]*", line)
+                         for line in lines[1:]):
+        raise ValueError("unsupported HTTP response")
+    fields = http.client.parse_headers(io.BytesIO(b"\r\n".join(lines[1:]) + b"\r\n\r\n"))
+    lengths = fields.get_all("Content-Length", [])
+    if (len(lengths) != 1 or not re.fullmatch(r"[0-9]{1,8}", lengths[0])
+            or "Transfer-Encoding" in fields or "Content-Encoding" in fields):
+        raise ValueError("unsupported response framing")
+    size = int(lengths[0])
+    if len(body) > size or size > max_body:
+        raise ValueError("invalid response size")
+    while len(body) < size:
+        block = read_some(min(4096, size - len(body)))
+        if not block:
+            raise ValueError("truncated response")
+        body.extend(block)
+    if read_some(1):
+        raise ValueError("trailing response data")
+    return int(status[1]), bytes(body)
 
 
 def summarize(results):
