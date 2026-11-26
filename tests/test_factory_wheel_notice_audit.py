@@ -366,7 +366,18 @@ class R2HistoricalReceiptComparisonTests(unittest.TestCase):
             if native:
                 files[native] = {"sha256": native_digest, "bytes": size,
                                  "record_hash_verified": True, "elf_magic": True}
-            files["synthetic/0"]["bytes"] = expanded - size
+            retained = {
+                "jiter": {
+                    "jiter-0.16.0.dist-info/METADATA": (5212, "b1bcf7374eb4f4195f890ab610b6de54ae8766456df7ddf757f95d255097ef2e"),
+                    "jiter-0.16.0.dist-info/licenses/LICENSE": (1091, "7c7134b9f7b978c03fca875517cf398db91f19bbb8109b6685e742aa3f57468e")},
+                "tokenizers": {"tokenizers-0.23.2.dist-info/METADATA": (9830, "d2d200c0d0c48895b2c3b02cdd8c06c26dea8f9be38ef193e9b4dd5a566c89be")},
+                "fastmcp-slim": {"fastmcp_slim-4.2.0.dist-info/METADATA": (11160, "df6b0719b4582d41663c1ef35cdc7f655dc809d16f144a4cea0589e7bc8ba3c1")},
+            }[name]
+            for i, (path, (length, sha)) in enumerate(retained.items(), start=2):
+                files.pop(f"synthetic/{i}")
+                files[path] = {"sha256": sha, "bytes": length,
+                               "record_hash_verified": True, "elf_magic": False}
+            files["synthetic/0"]["bytes"] = expanded - size - sum(x[0] for x in retained.values())
             wheels.append({"distribution": {"name": name, "version": version},
                            "wheel_sha256": digest, "files": files,
                            "record_verified": True, "native_internal_io_verified": False,
@@ -432,3 +443,25 @@ class R2HistoricalReceiptComparisonTests(unittest.TestCase):
                         second["files"]["synthetic/0"]["bytes"] += 1
                 with self.assertRaises(ValueError):
                     compare_r2_historical_receipt(receipt)
+
+
+    def test_retained_metadata_and_license_identity_cannot_be_forged(self):
+        from ai_factory.factory_wheel_notice_audit import compare_r2_historical_receipt
+        for index, path in (
+            (0, "jiter-0.16.0.dist-info/METADATA"),
+            (0, "jiter-0.16.0.dist-info/licenses/LICENSE"),
+            (1, "tokenizers-0.23.2.dist-info/METADATA"),
+            (2, "fastmcp_slim-4.2.0.dist-info/METADATA"),
+        ):
+            for change in ("hash", "record", "path"):
+                with self.subTest(path=path, change=change):
+                    receipt = self.fixture()
+                    files = receipt["wheels"][index]["files"]
+                    if change == "hash":
+                        files[path]["sha256"] = "0"*64
+                    elif change == "record":
+                        files[path]["record_hash_verified"] = False
+                    else:
+                        files["synthetic/replaced"] = files.pop(path)
+                    with self.assertRaises(ValueError):
+                        compare_r2_historical_receipt(receipt)
