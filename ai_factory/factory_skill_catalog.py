@@ -50,8 +50,11 @@ def _read_skill(path: Path, name: str) -> bytes:
 
 def validate(data: dict) -> list[dict]:
     """Fail closed if the manifest changes scope, count, privileges or paths."""
-    if not isinstance(data, dict):
-        raise ValueError("manifest object expected")
+    if not isinstance(data, dict) or set(data) != {
+        "schema_version", "scope", "status", "automatic_skill_installation",
+        "automatic_runtime_execution", "paid_calls_authorized", "skills",
+    }:
+        raise ValueError("unexpected skill manifest fields")
     if (data.get("schema_version") != "0.1.0"
             or data.get("scope") != "CODEN_FACTORY_ONLY"
             or data.get("status") != "DRAFT_UNAPPROVED"
@@ -67,8 +70,11 @@ def validate(data: dict) -> list[dict]:
     seen_tasks = set()
     results = []
     for row in rows:
-        if not isinstance(row, dict):
-            raise ValueError("skill entry must be an object")
+        if not isinstance(row, dict) or set(row) != {
+            "name", "task_kind", "purpose", "path", "status", "installed_by_catalog",
+            "runtime_invoked", "release_authorized",
+        }:
+            raise ValueError("unexpected skill entry fields")
         name = row.get("name")
         task = row.get("task_kind")
         if (not isinstance(name, str) or NAME.fullmatch(name) is None
@@ -94,11 +100,21 @@ def validate(data: dict) -> list[dict]:
     return results
 
 
+def _unique_json_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate skill manifest key")
+        result[key] = value
+    return result
+
+
 def load() -> list[dict]:
     """Read only checked-in local definitions, without imports or installations."""
     if MANIFEST.is_symlink() or not MANIFEST.is_file() or MANIFEST.stat().st_size > 20000:
         raise ValueError("skill manifest missing or untrusted")
-    return validate(json.loads(MANIFEST.read_text(encoding="utf-8")))
+    return validate(json.loads(MANIFEST.read_text(encoding="utf-8"),
+                               object_pairs_hook=_unique_json_keys))
 
 
 def choose(task_kind: str) -> dict:
