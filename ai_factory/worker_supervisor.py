@@ -29,16 +29,23 @@ class SupervisorError(ValueError):
     """Safe supervisor error without raw provider/host exception details."""
 
 
+def _unsafe_path(path):
+    # Operator-owned paths only. This preflight rejects existing symlink
+    # components and traversal, not concurrent hostile path replacement.
+    absolute = path.absolute()
+    return ".." in absolute.parts or any(p.is_symlink() for p in (absolute, *absolute.parents))
+
+
 def _dir(path, *, label):
     directory = Path(path)
-    if directory.is_symlink() or directory.parent.is_symlink() or not directory.is_dir():
+    if _unsafe_path(directory) or not directory.is_dir():
         raise ValueError(f"trusted existing {label} directory required")
     return str(directory.resolve())
 
 
 def _db(path):
     db = Path(path)
-    if db.is_symlink() or db.parent.is_symlink() or not db.is_file():
+    if _unsafe_path(db) or not db.is_file():
         raise ValueError("trusted existing queue database required")
     return str(db.resolve())
 
@@ -232,7 +239,7 @@ def run_once(*, queue_db, journal, task_dir, output_root, worker_id,
                 return _result("untrusted_worker_result")
             try:
                 parsed = json.loads(raw, object_pairs_hook=_unique_json_keys)
-            except (UnicodeError, ValueError, TypeError):
+            except (UnicodeError, ValueError, TypeError, RecursionError):
                 return _result("untrusted_worker_result")
             if parsed is None:
                 # A bound child must account for its selected task. A null
