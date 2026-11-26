@@ -338,3 +338,77 @@ class FullLogicalIOTests(unittest.TestCase):
             inspect_wheel(raw2,hashlib.sha256(raw2).hexdigest(),budget=budget)
         self.assertTrue(budget.failed)
         self.assertEqual(budget.evidence_bytes,first["evidence_bytes"])
+
+
+class R2HistoricalReceiptComparisonTests(unittest.TestCase):
+    """Fabricated receipts exercise comparison only, not package acquisition."""
+    def fixture(self):
+        specs = (
+            ("jiter", "0.16.0", "c682bea068a90b764577bdb78a60a4c1d1606daf9cd4c893832a37c7cc9d9026",
+             "jiter/jiter.cpython-313-x86_64-linux-gnu.so", 832152,
+             "bbc712e9a00a2b01cfa40286d129cb43f019692d7bf94069f58ab1de6094d29e"),
+            ("tokenizers", "0.23.2", "41c2f84d172449b4dadb9cdc508e3e364076613c35b16e76ecfe47a60d1e3305",
+             "tokenizers/tokenizers.abi3.so", 11317624,
+             "7c4ddf7ad4251a646d324151b4d698da59531fdd892ea3abd24a6f323fcb1d6b"),
+            ("fastmcp-slim", "4.2.0", "174239bed3ac47275afa7fe82941a65f86ad0314205195766c92b138c6dcfebe",
+             None, 0, None),
+        )
+        wheels = []
+        for name, version, digest, native, size, native_digest in specs:
+            files = {}
+            for i in range(109):
+                files[f"synthetic/{i}"] = {"sha256": "a"*64, "bytes": 0,
+                                          "record_hash_verified": True, "elf_magic": False}
+            if native:
+                files[native] = {"sha256": native_digest, "bytes": size,
+                                 "record_hash_verified": True, "elf_magic": True}
+            wheels.append({"distribution": {"name": name, "version": version},
+                           "wheel_sha256": digest, "files": files,
+                           "record_verified": True, "native_internal_io_verified": False,
+                           "release_authorized": False, "legacy_signatures_verified": False,
+                           "compressed_bytes": 1, "expanded_bytes": size})
+        wheels[-1]["files"]["synthetic/0"]["bytes"] = 16094120-832152-11317624
+        wheels[-1]["expanded_bytes"] = 16094120-832152-11317624
+        wheels[-1]["compressed_bytes"] = 4724397
+        return {"wheels": wheels, "compressed_bytes": 4724399,
+                "expanded_bytes": 16094120, "record_verified": True,
+                "fixture_native": False, "native_count": 0, "native_output_bytes": 0,
+                "native_input_reserved_bytes": 0, "native_internal_io_verified": False,
+                "release_authorized": False, "legacy_signatures_verified": False}
+
+    def test_exact_historical_comparison_never_grants_admission(self):
+        from ai_factory.factory_wheel_notice_audit import compare_r2_historical_receipt
+        result = compare_r2_historical_receipt(self.fixture())
+        self.assertEqual(result["status"], "HISTORICAL_RECEIPT_MATCH_UNAPPROVED")
+        self.assertEqual(result["matched_wheels"], 3)
+        self.assertEqual(result["regular_files"], 329)
+        self.assertFalse(result["receipt_origin_verified"])
+        self.assertFalse(result["security_approved"])
+        self.assertFalse(result["installation_authorized"])
+        self.assertFalse(result["release_authorized"])
+
+    def test_mismatch_and_overclaim_fail_closed(self):
+        from ai_factory.factory_wheel_notice_audit import compare_r2_historical_receipt
+        def native(r):
+            return r["wheels"][0]["files"]["jiter/jiter.cpython-313-x86_64-linux-gnu.so"]
+        mutations = (
+            lambda r: r["wheels"][0].update(wheel_sha256="0"*64),
+            lambda r: r["wheels"][0]["distribution"].update(version="0.16.1"),
+            lambda r: r["wheels"].__setitem__(1, r["wheels"][0]),
+            lambda r: native(r).update(sha256="0"*64),
+            lambda r: native(r).update(bytes=832153),
+            lambda r: native(r).update(elf_magic=False),
+            lambda r: r["wheels"][2]["files"]["synthetic/0"].update(elf_magic=True),
+            lambda r: r["wheels"][2]["files"].pop("synthetic/1"),
+            lambda r: r.update(compressed_bytes=4724400),
+            lambda r: r.update(expanded_bytes=16094121),
+            lambda r: r.update(fixture_native=True),
+            lambda r: r.update(record_verified=1),
+            lambda r: r["wheels"][0].update(release_authorized=True),
+        )
+        for i, mutate in enumerate(mutations):
+            with self.subTest(case=i):
+                receipt = self.fixture()
+                mutate(receipt)
+                with self.assertRaises(ValueError):
+                    compare_r2_historical_receipt(receipt)
