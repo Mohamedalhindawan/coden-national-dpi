@@ -12,9 +12,9 @@ ROOTS = ("openhands-sdk", "openhands-tools", "openhands-workspace", "openhands-a
 NOTICE = b"trusted synthetic notice"
 
 
-def candidate(name, version="1.63.1", notice=NOTICE, extra=None):
+def candidate(name, version="1.63.1", notice=NOTICE, extra=None, headers=""):
     prefix = name.replace("-", "_") + "-" + version + ".dist-info/"
-    files = {prefix + "METADATA": f"Name: {name}\nVersion: {version}\n".encode(),
+    files = {prefix + "METADATA": f"Name: {name}\nVersion: {version}\n{headers}".encode(),
              prefix + "WHEEL": b"Wheel-Version: 1.0\nTag: py3-none-any\n",
              "openhands/fixture.py": b"# synthetic only\n"}
     if notice is not None:
@@ -66,3 +66,28 @@ class RootWheelReviewTest(unittest.TestCase):
         for item in (candidate(ROOTS[-1], extra="openhands/fixture.so"), (raw, "0"*64)):
             with self.assertRaises(ValueError):
                 audit.inspect_root_wheel_outputs(self.rows[:3]+[item])
+
+
+    def test_pinned_lock_metadata_contract(self):
+        # Small independent lock fixture, never treated as real R2 admission.
+        lock = ("\n".join(
+            '[[package]]\nname = "' + name + '"\nversion = "1.63.1"\n'
+            '[package.metadata]\nrequires-dist = [{name="demo",specifier=">=1,<2"}, '
+            '{name="addon",marker="extra == \'feature\'"}]\nprovides-extras=["feature"]'
+            for name in ROOTS) + "\n").encode()
+        good = 'Requires-Dist: Demo<2, >=1\nRequires-Dist: addon; extra == "feature"\nProvides-Extra: feature\n'
+        rows = [candidate(n, headers=good) for n in ROOTS]
+        with patch.object(audit, "ROOT_METADATA_LOCK_SHA256", hashlib.sha256(lock).hexdigest(), create=True):
+            result = audit.inspect_root_wheel_outputs(rows, lock_bytes=lock)
+            self.assertTrue(result["metadata_dependencies_verified"])
+            self.assertEqual(result["metadata_requirement_count"], 8)
+            self.assertFalse(result["installation_authorized"])
+            for headers in (good.replace(">=1", ">=0"), good.replace("addon; extra", "addon; python_version"),
+                            good + "Requires-Dist: browser-use\n",
+                            good + "Requires-Dist: demo>=1,<2\n",
+                            good.replace("Provides-Extra: feature\n", ""),
+                            good.replace("Demo<2, >=1", "demo @ https://example.invalid/a.whl")):
+                with self.subTest(headers=headers), self.assertRaises(ValueError):
+                    audit.inspect_root_wheel_outputs(rows[:3]+[candidate(ROOTS[-1], headers=headers)], lock_bytes=lock)
+            with self.assertRaises(ValueError):
+                audit.inspect_root_wheel_outputs(rows, lock_bytes=lock+b"\n")
