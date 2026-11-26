@@ -2726,7 +2726,7 @@ jobs:
 
   synthetic-build-auxiliary-boundary:
     # Trusted fixture only, not an OS update, source build, or agent execution.
-    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '2f8dfb30ef99b23f8b54e14dc11b26a1acd73ef8' && github.event.pull_request.number == 210 && github.head_ref == 'parallel/fasttrack-integrated-20261127' && github.base_ref == 'parallel/chatgpt-r2-recovery-20261127' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '68277a4ba52a047e816feec6b6dab9bc0dd43ba8' && github.event.pull_request.number == 210 && github.head_ref == 'parallel/fasttrack-integrated-20261127' && github.base_ref == 'parallel/chatgpt-r2-recovery-20261127' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     steps:
@@ -2755,7 +2755,8 @@ jobs:
           assert os.getuid()!=0
           assert os.readlink("/proc/self/ns/ipc")!=sys.argv[1]
           assert os.readlink("/proc/self/ns/net")!=sys.argv[2]
-          assert sorted(n for _,n in socket.if_nameindex())==["lo"]
+          assert sorted(p.name for p in Path("/sys/class/net").iterdir())==["lo"]
+          assert len(Path("/proc/self/net/route").read_text().splitlines())==1
           status=dict(line.split(":",1) for line in Path("/proc/self/status").read_text().splitlines() if ":" in line)
           assert int(status["CapEff"],16)==0 and status["NoNewPrivs"].strip()=="1"
           for name,expected in (("RLIMIT_CORE",0),("RLIMIT_MEMLOCK",0),("RLIMIT_NOFILE",256),("RLIMIT_MSGQUEUE",65536)):
