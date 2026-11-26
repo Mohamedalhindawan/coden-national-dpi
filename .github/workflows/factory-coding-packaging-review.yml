@@ -2723,3 +2723,90 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+  synthetic-build-auxiliary-boundary:
+    # Trusted fixture only, not an OS update, source build, or agent execution.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '2f8dfb30ef99b23f8b54e14dc11b26a1acd73ef8' && github.event.pull_request.number == 210 && github.head_ref == 'parallel/fasttrack-integrated-20261127' && github.base_ref == 'parallel/chatgpt-r2-recovery-20261127' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Exercise auxiliary resource denials in non-agent build fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          unit="coden-build-aux-$GITHUB_RUN_ID.service"
+          cleanup() {
+            rc=$?
+            trap - EXIT
+            sudo systemctl stop "$unit" >/dev/null 2>&1 || true
+            state="$(sudo systemctl show "$unit" -p ActiveState --value 2>/dev/null || true)"
+            case "$state" in inactive|failed) ;; *) rc=1;; esac
+            printf 'SERVICE_%s\n' "$state" > evidence/cleanup.txt
+            exit "$rc"
+          }
+          trap cleanup EXIT
+          hostipc="$(readlink /proc/self/ns/ipc)"
+          hostnet="$(readlink /proc/self/ns/net)"
+          script="$(cat <<'PY'
+          import ctypes,errno,json,os,resource,socket,sys
+          from pathlib import Path
+          assert os.getuid()!=0
+          assert os.readlink("/proc/self/ns/ipc")!=sys.argv[1]
+          assert os.readlink("/proc/self/ns/net")!=sys.argv[2]
+          assert sorted(n for _,n in socket.if_nameindex())==["lo"]
+          status=dict(line.split(":",1) for line in Path("/proc/self/status").read_text().splitlines() if ":" in line)
+          assert int(status["CapEff"],16)==0 and status["NoNewPrivs"].strip()=="1"
+          for name,expected in (("RLIMIT_CORE",0),("RLIMIT_MEMLOCK",0),("RLIMIT_NOFILE",256),("RLIMIT_MSGQUEUE",65536)):
+              assert resource.getrlimit(getattr(resource,name))==(expected,expected)
+          denials=[]
+          for family in (socket.AF_INET,socket.AF_INET6):
+              try:
+                  s=socket.socket(family,socket.SOCK_STREAM)
+              except OSError as exc:
+                  assert exc.errno in (errno.EAFNOSUPPORT,errno.EPERM,errno.EACCES)
+                  denials.append("network-family-"+str(family))
+              else:
+                  s.close(); raise AssertionError("unexpected IP socket")
+          libc=ctypes.CDLL(None,use_errno=True)
+          for name,args,remove in (("shmget",(0,4096,0o600),"shmctl"),("msgget",(0,0o600),"msgctl"),("semget",(0,1,0o600),"semctl")):
+              ctypes.set_errno(0)
+              result=getattr(libc,name)(*args)
+              if result>=0:
+                  if name=="semget": getattr(libc,remove)(result,0,0)
+                  else: getattr(libc,remove)(result,0,None)
+                  raise AssertionError("unexpected System V IPC allocation")
+              assert ctypes.get_errno() in (errno.EPERM,errno.EACCES,errno.ENOSYS)
+              denials.append(name)
+          for path in ("/dev/shm/coden-aux-fixture","/run/coden-aux-fixture"):
+              try: fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+              except OSError as exc:
+                  assert exc.errno in (errno.EROFS,errno.EACCES,errno.EPERM)
+                  denials.append(path)
+              else:
+                  os.close(fd); os.unlink(path); raise AssertionError("auxiliary write allowed")
+          assert not any(os.path.lexists(p) for p in ("/run/docker.sock","/var/run/docker.sock","/run/podman/podman.sock"))
+          cg=next(x.split(":",2)[2] for x in Path("/proc/self/cgroup").read_text().splitlines() if x.startswith("0::"))
+          p=Path("/sys/fs/cgroup")/cg.lstrip("/")
+          cpu=(p/"cpu.max").read_text().split()
+          assert int(cpu[0])==2*int(cpu[1]) and (p/"memory.max").read_text().strip()=="4294967296" and (p/"pids.max").read_text().strip()=="128" and (p/"memory.swap.max").read_text().strip()=="0"
+          print(json.dumps(dict(status="SYNTHETIC_AUXILIARY_DENIALS_PASS",denials=denials,private_ipc=True,private_network=True,rlimits_checked=4,actual_build=False,actual_os_update=False,pty_accounting_proven=False,aggregate_auxiliary_resources_proven=False,build_authorized=False,release_authorized=False),sort_keys=True))
+          PY
+          )"
+          timeout --kill-after=5s 40s sudo systemd-run --unit="$unit" --wait --pipe --quiet \
+            -p User=nobody -p Group=nogroup -p CPUQuota=200% -p MemoryMax=4294967296 -p MemorySwapMax=0 -p TasksMax=128 \
+            -p RuntimeMaxSec=30 -p KillMode=control-group -p NoNewPrivileges=yes \
+            -p CapabilityBoundingSet= -p AmbientCapabilities= -p PrivateNetwork=yes -p PrivateIPC=yes -p PrivateDevices=yes \
+            -p ProtectHome=tmpfs -p ProtectSystem=strict -p 'TemporaryFileSystem=/run:ro' -p 'TemporaryFileSystem=/dev/shm:ro' \
+            -p 'SystemCallFilter=~@ipc' -p SystemCallErrorNumber=EPERM -p RestrictAddressFamilies=AF_UNIX \
+            -p LimitCORE=0 -p LimitMEMLOCK=0 -p LimitNOFILE=256 -p LimitMSGQUEUE=65536 -p RestrictSUIDSGID=yes \
+            /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/python3 -I -B -c "$script" "$hostipc" "$hostnet" > evidence/review.json
+          jq -e '.status=="SYNTHETIC_AUXILIARY_DENIALS_PASS" and (.denials|length)==7 and .release_authorized==false' evidence/review.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: synthetic-build-auxiliary-receipts
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
