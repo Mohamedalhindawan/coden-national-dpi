@@ -185,5 +185,34 @@ class CheckpointTests(unittest.TestCase):
                          "checkpointed")
 
 
+    def test_intermediate_alias_rejected_by_direct_journal_operations(self):
+        self.create()
+        alias = self.root.parent / "alias"
+        alias.symlink_to(self.root.parent, target_is_directory=True)
+        indirect = alias / self.root.name
+        original = (self.root / "task_1.jsonl").read_bytes()
+        with self.assertRaises(ValueError):
+            checkpoint.read(indirect, "task_1")
+        with self.assertRaises(ValueError):
+            checkpoint.record(indirect, "task_1", event="checkpoint")
+        with self.assertRaises(ValueError):
+            checkpoint.create(indirect, "other", branch="feat/factory", commit=COMMIT)
+        self.assertEqual((self.root / "task_1.jsonl").read_bytes(), original)
+        self.assertFalse((self.root / "other.jsonl").exists())
+
+    def test_hardlinked_journal_rejected_without_mutating_original(self):
+        self.create()
+        original = self.root / "task_1.jsonl"
+        before = original.read_bytes()
+        os.link(original, self.root / "other.jsonl")
+        for task in ("task_1", "other"):
+            with self.subTest(task=task):
+                with self.assertRaises(ValueError):
+                    checkpoint.read(self.root, task)
+                with self.assertRaises(ValueError):
+                    checkpoint.record(self.root, task, event="checkpoint")
+        self.assertEqual(original.read_bytes(), before)
+
+
 if __name__ == "__main__":
     unittest.main()
