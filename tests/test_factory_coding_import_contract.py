@@ -42,3 +42,65 @@ class CodingImportContractTests(unittest.TestCase):
         self.assertFalse(result["runtime_admitted"])
         self.assertFalse(result["sdk_conversation_ran"])
         self.assertFalse(result["release_authorized"])
+
+
+class R2BundlePreflightTests(unittest.TestCase):
+    def test_bundle_checks_actual_four_metadata_inputs_and_keeps_import_blocked(self):
+        import hashlib
+        import json
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from ai_factory import modeb_import_probe as probe
+        digest = lambda b: hashlib.sha256(b).hexdigest()
+        lock = b"fixture lock"
+        manifest = b"fixture manifest"
+        roots = b"fixture build manifest"
+        closure = json.dumps(dict(lock_sha256=digest(lock), wheel_manifest_sha256=digest(manifest),
+            workspace_roots=probe.ROOTS, runtime_external_records=126,
+            dependency_records=[dict(name="fixture-"+str(i)) for i in range(126)],
+            **{key:False for key in ("adopted","security_approved","legal_approved",
+              "installation_authorized","import_authorized","release_authorized")})).encode()
+        with tempfile.TemporaryDirectory() as tmp, patch.multiple(probe,
+                EXPECTED_LOCK_SHA=digest(lock), EXPECTED_MANIFEST_SHA=digest(manifest),
+                EXPECTED_CONTRACT_SHA=digest(closure), EXPECTED_ROOT_BUILD_SHA=digest(roots)):
+            paths = {}
+            for key, raw in (("closure", closure), ("lock", lock), ("manifest", manifest),
+                             ("root_build", roots)):
+                paths[key] = Path(tmp)/key
+                paths[key].write_bytes(raw)
+            result = probe.validate_r2_bundle(**paths)
+            self.assertEqual(result["status"], "STATIC_R2_BUNDLE_MATCH_UNAPPROVED")
+            self.assertEqual(result["verified_metadata_files"], 4)
+            self.assertFalse(result["sdk_imported"])
+            self.assertFalse(result["installation_authorized"])
+            self.assertFalse(result["import_authorized"])
+            self.assertFalse(result["release_authorized"])
+            for key in ("lock", "manifest", "root_build", "closure"):
+                original = paths[key].read_bytes()
+                paths[key].write_bytes(original+b" ")
+                with self.subTest(key=key), self.assertRaises(ValueError):
+                    probe.validate_r2_bundle(**paths)
+                paths[key].write_bytes(original)
+            with self.assertRaisesRegex(ValueError, "independent_r2_admission_required"):
+                probe.inspect(paths["closure"], digest(closure))
+
+    def test_bundle_rejects_nonregular_and_oversized_metadata_without_reading(self):
+        import os
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from ai_factory import modeb_import_probe as probe
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            regular = root/"file"
+            regular.write_bytes(b"x")
+            alias = root/"alias"
+            alias.symlink_to(regular)
+            big = root/"big"
+            big.write_bytes(b"x"*(probe.MAX_BUNDLE_METADATA+1))
+            with patch.object(probe, "validate_r2_contract", return_value={}):
+                for path in (alias, big, root):
+                    with self.subTest(path=path), self.assertRaises((ValueError, OSError)):
+                        probe.validate_r2_bundle(closure=regular, lock=path,
+                                                manifest=regular, root_build=regular)
