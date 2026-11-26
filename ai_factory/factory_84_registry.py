@@ -264,7 +264,9 @@ def select_v1_1(items, term=""):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="CODEN 84-source factory registry — NO installation")
-    parser.add_argument("--v1-1", action="store_true", help="Query 128 proposed repositories")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--v1-1", action="store_true", help="Query 128 proposed repositories")
+    modes.add_argument("--gateway-review", action="store_true", help="Query six review-only gateway and MCP candidates")
     parser.add_argument("--priority", choices=sorted(COUNTS))
     parser.add_argument("--wave", choices=sorted(WAVES))
     parser.add_argument("--requires", help="R29 factory requirement, e.g. ADD-13")
@@ -273,6 +275,22 @@ def main(argv=None):
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
     try:
+        if args.gateway_review:
+            if any((args.priority, args.wave, args.requires, args.source_id)):
+                raise ValueError("legacy filters do not apply to gateway review")
+            term = args.text or ""
+            if len(term) > 200:
+                raise ValueError("invalid search term")
+            selected = [row for row in load_gateway_review()
+                        if term.casefold() in row["repository"].casefold()
+                        or term.casefold() in row["role"].casefold()]
+            if args.json:
+                print(json.dumps(selected, indent=2, ensure_ascii=False))
+            else:
+                for row in selected:
+                    print(f"{row['repository']} — {row['role']} — REVIEW ONLY")
+                print(f"Matching candidates: {len(selected)}; approved: 0; enabled: 0; installed: 0")
+            return 0
         if args.v1_1:
             if any((args.priority, args.wave, args.requires, args.source_id)):
                 raise ValueError("legacy filters do not apply to v1.1 repositories")
