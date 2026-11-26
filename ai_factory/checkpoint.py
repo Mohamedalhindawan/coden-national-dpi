@@ -235,7 +235,8 @@ def read(root, task_id):
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         _regular_journal(fd)
-        fcntl.flock(fd, fcntl.LOCK_SH)
+        # A busy cooperating writer/reader requires review, not an indefinite wait.
+        fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
         records = _read_locked(fd)
         return dict(task_id=task_id, **_state(records))
     finally:
@@ -253,7 +254,8 @@ def record(root, task_id, *, event, branch=None, commit=None, next_action=None, 
     fd = os.open(path, os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         _regular_journal(fd)
-        fcntl.flock(fd, fcntl.LOCK_EX)
+        # A busy cooperating writer/reader requires review, not an indefinite wait.
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         events = _read_locked(fd)
         for old in events:
             if old["key"] == key:
