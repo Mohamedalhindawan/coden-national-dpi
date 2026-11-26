@@ -592,5 +592,74 @@ class LeasedModeBFixtureTests(unittest.TestCase):
         self.adapter.execute.assert_called_once()
 
 
+    def _run_bound_metadata_fixture(self, *, tamper=False):
+        from ai_factory import runtime_contract, queue_health
+        journal, tasks = self._journal_fixture()
+        assessments = []
+
+        def review_metadata_then_acknowledge(adapter_request):
+            # Test-local adapter only. The report explicitly says the
+            # real runtime is blocked; no inference or artifact is claimed.
+            request = {
+                "schema": runtime_contract.REQ_SCHEMA,
+                "task_id": adapter_request["task_id"],
+                "task_sha256": adapter_request["task_sha256"],
+                "classification": "synthetic",
+                "required_capabilities": ["coding", "tool_calls"],
+                "allowed_providers": ["local_qwen"],
+                "allow_external_api": False,
+                "max_tokens_total": 2048,
+                "max_duration_seconds": adapter_request["limits"]["seconds"],
+                "max_cost_usd": "0",
+            }
+            digest = hashlib.sha256(json.dumps(request, sort_keys=True,
+                separators=(",", ":"), ensure_ascii=True).encode("ascii")).hexdigest()
+            evidence = {
+                "schema": "coden.runtime.bound_report.v1",
+                "request_sha256": "0"*64 if tamper else digest,
+                "task_id": request["task_id"], "provider_id": "local_qwen",
+                "model_id": "local-qwen", "transport": "local",
+                "status": "blocked", "error_code": "policy_denied",
+                "artifact_sha256": None, "input_tokens": 0, "output_tokens": 0,
+                "duration_ms": 0, "cost_usd": "0",
+            }
+            assessed = runtime_contract.assess_bound_local_json(
+                request, json.dumps(evidence).encode("utf-8"),
+                expected_model_id="local-qwen")
+            assessments.append(assessed)
+            return self.acknowledge(adapter_request)
+
+        self.adapter.execute.side_effect = review_metadata_then_acknowledge
+        receipt = self.work(checkpoint_root=journal)
+        self.assertFalse(receipt["release_authorized"])
+        self.assertFalse(receipt["automatic_retry_allowed"])
+        self.adapter.execute.assert_called_once()
+        self.adapter.close.assert_called_once()
+        if tamper:
+            self.assertEqual(assessments, [])
+            self.assertEqual(receipt["status"], "needs_review")
+            self.assertEqual(self.queue.recover_expired(now=10**12), 1)
+            self.assertEqual(self.queue.read(self.task_id)["status"], "needs_review")
+        else:
+            self.assertEqual(len(assessments), 1)
+            self.assertEqual(assessments[0]["status"], "blocked")
+            self.assertFalse(assessments[0]["execution_authorized"])
+            self.assertFalse(assessments[0]["artifact_verified"])
+            self.assertEqual(receipt["status"], "fixture_completed_review_required")
+            self.assertFalse(receipt["qwen_connected"])
+        health = queue_health.snapshot(self.queue.path, journal, tasks)
+        self.assertTrue(health["snapshot_task_states_consistent"])
+        self.assertEqual(health["conditions"],
+            {"manual_review_required": 1} if tamper else {"consistent_review": 1})
+        self.assertIsNone(self.work(checkpoint_root=journal))
+        self.assertEqual(self.queue.read(self.task_id)["attempts"], 1)
+
+    def test_bound_runtime_metadata_fixture_integrates_with_worker_and_health(self):
+        self._run_bound_metadata_fixture()
+
+    def test_bound_runtime_metadata_tamper_quarantines_without_retry(self):
+        self._run_bound_metadata_fixture(tamper=True)
+
+
 if __name__ == "__main__":
     unittest.main()
