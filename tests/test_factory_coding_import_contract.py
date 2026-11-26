@@ -104,3 +104,39 @@ class R2BundlePreflightTests(unittest.TestCase):
                     with self.subTest(path=path), self.assertRaises((ValueError, OSError)):
                         probe.validate_r2_bundle(closure=regular, lock=path,
                                                 manifest=regular, root_build=regular)
+
+    def test_cli_blocked_receipt_explicitly_denies_installation(self):
+        import contextlib
+        import io
+        import json
+        from ai_factory import modeb_import_probe as probe
+        for args in (
+            ["--closure", "unused", "--operator-approved-import-only"],
+            ["--closure", "unused", "--validate-contract-only", "--lock", "unused"],
+        ):
+            with self.subTest(args=args), contextlib.redirect_stdout(io.StringIO()) as stream:
+                self.assertEqual(probe.main(args), 1)
+                receipt = json.loads(stream.getvalue())
+                for key in ("sdk_imported", "installation_authorized",
+                            "import_authorized", "release_authorized"):
+                    self.assertIs(receipt[key], False)
+
+    def test_contract_only_receipt_explicitly_denies_installation(self):
+        import hashlib
+        import json
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from ai_factory import modeb_import_probe as probe
+        raw = json.dumps(dict(lock_sha256=probe.EXPECTED_LOCK_SHA,
+            wheel_manifest_sha256=probe.EXPECTED_MANIFEST_SHA,
+            workspace_roots=probe.ROOTS, runtime_external_records=126,
+            dependency_records=[dict(name="fixture-"+str(i)) for i in range(126)],
+            **{key:False for key in ("adopted","security_approved","legal_approved",
+               "installation_authorized","import_authorized","release_authorized")})).encode()
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+                probe, "EXPECTED_CONTRACT_SHA", hashlib.sha256(raw).hexdigest()):
+            closure = Path(tmp)/"closure"
+            closure.write_bytes(raw)
+            receipt = probe.validate_r2_contract(closure)
+            self.assertIs(receipt["installation_authorized"], False)
