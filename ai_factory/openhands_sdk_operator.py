@@ -128,7 +128,8 @@ def prepare_modeb_request(task):
 
 
 def run_modeb_once(*, task, allow_agent=False, fixture_only=False,
-                   fixture_adapter=None, cancelled=None, source_identity=None):
+                   fixture_adapter=None, cancelled=None, source_identity=None,
+                   require_runtime_metadata=False):
     """Exercise the isolated-adapter contract using trusted injected fixtures.
 
     Never instantiates a real SDK, LocalWorkspace, process, or network client.
@@ -140,7 +141,8 @@ def run_modeb_once(*, task, allow_agent=False, fixture_only=False,
         return dict(_result(status), fixture_adapter_attempted=attempted,
                     runtime_isolation_verified=False, real_sdk_imported=False,
                     qwen_connected=False)
-    if type(allow_agent) is not bool or type(fixture_only) is not bool:
+    if (type(allow_agent) is not bool or type(fixture_only) is not bool
+            or type(require_runtime_metadata) is not bool):
         raise ValueError("explicit boolean scope required")
     if not allow_agent:
         return receipt("disabled")
@@ -159,6 +161,28 @@ def run_modeb_once(*, task, allow_agent=False, fixture_only=False,
         checkpoint._branch(source_identity["branch"])
         checkpoint._commit(source_identity["commit"])
         request["source_identity"] = dict(source_identity)
+    metadata_request = None
+    if require_runtime_metadata:
+        if source_identity is None:
+            raise ValueError("strict fixture metadata requires source binding")
+        from . import runtime_contract
+        metadata_request = {
+            "schema": runtime_contract.REQ_SCHEMA,
+            "task_id": request["task_id"],
+            "task_sha256": request["task_sha256"],
+            "classification": "synthetic",
+            "required_capabilities": ["coding", "tool_calls"],
+            "allowed_providers": ["local_qwen"],
+            "allow_external_api": False,
+            "max_tokens_total": 2048,
+            "max_duration_seconds": request["limits"]["seconds"],
+            "max_cost_usd": "0",
+        }
+        # Keep a separate expected copy outside the adapter's mutable request.
+        request["runtime_metadata_request"] = dict(metadata_request,
+            required_capabilities=list(metadata_request["required_capabilities"]),
+            allowed_providers=list(metadata_request["allowed_providers"]))
+    if source_identity is not None:
         request_digest = hashlib.sha256(project.encoded(request).encode("utf-8")).hexdigest()
     try:
         if cancelled is not None and cancelled():
@@ -191,11 +215,29 @@ def run_modeb_once(*, task, allow_agent=False, fixture_only=False,
     expected = {"status": "fixture_completed", "task_sha256": MODEB_TASK_SHA256}
     if request_digest is not None:
         expected["request_sha256"] = request_digest
-    if type(response) is not dict or response != expected:
+    if require_runtime_metadata:
+        if type(response) is not dict or set(response) != set(expected) | {"runtime_report_json"}:
+            return receipt("fixture_receipt_rejected", True)
+        if {k: response[k] for k in expected} != expected:
+            return receipt("fixture_receipt_rejected", True)
+        try:
+            assessment = runtime_contract.assess_bound_local_json(
+                metadata_request, response["runtime_report_json"], expected_model_id="local-qwen")
+            # A fixture must explicitly attest only a blocked policy outcome.
+            # No claim of model usage, artifact generation or successful run.
+            if (assessment["status"] != "blocked" or assessment["error_code"] != "policy_denied"
+                    or assessment["artifact_hash_recorded"] or assessment["input_tokens"] != 0
+                    or assessment["output_tokens"] != 0 or assessment["duration_ms"] != 0):
+                raise ValueError("fixture cannot claim runtime activity")
+        except (ValueError, TypeError, KeyError, RecursionError):
+            return receipt("fixture_receipt_rejected", True)
+    elif type(response) is not dict or response != expected:
         return receipt("fixture_receipt_rejected", True)
     result = receipt("fixture_completed_review_required", True)
     if request_digest is not None:
         result["request_sha256"] = request_digest
+    if require_runtime_metadata:
+        result.update(runtime_metadata_validated=True, runtime_metadata_status="blocked")
     return result
 
 
