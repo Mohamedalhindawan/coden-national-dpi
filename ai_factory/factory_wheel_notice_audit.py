@@ -603,6 +603,89 @@ def inspect_wheel_batch(candidates, *, scratch, inspect_native=False, fixture_na
             "record_verified": True, "release_authorized": False}
 
 
+# Retained Sprint 21/25 identities, not a new acquisition or admission.
+# The historical inventory is incomplete for license/provenance purposes.
+_R2_HISTORICAL_WHEELS = (
+    ("jiter", "0.16.0", "c682bea068a90b764577bdb78a60a4c1d1606daf9cd4c893832a37c7cc9d9026",
+     {"jiter/jiter.cpython-313-x86_64-linux-gnu.so":
+      (832152, "bbc712e9a00a2b01cfa40286d129cb43f019692d7bf94069f58ab1de6094d29e")}),
+    ("tokenizers", "0.23.2", "41c2f84d172449b4dadb9cdc508e3e364076613c35b16e76ecfe47a60d1e3305",
+     {"tokenizers/tokenizers.abi3.so":
+      (11317624, "7c4ddf7ad4251a646d324151b4d698da59531fdd892ea3abd24a6f323fcb1d6b")}),
+    ("fastmcp-slim", "4.2.0", "174239bed3ac47275afa7fe82941a65f86ad0314205195766c92b138c6dcfebe", {}),
+)
+
+
+def compare_r2_historical_receipt(receipt):
+    """Compare selected fields of a static receipt against retained evidence.
+
+    No file, network, subprocess, or import operations. Input is data, not
+    authenticated proof; a match never proves the scanner actually ran,
+    verifies every historical member, or authorizes any subsequent action.
+    """
+    def require(condition):
+        if not condition:
+            raise ValueError("R2 historical receipt mismatch")
+
+    def count(value):
+        return type(value) is int and value >= 0
+
+    require(type(receipt) is dict)
+    require(receipt.get("record_verified") is True)
+    for key in ("fixture_native", "native_internal_io_verified",
+                "release_authorized", "legacy_signatures_verified"):
+        require(receipt.get(key) is False)
+    for key in ("native_count", "native_output_bytes", "native_input_reserved_bytes"):
+        require(type(receipt.get(key)) is int and receipt[key] == 0)
+    require(type(receipt.get("compressed_bytes")) is int and receipt["compressed_bytes"] == 4724399)
+    require(type(receipt.get("expanded_bytes")) is int and receipt["expanded_bytes"] == 16094120)
+    wheels = receipt.get("wheels")
+    require(type(wheels) is list and len(wheels) == 3)
+    expected = {name: (version, digest, native) for name, version, digest, native in _R2_HISTORICAL_WHEELS}
+    seen = set()
+    compressed = expanded = members = 0
+    for wheel in wheels:
+        require(type(wheel) is dict and wheel.get("record_verified") is True)
+        for key in ("native_internal_io_verified", "release_authorized", "legacy_signatures_verified"):
+            require(wheel.get(key) is False)
+        dist = wheel.get("distribution")
+        require(type(dist) is dict and set(dist) == {"name", "version"})
+        name = dist["name"]
+        require(type(name) is str and name in expected and name not in seen)
+        version, digest, native = expected[name]
+        require(dist["version"] == version and wheel.get("wheel_sha256") == digest)
+        seen.add(name)
+        c, e = wheel.get("compressed_bytes"), wheel.get("expanded_bytes")
+        require(count(c) and c > 0 and count(e))
+        compressed += c
+        expanded += e
+        require(compressed <= 4724399 and expanded <= 16094120)
+        files = wheel.get("files")
+        require(type(files) is dict and 0 < len(files) <= 329 - members)
+        members += len(files)
+        file_bytes = 0
+        actual_native = {}
+        for path, row in files.items():
+            require(type(path) is str and type(row) is dict)
+            size, sha = row.get("bytes"), row.get("sha256")
+            require(count(size) and type(sha) is str and re.fullmatch(r"[0-9a-f]{64}", sha) is not None)
+            require(type(row.get("elf_magic")) is bool and type(row.get("record_hash_verified")) is bool)
+            require("native" not in row)
+            file_bytes += size
+            require(file_bytes <= e)
+            if row["elf_magic"]:
+                require(row["record_hash_verified"] is True)
+                actual_native[path] = (size, sha)
+        require(file_bytes == e and actual_native == native)
+    require(seen == set(expected) and compressed == 4724399 and expanded == 16094120 and members == 329)
+    return {"status": "HISTORICAL_RECEIPT_MATCH_UNAPPROVED", "matched_wheels": 3,
+            "regular_files": members, "receipt_origin_verified": False,
+            "complete_historical_member_match_verified": False,
+            "license_approved": False, "security_approved": False,
+            "installation_authorized": False, "import_authorized": False,
+            "release_authorized": False}
+
+
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
         raise ValueError('redirect denied')
