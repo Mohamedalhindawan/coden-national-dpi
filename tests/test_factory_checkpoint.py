@@ -135,5 +135,35 @@ class CheckpointTests(unittest.TestCase):
         self.assertFalse(state["execution_authorized"])
 
 
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "POSIX named pipe")
+    def test_fifo_journal_rejected_without_blocking_cli(self):
+        self.root.mkdir()
+        os.mkfifo(self.root / "pipe.jsonl", 0o600)
+        command = [sys.executable, "-m", "ai_factory.checkpoint", "--store",
+                   str(self.root), "show", "pipe"]
+        result = subprocess.run(command, cwd=Path(__file__).resolve().parents[1],
+                                capture_output=True, timeout=2)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn(b"Checkpoint error", result.stderr)
+
+    def test_duplicate_json_key_rejected_even_if_parsed_hash_matches(self):
+        self.create()
+        path = self.root / "task_1.jsonl"
+        raw = path.read_bytes()
+        # Duplicate branch has the same final parsed value and canonical hash.
+        path.write_bytes(raw.replace(b'"branch":', b'"branch":"feat/factory","branch":', 1))
+        with self.assertRaises(ValueError):
+            checkpoint.read(self.root, "task_1")
+        with self.assertRaises(ValueError):
+            checkpoint.record(self.root, "task_1", event="checkpoint")
+
+    def test_deeply_nested_invalid_journal_has_safe_value_error(self):
+        self.create()
+        path = self.root / "task_1.jsonl"
+        path.write_bytes(b"[" * 5000 + b"0" + b"]" * 5000 + b"\\n")
+        with self.assertRaises(ValueError):
+            checkpoint.read(self.root, "task_1")
+
+
 if __name__ == "__main__":
     unittest.main()
