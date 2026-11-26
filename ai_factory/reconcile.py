@@ -54,7 +54,7 @@ def _queue_rows(db_path):
             db.execute("PRAGMA trusted_schema=OFF")
             rows = db.execute(
                 "SELECT task_id,branch,commit_sha,task_sha256,status "
-                "FROM tasks ORDER BY task_id LIMIT ?", (MAX_TASKS + 1,)
+                "FROM tasks ORDER BY created_at,task_id LIMIT ?", (MAX_TASKS + 1,)
             ).fetchall()
     except sqlite3.Error as exc:
         raise ValueError("unreadable queue database or schema") from exc
@@ -167,10 +167,14 @@ def scan(queue_db, journal_dir, task_dir=None):
                 "execution_authorized": False,
                 "safe_to_auto_retry": False,
             })
+    # Preserve queue FIFO ordering before the existing display sort.
+    queued_order = [item["task_id"] for item in entries
+                    if item["condition"] == "consistent_queued"]
     entries.sort(key=lambda item: item["task_id"])
     counts = dict(sorted(Counter(item["condition"] for item in entries).items()))
     return {
         "tasks": entries,
+        "queued_order": queued_order,
         "total": len(entries),
         "needs_attention": any(item["needs_attention"] for item in entries),
         "conditions": counts,
