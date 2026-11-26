@@ -354,22 +354,24 @@ class R2HistoricalReceiptComparisonTests(unittest.TestCase):
              None, 0, None),
         )
         wheels = []
+        historical = {"jiter": (343320, 885473, 9),
+                      "tokenizers": (3386843, 11701061, 32),
+                      "fastmcp-slim": (994236, 3507586, 288)}
         for name, version, digest, native, size, native_digest in specs:
+            compressed, expanded, members = historical[name]
             files = {}
-            for i in range(109):
+            for i in range(members - int(native is not None)):
                 files[f"synthetic/{i}"] = {"sha256": "a"*64, "bytes": 0,
                                           "record_hash_verified": True, "elf_magic": False}
             if native:
                 files[native] = {"sha256": native_digest, "bytes": size,
                                  "record_hash_verified": True, "elf_magic": True}
+            files["synthetic/0"]["bytes"] = expanded - size
             wheels.append({"distribution": {"name": name, "version": version},
                            "wheel_sha256": digest, "files": files,
                            "record_verified": True, "native_internal_io_verified": False,
                            "release_authorized": False, "legacy_signatures_verified": False,
-                           "compressed_bytes": 1, "expanded_bytes": size})
-        wheels[-1]["files"]["synthetic/0"]["bytes"] = 16094120-832152-11317624
-        wheels[-1]["expanded_bytes"] = 16094120-832152-11317624
-        wheels[-1]["compressed_bytes"] = 4724397
+                           "compressed_bytes": compressed, "expanded_bytes": expanded})
         return {"wheels": wheels, "compressed_bytes": 4724399,
                 "expanded_bytes": 16094120, "record_verified": True,
                 "fixture_native": False, "native_count": 0, "native_output_bytes": 0,
@@ -410,5 +412,23 @@ class R2HistoricalReceiptComparisonTests(unittest.TestCase):
             with self.subTest(case=i):
                 receipt = self.fixture()
                 mutate(receipt)
+                with self.assertRaises(ValueError):
+                    compare_r2_historical_receipt(receipt)
+
+
+    def test_redistribution_preserving_batch_totals_is_rejected(self):
+        from ai_factory.factory_wheel_notice_audit import compare_r2_historical_receipt
+        for field in ("compressed_bytes", "expanded_bytes", "members"):
+            with self.subTest(field=field):
+                receipt = self.fixture()
+                first, second = receipt["wheels"][:2]
+                if field == "members":
+                    second["files"]["synthetic/moved"] = first["files"].pop("synthetic/1")
+                else:
+                    first[field] -= 1
+                    second[field] += 1
+                    if field == "expanded_bytes":
+                        first["files"]["synthetic/0"]["bytes"] -= 1
+                        second["files"]["synthetic/0"]["bytes"] += 1
                 with self.assertRaises(ValueError):
                     compare_r2_historical_receipt(receipt)
