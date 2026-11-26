@@ -7,6 +7,8 @@ Even validated artifact SHA-256 values are NOT file-content verification.
 """
 
 from decimal import Decimal, InvalidOperation
+import hashlib
+import json
 import re
 
 from . import recovery_policy
@@ -148,3 +150,66 @@ def assess(request, report):
         "provider_approved": False,
         "execution_authorized": False,
     }
+
+
+def assess_bound_local(request, report, *, expected_model_id):
+    """Review-only local metadata bound to the canonical JSON request.
+
+    This is a separate opt-in contract, not an authenticated receipt or
+    proof of the model binary, artifact contents, inference or permission.
+    A trusted reviewer supplies the expected model label. No network I/O.
+    """
+    if type(request) is not dict or set(request) != REQ_KEYS:
+        raise ValueError("invalid bound request")
+    if type(report) is not dict or set(report) != REPORT_KEYS | {"request_sha256"}:
+        raise ValueError("invalid bound report")
+    if (report["schema"] != "coden.runtime.bound_report.v1"
+            or request["allow_external_api"] is not False
+            or request["allowed_providers"] != ["local_qwen"]
+            or _money(request["max_cost_usd"]) != 0
+            or report["provider_id"] != "local_qwen"
+            or report["transport"] != "local"
+            or report["model_id"] != _label(expected_model_id)):
+        raise ValueError("bound local scope mismatch")
+    digest = _digest(report["request_sha256"], required=True)
+    legacy = {key: report[key] for key in REPORT_KEYS}
+    legacy["schema"] = REPORT_SCHEMA
+    result = assess(request, legacy)
+    try:
+        raw = json.dumps(request, sort_keys=True, separators=(",", ":"),
+                         ensure_ascii=True, allow_nan=False).encode("ascii")
+    except (TypeError, ValueError, OverflowError, RecursionError) as exc:
+        raise ValueError("bound request requires JSON metadata") from exc
+    if len(raw) > 8192 or hashlib.sha256(raw).hexdigest() != digest:
+        raise ValueError("bound request digest mismatch")
+    return dict(result, request_digest_matches=True,
+                report_origin_verified=False, model_identity_verified=False)
+
+
+def assess_bound_local_json(request, raw, *, expected_model_id):
+    """Validate bounded, untrusted UTF-8 metadata bytes, without executing them.
+
+    Reject duplicate keys at every depth, non-standard JSON constants, malformed
+    encoding and trailing documents. A valid report still proves no origin or
+    actual model execution. The caller must bound transport reads separately.
+    """
+    if type(raw) is not bytes or not 0 < len(raw) <= 8192:
+        raise ValueError("invalid bound report byte length")
+
+    def unique_keys(pairs):
+        obj = {}
+        for key, value in pairs:
+            if key in obj:
+                raise ValueError("duplicate report field")
+            obj[key] = value
+        return obj
+
+    def invalid_constant(value):
+        raise ValueError("invalid JSON constant")
+
+    try:
+        report = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_keys,
+                            parse_constant=invalid_constant)
+        return assess_bound_local(request, report, expected_model_id=expected_model_id)
+    except (UnicodeError, ValueError, TypeError, OverflowError, RecursionError) as exc:
+        raise ValueError("invalid bound report metadata") from exc

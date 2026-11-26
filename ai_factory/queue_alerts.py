@@ -24,6 +24,10 @@ def evaluate(queue_db, journal_dir, task_dir, *, now=None,
         if count > 0:
             alerts.append({"code": code, "severity": severity, "count": count})
 
+    if (health["snapshot_counts_consistent"] is not True
+            or health["snapshot_task_states_consistent"] is not True):
+        # One inconsistent snapshot, not a claimed number of changed tasks.
+        add("snapshot_inconsistent", "warning", 1)
     add("expired_leases", "warning", health["expired_leases"])
     add("reconciliation_required", "warning",
         sum(count for condition, count in health["conditions"].items()

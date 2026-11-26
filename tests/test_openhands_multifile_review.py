@@ -3,6 +3,7 @@
 No OpenHands agent/service is installed or run in CI; the workspace files
 stand in for an upstream SDK sandbox export.
 """
+import hashlib
 import json
 import os
 import subprocess
@@ -94,6 +95,55 @@ class OpenHandsMultiFileReviewTests(unittest.TestCase):
             self.assess()
         self.assertEqual(list(self.outputs.iterdir()), [])
 
+    def test_hardlinked_export_is_rejected_before_review(self):
+        outside = self.root / "operator-fixture.txt"
+        outside.write_text("synthetic external fixture")
+        target = self.source / "README.md"
+        target.unlink()
+        os.link(outside, target)
+        with patch.object(project, "lint") as lint, \
+             patch.object(project, "verify") as verify, self.assertRaises(ValueError):
+            self.assess()
+        lint.assert_not_called()
+        verify.assert_not_called()
+        self.assertEqual(list(self.outputs.iterdir()), [])
+
+    def test_review_output_must_be_disjoint_from_agent_export(self):
+        with patch.object(project, "supported_host", return_value=True), \
+             patch.object(project, "lint"), \
+             patch.object(project, "verify", return_value=1) as verify:
+            with self.assertRaises(ValueError):
+                openhands_multifile_review.review(self.task, self.source, self.source)
+        verify.assert_not_called()
+        self.assertEqual({p.name for p in self.source.iterdir()}, {"app", "tests", "README.md"})
+
+    def test_export_parent_swap_never_reads_external_fixture(self):
+        outside = self.root / "outside"
+        outside.mkdir()
+        (outside / "logic.py").write_text(SOURCE)
+        app = self.source / "app"
+        original = openhands_multifile_review._read_regular
+        called = False
+
+        def swap(*args, **kwargs):
+            nonlocal called
+            if not called:
+                called = True
+                app.rename(self.source / "old-app")
+                app.symlink_to(outside, target_is_directory=True)
+            return original(*args, **kwargs)
+
+        with patch.object(openhands_multifile_review, "_read_regular", side_effect=swap), \
+             patch.object(project, "supported_host", return_value=True), \
+             patch.object(project, "lint") as lint, \
+             patch.object(project, "verify", return_value=1) as verify:
+            with self.assertRaises((ValueError, OSError)):
+                self.assess()
+        self.assertTrue(called)
+        lint.assert_not_called()
+        verify.assert_not_called()
+        self.assertEqual(list(self.outputs.iterdir()), [])
+
     def test_rejects_unsafe_generated_python_without_executing_it(self):
         (self.source / "app" / "logic.py").write_text(
             "import os\ndef transform(value):\n    os.system('true')\n    return {}\n")
@@ -161,6 +211,33 @@ class OpenHandsMultiFileReviewTests(unittest.TestCase):
         self.assertFalse(receipt["release_authorized"])
         self.assertEqual(project.execute(root / "candidate.pyz", ["x", "x", "y"]),
                          {"x": 2, "y": 1})
+
+
+    def test_review_receipt_binds_all_three_original_files_and_task(self):
+        with patch.object(project, "supported_host", return_value=True), \
+             patch.object(project, "lint"), \
+             patch.object(project, "verify", side_effect=[2, 1]):
+            result = self.assess()
+        receipt = json.loads((result["directory"] / "review.json").read_text())
+        expected = {name: hashlib.sha256((self.source / name).read_bytes()).hexdigest()
+                    for name in sorted(openhands_multifile_review.EXPECTED_FILES)}
+        self.assertEqual(receipt["source_files_sha256"], expected)
+        self.assertEqual(receipt["task_sha256"],
+                         hashlib.sha256(project.encoded(self.task).encode("utf-8")).hexdigest())
+        self.assertFalse(receipt["agent_authored_tests_executed"])
+        self.assertFalse(receipt["release_authorized"])
+
+    def test_independent_timeout_keeps_evidence_without_review_receipt(self):
+        with patch.object(project, "supported_host", return_value=True), \
+             patch.object(project, "lint"), \
+             patch.object(project, "verify", side_effect=[2, subprocess.TimeoutExpired("fixture", 5)]):
+            result = self.assess()
+        self.assertEqual(result["status"], "failed")
+        self.assertTrue((result["directory"] / "candidate.pyz").is_file())
+        self.assertFalse((result["directory"] / "review.json").exists())
+        self.assertFalse(result["automatic_retry_allowed"])
+        self.assertFalse(result["execution_authorized"])
+        self.assertFalse(result["release_authorized"])
 
 
 if __name__ == "__main__":

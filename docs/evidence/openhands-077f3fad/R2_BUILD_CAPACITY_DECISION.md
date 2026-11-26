@@ -22,3 +22,41 @@ Largest inputs: litellm 1.108.3 36341841 B, botocore 1.44.3 16368633 B, pillow 1
 Reuse existing source build recipe and rootless envelope; do not launch an agent or run build in the old unrestricted runner. Proposed upper limits for one experiment: 2 CPU, 4 GiB RAM including tmpfs, no swap, 128 PIDs, 1 GiB private scratch with 65536 inodes, 600 s wall-clock (plus bounded cleanup), one attempt. No paid API, no GPU, no network in build, no privilege/socket/production mounts or inherited credentials. No claim these limits suffice; abort on preflight/resource failure, no automatic increase or retries. Exact prior runtime base Ubuntu digest 9a04f13b3f80ef056361e30868593b1cfd2279fe19e4081cb93a90bf56819d6a is evidence only; Python 3.13.15 executable/build environment immutable archive/digest and OS dependency evidence still needed, not established by version alone. Prior uv 0.13.7 / setup action pins are reuse candidates, not complete interpreter provenance. Stage only pinned source/patch, verified wheel files and approved interpreter as isolated read-only input; measure expanded archive bytes/member counts safely without installing first, ensure writable budgets, use offline/no dependency resolution install with exact verified inputs only, validate resulting environment before building. Preserve all notices and explicit legal decisions; outstanding native and static Rust attribution and source-to-wheel rights review remain. Do not silently approve source use/distribution. Use synthetic negative checks for network, credentials, resource limits and host access, independent process accounting and cleanup. Only sanitized artifacts; no execution of generated server during this build-only experiment. Evidence must distinguish build success, installed inventory, signed provenance and final runtime license/security closure. Separate explicit approval for a real official SDK Conversation after actual runtime checks and independent #148 acceptance. No main merge/deploy. 
 
 Operator decision requested: approve one isolated, non-agent R2 build experiment subject to all prerequisite evidence and review, within these ceilings, or adjust scope. This document itself grants no authority. 
+
+
+## 2026-11-26 — Retained inventory recomputation and source-tree size review
+REVIEW ONLY / Issue #162 OPEN / no build or installation authorization.
+
+Previous candidate 6ddb84e84134389c4d1b4929f45f2bf5baa31225: Prototype run 45890303106 job 140151039253 completed SUCCESS, 579 tests (578 passed, 1 optional SDK skip); OpenAPI OK; intake 45890302915 and packaging 45890302968 SUCCESS; six specialized workflows skipped. RED 243b89092eba059249dfd2c20531a2729fe85bc2, run 45890255305 job 140150888200: 579 tests, 3 failures, 1 skip. Reclaim-first staging ordering and explicit queue snapshot inconsistency alert tested; exhaustive oracle for 125 three-archive size combinations. No measured real-build improvement.
+
+### Recomputed retained inventory (no candidate packages downloaded)
+Reopened retained artifact 14981902769, ZIP SHA256 7545f36fd8a8e4a049fa980cf60a716787ab0f3db05eb923182bd6d084ffe6b6, and 14981519094, ZIP SHA256 091a251a8f10cd704b2a42520140c697cab31464541763da80d6bffe4fbf805e. Both locally rehashed and CRC clean. Wheel inventory 131 unique names, identity digest 65775d2185597245ae1f2e7aa98820a4c92040bd21b4bc8e8725495dd2e6922f and size-bound digest bebbaa4e714a76ff1a128ca98862fdb3e48cbf4775669af2e1d56b4d88f30e9a match existing workflow binder. Python candidate SHA256 45816a2653b47a6cc48d8ada4ea1185758a4c2db389d012b31e0205e5ccb548b remains unexecuted/unadmitted. Recomputed using retained inventory metadata, not freshly inspected target archive bytes.
+
+| Quantity | Bytes |
+|---|---:|
+| 132 input compressed total | 223853378 |
+| Expanded payload total | 687648604 |
+| Initial page-rounded input allocation | 224100352 |
+| Old modeled peak | 765633786 |
+| Reclaim-first modeled peak | 765633786 |
+| No-reclaim concurrent payload model | 989725946 |
+| Scratch ceiling | 1006632960 |
+| Proposed reserve | 134217728 |
+| Remaining after modeled peak and reserve | 106781446 |
+| No-reclaim plus reserve deficit | 117310714 |
+
+19042 archive members. All 132 have modeled expanded allocation greater than rounded compressed allocation, so the new ordering provides NO improvement for this exact retained dataset. Prior 270-to-191-byte synthetic improvement is not a production estimate. Reclamation model assumes only verified disposable archives can be reclaimed; input retention must be explicitly reviewed, no deletion here.
+
+### Exact upstream tracked source metadata (not checkout/build evidence)
+GitHub recursive tree for OpenHands/software-agent-sdk commit 077f3fad6d31cd852be5c87176e0a93c3b446126 returned nontruncated tree and 2694 entries; four subtrees below. Sum Git blob sizes and round each tracked blob to 4096-byte pages. No symlinks or gitlinks reported for these roots or the whole tree. No package/source execution or checkout, no generated-file/installer size measurement.
+
+| Root | Tree SHA | Files | Bytes | 4096-byte rounded |
+|---|---|---:|---:|---:|
+| openhands-sdk | 5a581a7caab58b726717435d387872b5e52799b6 | 340 | 3475517 | 4227072 |
+| openhands-tools | efbe422a9a589955a2af6d0d5bcf273bcded6bb9 | 128 | 839946 | 1150976 |
+| openhands-workspace | 6f71f57b8708c3bae22c3a9be064edbb98f3754f | 23 | 143338 | 196608 |
+| openhands-agent-server | ffa31982fa7ff66ccce52a5a8b847894316f5dd1 | 127 | 1775331 | 2023424 |
+| Four roots | — | 618 | 6234132 | 7598080 |
+| Entire tracked tree | — | 2297 | 28593051 | 33579008 |
+
+Illustrative additive sensitivity, assuming source allocations coexist with peak and are incremental to unchanged reserve: four roots leave 99183366 B, one whole tracked tree leaves 73202438 B, two copies leave 39623430 B. The full tree includes the four roots; do not sum both as separate copies. Tracked bytes do not bound checkout, .git, patched sources, generated files, build isolation/install duplication, filesystem directory metadata, outputs, cache or inode consumption; reserve adequacy remains unproven. No-reclaim with reserve exceeds ceiling even without sources. No increased scratch request or automatic reclaim policy. No independent review, source-to-binary proof or runtime admission; R2 REPAIR_NOT_ADOPTED, GNU EXPKEYSIG unresolved. Build/install/import/real Qwen/agent still blocked, release_authorized=false.

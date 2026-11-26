@@ -111,3 +111,2505 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+  source-capacity-review:
+    if: github.event.repository.private == false && github.head_ref == 'fix/factory-staging-inventory-consistency-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: OpenHands/software-agent-sdk
+          ref: 077f3fad6d31cd852be5c87176e0a93c3b446126
+          persist-credentials: false
+          path: upstream
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45474396046
+          name: coding-packaging-source-contract
+          path: inputs
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45528990156
+          name: r2-staging-capacity-review
+          path: capacity
+      - name: Measure patched tracked source without executing it
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          test "$(git -C upstream rev-parse HEAD)" = 077f3fad6d31cd852be5c87176e0a93c3b446126
+          printf '%s\n' '0609700a143b3fc8b0439f7ff2c74b75aa41c220fa9ba4294db35bac54b8f70f  inputs/coding-profile-source.patch' '4efcc832216289d4cc845f52582f49954734499e712af0e8bac716a324d5e086  capacity/staging-capacity.json' | sha256sum -c -
+          git -C upstream apply --check ../inputs/coding-profile-source.patch
+          git -C upstream apply ../inputs/coding-profile-source.patch
+          git -C upstream diff --check
+          git -C upstream ls-files --stage -z > evidence/tracked-index.nul
+          python3 - <<'PY'
+          import hashlib, json, stat
+          from pathlib import Path
+          root=Path("upstream")
+          groups={n:{"files":0,"bytes":0,"page_rounded_bytes":0,"symlinks":0} for n in
+                  ("openhands-sdk","openhands-tools","openhands-agent-server","openhands-workspace","other")}
+          records=[]
+          for entry in Path("evidence/tracked-index.nul").read_bytes().split(b"\0"):
+              if not entry: continue
+              meta, raw=entry.split(b"\t",1)
+              mode, oid, stage=meta.decode().split()
+              name=raw.decode("utf-8")
+              relative=Path(name)
+              if relative.is_absolute() or ".." in relative.parts or stage!="0":
+                  raise ValueError("unexpected tracked entry")
+              p=root/relative
+              for parent in relative.parents:
+                  if (root/parent).is_symlink(): raise ValueError("linked source parent")
+              info=p.lstat()
+              key=relative.parts[0] if relative.parts[0] in groups else "other"
+              g=groups[key]
+              if mode=="120000" and stat.S_ISLNK(info.st_mode):
+                  g["symlinks"]+=1
+                  continue
+              if mode not in ("100644","100755") or not stat.S_ISREG(info.st_mode):
+                  raise ValueError("unreviewed source member type")
+              size=info.st_size
+              if size>128*1024**2: raise ValueError("source member too large")
+              digest=hashlib.sha256(p.read_bytes()).hexdigest()
+              allocated=((size+4095)//4096)*4096
+              g["files"]+=1; g["bytes"]+=size; g["page_rounded_bytes"]+=allocated
+              records.append({"path":name,"bytes":size,"sha256":digest,"page_rounded_bytes":allocated})
+          assert all(groups[n]["files"] for n in groups if n!="other")
+          assert (root/"LICENSE").is_file()
+          receipt=json.loads(Path("capacity/staging-capacity.json").read_text())
+          assert receipt["input_count"]==132 and receipt["build_authorized"] is False
+          source=sum(g["page_rounded_bytes"] for g in groups.values())
+          editable=sum(g["page_rounded_bytes"] for n,g in groups.items() if n!="other")
+          peak=receipt["peak_bytes"]
+          cap=960*1024**2
+          # Stress scenarios only: no claim of installer or PyInstaller allocation.
+          scenarios=[]
+          for temporary,output,duplication in [(32,64,0),(32,64,64),(64,128,128),(32,64,288)]:
+              total=peak+source+(temporary+output+duplication)*1024**2
+              scenarios.append(dict(temporary_mib=temporary,output_mib=output,duplication_mib=duplication,modeled_bytes=total,fits=total<=cap,headroom_bytes=cap-total))
+          report=dict(groups=groups,tracked_regular_file_count=len(records),tracked_page_rounded_bytes=source,
+                      editable_page_rounded_bytes=editable,source_plus_staging_model_bytes=peak+source,
+                      scenarios=scenarios,source_license_sha256=hashlib.sha256((root/"LICENSE").read_bytes()).hexdigest(),
+                      metadata_overhead_measured=False,symlink_allocation_measured=False,actual_installer_peak_measured=False,
+                      actual_build_output_measured=False,build_authorized=False,release_authorized=False)
+          Path("evidence/source-capacity.json").write_text(json.dumps(report,indent=2))
+          Path("evidence/source-files.json").write_text(json.dumps(records,indent=2))
+          print(json.dumps(report,indent=2))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-patched-source-capacity
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  official-runtime-metadata-review:
+    if: github.event.repository.private == false && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    permissions: {}
+    steps:
+      - name: Check exact upstream image tag availability and manifest identity only
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          python3 - <<'PY'
+          import hashlib, json, re, urllib.error, urllib.request
+          from pathlib import Path
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+          opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+          def get(url,headers=None):
+              with opener.open(urllib.request.Request(url,headers=headers or {}),timeout=15) as res:
+                  data=res.read(2*1024**2+1)
+                  if len(data)>2*1024**2: raise ValueError("metadata too large")
+                  return data,res.headers
+          root="https://ghcr.io/v2/openhands/agent-server/"
+          raw,_=get("https://ghcr.io/token?service=ghcr.io&scope=repository%3Aopenhands%2Fagent-server%3Apull")
+          token=json.loads(raw)["token"]
+          assert isinstance(token,str) and 0<len(token)<16384
+          headers={"Authorization":"Bearer "+token,"Accept":", ".join((
+              "application/vnd.oci.image.index.v1+json",
+              "application/vnd.oci.image.manifest.v1+json",
+              "application/vnd.docker.distribution.manifest.list.v2+json",
+              "application/vnd.docker.distribution.manifest.v2+json"))}
+          tags=["077f3fa-python-amd64","077f3fa-python-minimal-amd64",
+                "077f3fa-python-amd64-source-minimal","077f3fa-python-minimal-amd64-source-minimal"]
+          results=[]
+          def manifest(ref):
+              data,h=get(root+"manifests/"+ref,headers)
+              digest="sha256:"+hashlib.sha256(data).hexdigest()
+              assert h.get("Docker-Content-Digest")==digest
+              if ref.startswith("sha256:"): assert ref==digest
+              Path("evidence",digest[7:]+".json").write_bytes(data)
+              return json.loads(data),digest
+          for tag in tags:
+              try:
+                  obj,digest=manifest(tag)
+                  image,selected=obj,digest
+                  if "manifests" in obj:
+                      m=[m for m in obj["manifests"] if m.get("platform",{}).get("os")=="linux" and m.get("platform",{}).get("architecture")=="amd64"]
+                      assert len(m)==1
+                      image,selected=manifest(m[0]["digest"])
+                  layers=image["layers"]
+                  assert 0<len(layers)<256 and all(type(l["size"]) is int and l["size"]>=0 for l in layers)
+                  config=image["config"]["digest"]
+                  assert re.fullmatch(r"sha256:[a-f0-9]{64}",config)
+                  results.append(dict(tag=tag,status="MANIFEST_FOUND",manifest_digest=digest,amd64_manifest_digest=selected,
+                                      config_digest=config,compressed_layer_bytes=sum(l["size"] for l in layers),
+                                      layers=len(layers),source_provenance_verified=False,license_approved=False))
+              except urllib.error.HTTPError as exc:
+                  results.append(dict(tag=tag,status="REGISTRY_HTTP_"+str(exc.code)))
+          report=dict(results=results,upstream_commit="077f3fad6d31cd852be5c87176e0a93c3b446126",
+                      manifests_only=True,image_layers_downloaded=False,source_provenance_verified=False,
+                      installed_dependency_inventory_verified=False,rootless_runtime_verified=False,
+                      build_authorized=False,release_authorized=False)
+          Path("evidence/review.json").write_text(json.dumps(report,indent=2))
+          print(json.dumps(report,indent=2))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-official-runtime-metadata-review
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  official-minimal-attestation-review:
+    if: github.event.repository.private == false && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    permissions: {}
+    steps:
+      - name: Read exact minimal image attestation metadata only
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          python3 - <<'PY'
+          import hashlib,json,re,urllib.error,urllib.request
+          from urllib.parse import urlsplit
+          from pathlib import Path
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl): return None
+          opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+          root="https://ghcr.io/v2/openhands/agent-server/"
+          image="sha256:9a36355fa2baacaae1c6dd5a1a80492bba89d1dec5a536af572ba5fb3e96e22f"
+          att="sha256:bc6e00fe25f5ede26b457ce7bd1db4a37b44229e51c304d6b6761d868b72c14a"
+          limit=32*1024**2
+          def fetch(url, headers=None, cap=limit):
+              with opener.open(urllib.request.Request(url,headers=headers or {}),timeout=15) as res:
+                  raw=res.read(cap+1)
+                  if len(raw)>cap: raise ValueError("metadata exceeds limit")
+                  return raw
+          token=json.loads(fetch("https://ghcr.io/token?service=ghcr.io&scope=repository%3Aopenhands%2Fagent-server%3Apull",cap=65536))["token"]
+          assert isinstance(token,str) and 0<len(token)<16384
+          auth={"Authorization":"Bearer "+token}
+          def checked(raw,digest):
+              assert "sha256:"+hashlib.sha256(raw).hexdigest()==digest
+              return json.loads(raw)
+          raw=fetch(root+"manifests/"+att,dict(auth,Accept="application/vnd.oci.image.manifest.v1+json"),cap=1048576)
+          obj=checked(raw,att)
+          Path("evidence/attestation-manifest.json").write_bytes(raw)
+          layers=obj["layers"]
+          assert 0<len(layers)<=8
+          results=[]
+          for layer in layers:
+              digest=layer["digest"]
+              assert re.fullmatch(r"sha256:[0-9a-f]{64}",digest)
+              size=layer["size"]
+              assert type(size) is int and 0<size<=limit
+              assert layer["mediaType"]=="application/vnd.in-toto+json"
+              result=dict(digest=digest,size=size,declared_predicate=layer.get("annotations",{}).get("in-toto.io/predicate-type"))
+              try:
+                  try: payload=fetch(root+"blobs/"+digest,auth,cap=size)
+                  except urllib.error.HTTPError as exc:
+                      if exc.code not in (301,302,303,307,308): raise
+                      target=exc.headers.get("Location","")
+                      u=urlsplit(target)
+                      # Never forward the registry token to a redirect host.
+                      if u.scheme!="https" or u.hostname!="pkg-containers.githubusercontent.com" or u.username or u.password or u.port not in (None,443):
+                          result["status"]="UNAPPROVED_REDIRECT_HOST"
+                          results.append(result)
+                          continue
+                      payload=fetch(target,cap=size)
+                  assert len(payload)==size
+                  statement=checked(payload,digest)
+                  assert isinstance(statement.get("predicate"),dict)
+                  subject=any(x.get("digest",{}).get("sha256")==image[7:] for x in statement.get("subject",[]))
+                  assert subject
+                  Path("evidence",digest[7:]+".json").write_bytes(payload)
+                  pred=statement["predicate"]; kind=statement.get("predicateType")
+                  result.update(status="DIGEST_AND_SUBJECT_MATCH",predicate_type=kind,subject_matches=True)
+                  packages=pred.get("packages",[])
+                  if isinstance(packages,list):
+                      hits=[]
+                      for item in packages:
+                          name=str(item.get("name","")).lower().replace("_","-")
+                          if name in ("browser-use-sdk","lmnr-claude-code-proxy","browser-use","lmnr"):
+                              hits.append(dict(name=name,version=item.get("versionInfo"),license=item.get("licenseConcluded")))
+                      result.update(spdx_package_records=len(packages),relevant_packages=hits)
+              except urllib.error.HTTPError as exc:
+                  result["status"]="HTTP_"+str(exc.code)
+              results.append(result)
+          report=dict(image_manifest_digest=image,attestation_manifest_digest=att,results=results,
+                      signature_identity_verified=False,compiled_inventory_verified=False,legal_approved=False,
+                      image_layers_downloaded=False,build_authorized=False,release_authorized=False)
+          Path("evidence/review.json").write_text(json.dumps(report,indent=2))
+          print(json.dumps(report,indent=2))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-official-minimal-attestation-review
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  official-minimal-config-review:
+    if: github.event.repository.private == false && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    permissions: {}
+    steps:
+      - name: Review only immutable OCI image config
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          python3 - <<'PY'
+          import hashlib,json,re,urllib.error,urllib.request
+          from urllib.parse import urlsplit
+          from pathlib import Path
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl): return None
+          opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+          root="https://ghcr.io/v2/openhands/agent-server/"
+          image="sha256:9a36355fa2baacaae1c6dd5a1a80492bba89d1dec5a536af572ba5fb3e96e22f"
+          config="sha256:132971a4abd0f0274f66045f4a6fd37d89b45c4a1029d3c17849a54a3dc3d9f1"
+          def fetch(url,headers=None,cap=1048576):
+              with opener.open(urllib.request.Request(url,headers=headers or {}),timeout=15) as res:
+                  data=res.read(cap+1)
+                  if len(data)>cap: raise ValueError("metadata too large")
+                  return data
+          def checked(raw,digest):
+              assert "sha256:"+hashlib.sha256(raw).hexdigest()==digest
+              return json.loads(raw)
+          token=json.loads(fetch("https://ghcr.io/token?service=ghcr.io&scope=repository%3Aopenhands%2Fagent-server%3Apull",cap=65536))["token"]
+          assert isinstance(token,str) and 0<len(token)<16384
+          auth={"Authorization":"Bearer "+token}
+          manifest=checked(fetch(root+"manifests/"+image,dict(auth,Accept="application/vnd.oci.image.manifest.v1+json")),image)
+          desc=manifest["config"]
+          assert desc["digest"]==config
+          assert desc["mediaType"] in ("application/vnd.oci.image.config.v1+json","application/vnd.docker.container.image.v1+json")
+          size=desc["size"]
+          assert type(size) is int and 0<size<=1048576
+          try: raw=fetch(root+"blobs/"+config,auth,cap=size)
+          except urllib.error.HTTPError as exc:
+              if exc.code not in (301,302,303,307,308): raise
+              target=exc.headers.get("Location","")
+              u=urlsplit(target)
+              assert u.scheme=="https" and u.hostname=="pkg-containers.githubusercontent.com" and not u.username and not u.password and u.port in (None,443)
+              raw=fetch(target,cap=size)
+          assert len(raw)==size
+          obj=checked(raw,config)
+          assert obj["os"]=="linux" and obj["architecture"]=="amd64"
+          diff_ids=obj["rootfs"]["diff_ids"]
+          assert obj["rootfs"]["type"]=="layers" and len(diff_ids)==len(manifest["layers"])==14
+          assert all(re.fullmatch(r"sha256:[0-9a-f]{64}",d) for d in diff_ids)
+          cfg=obj["config"]
+          env=cfg.get("Env") or []
+          assert isinstance(env,list) and all(isinstance(x,str) and "=" in x for x in env)
+          allowed={"PATH","LANG","LC_ALL","LOG_JSON","OH_ENABLE_VSCODE","OH_ACP_SKILL_SOURCING","OPENHANDS_BUILD_GIT_SHA","OPENHANDS_BUILD_GIT_REF","LD_LIBRARY_PATH","HOME"}
+          report=dict(status="CONFIG_DIGEST_VERIFIED",image_manifest_digest=image,config_digest=config,config_bytes=size,
+                      os=obj["os"],architecture=obj["architecture"],user=cfg.get("User"),entrypoint=cfg.get("Entrypoint"),
+                      cmd=cfg.get("Cmd"),working_dir=cfg.get("WorkingDir"),env_names=[x.split("=",1)[0] for x in env],
+                      reviewed_environment={k:v for k,v in (x.split("=",1) for x in env) if k in allowed},
+                      exposed_ports=sorted((cfg.get("ExposedPorts") or {}).keys()),volumes=sorted((cfg.get("Volumes") or {}).keys()),
+                      rootfs_diff_ids=diff_ids,layer_count=len(diff_ids),image_layers_downloaded=False,
+                      installed_inventory_verified=False,signature_identity_verified=False,license_approved=False,
+                      runtime_isolation_verified=False,build_authorized=False,release_authorized=False)
+          Path("evidence/config-review.json").write_text(json.dumps(report,indent=2)+"\n")
+          # Preserve the exact public config object, not layer payloads or
+          # registry authorization. Only the previously reviewed env key set
+          # is eligible for archival; no config values are printed to logs.
+          assert set(x.split("=",1)[0] for x in env)=={"PATH","OH_ENABLE_VSCODE","OPENHANDS_BUILD_GIT_SHA","OPENHANDS_BUILD_GIT_REF","ACP_NODE_DIR","LC_ALL","LANG","LOG_JSON","OH_ACP_SKILL_SOURCING","LD_LIBRARY_PATH"}
+          assert len(env)==10
+          Path("evidence",config.split(":",1)[1]+".json").write_bytes(raw)
+          report["raw_public_config_retained"]=True
+          Path("evidence/config-review.json").write_text(json.dumps(report,indent=2)+"\n")
+          print("CONFIG_DIGEST_VERIFIED",config,"layers",len(diff_ids),"raw public metadata retained")
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-official-minimal-config-review
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  official-minimal-referrer-discovery:
+    if: github.event.repository.private == false && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    permissions: {}
+    steps:
+      - name: Discover signature and SBOM metadata without fetching runtime layers
+        run: |
+          set -euo pipefail
+          mkdir -m 0700 evidence
+          python3 - <<'PY'
+          import hashlib,json,re,urllib.error,urllib.request
+          from pathlib import Path
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl): return None
+          opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+          root="https://ghcr.io/v2/openhands/agent-server/"
+          def fetch(url,headers=None,cap=2097152):
+              try:
+                  with opener.open(urllib.request.Request(url,headers=headers or {}),timeout=10) as res:
+                      raw=res.read(cap+1)
+                      if len(raw)>cap: raise ValueError("metadata exceeds cap")
+                      return res.status,raw,res.headers
+              except urllib.error.HTTPError as exc:
+                  return exc.code,b"",exc.headers
+          code,raw,_=fetch("https://ghcr.io/token?service=ghcr.io&scope=repository%3Aopenhands%2Fagent-server%3Apull",cap=65536)
+          assert code==200
+          token=json.loads(raw)["token"]
+          assert isinstance(token,str) and 0<len(token)<16384
+          auth={"Authorization":"Bearer "+token,"Accept":", ".join(("application/vnd.oci.image.index.v1+json","application/vnd.oci.image.manifest.v1+json","application/vnd.docker.distribution.manifest.list.v2+json","application/vnd.docker.distribution.manifest.v2+json"))}
+          records=[]
+          for subject in ("9a36355fa2baacaae1c6dd5a1a80492bba89d1dec5a536af572ba5fb3e96e22f","7796a8a2b901fb3f706312d1c10bfda9185b4c6cee5594e1a32f81a62d2dd95d"):
+              digest="sha256:"+subject
+              for kind,path in [("oci_referrers","referrers/"+digest),("fallback_index","manifests/sha256-"+subject),("cosign_signature","manifests/sha256-"+subject+".sig"),("cosign_attestation","manifests/sha256-"+subject+".att"),("cosign_sbom","manifests/sha256-"+subject+".sbom")]:
+                  code,raw,h=fetch(root+path,auth)
+                  record=dict(subject=digest,endpoint=kind,http_status=code)
+                  if code==200:
+                      obj=json.loads(raw)
+                      assert isinstance(obj,dict)
+                      raw_sha="sha256:"+hashlib.sha256(raw).hexdigest()
+                      if kind!="oci_referrers": assert h.get("Docker-Content-Digest")==raw_sha
+                      entries=obj.get("manifests",obj.get("layers",[]))
+                      assert isinstance(entries,list) and len(entries)<=256
+                      desc=[]
+                      for entry in entries:
+                          assert re.fullmatch(r"sha256:[0-9a-f]{64}",entry["digest"])
+                          desc.append({k:entry[k] for k in ("digest","mediaType","artifactType","size") if k in entry})
+                      record.update(metadata_sha256=raw_sha,descriptors=desc,artifact_type=obj.get("artifactType"),pagination_present=bool(h.get("Link")))
+                      Path("evidence",subject+"-"+kind+".json").write_bytes(raw)
+                  records.append(record)
+              # No registry token is sent to GitHub's REST API.
+              code,raw,h=fetch("https://api.github.com/repos/OpenHands/software-agent-sdk/attestations/"+digest,{"Accept":"application/vnd.github+json","User-Agent":"CODEN-metadata-review","X-GitHub-Api-Version":"2022-11-28"})
+              record=dict(subject=digest,endpoint="github_attestations",http_status=code)
+              if code==200:
+                  obj=json.loads(raw)
+                  assert isinstance(obj,dict) and isinstance(obj.get("attestations"),list)
+                  record.update(bundle_count=len(obj["attestations"]),pagination_present=bool(h.get("Link")),metadata_sha256="sha256:"+hashlib.sha256(raw).hexdigest())
+                  Path("evidence",subject+"-github-attestations.json").write_bytes(raw)
+              records.append(record)
+          report=dict(status="DISCOVERY_ONLY",results=records,signature_identity_verified=False,sbom_verified=False,
+                      installed_inventory_verified=False,image_layers_downloaded=False,build_authorized=False,release_authorized=False)
+          Path("evidence/referrer-review.json").write_text(json.dumps(report,indent=2)+"\n")
+          print(json.dumps(report,indent=2))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-official-minimal-referrer-discovery
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  official-minimal-authorized-offline-inspection:
+    # Single operator-authorized transition from Sprint11. No automatic repeat.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '59e2f0bf81502c8a0bc58740a5ce730c06fb2efe' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Acquire exact public image blobs and inspect offline, never load or execute image
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          store="$(mktemp -d "${RUNNER_TEMP}/coden-oci.XXXXXXXX")"
+          guard="$(mktemp "${RUNNER_TEMP}/coden-offline-guard.XXXXXXXX.py")"
+          cleanup() {
+            rm -f -- "$guard"
+            if mountpoint -q "$store"; then
+              sudo umount "$store" || { printf '%s\n' 'CLEANUP_FAILED' > "$ev/cleanup.txt"; return 1; }
+            fi
+            rmdir "$store" || return 1
+            printf '%s\n' 'STORE_UNMOUNTED_AND_REMOVED' > "$ev/cleanup.txt"
+          }
+          trap cleanup EXIT
+          test "$(id -u)" != 0
+          # Host-only quota mount; no privileged container, Docker socket or image execution.
+          sudo mount -t tmpfs -o "size=512m,nosuid,nodev,noexec,mode=0700,uid=$(id -u),gid=$(id -g)" tmpfs "$store"
+          mountpoint -q "$store"
+          findmnt -n -o FSTYPE,OPTIONS --mountpoint "$store" > "$ev/store-mount.txt"
+          # Prove network namespace and unprivileged execution before acquisition.
+          uid="$(id -u)"; gid="$(id -g)"
+          host_ns="$(readlink /proc/self/ns/net)"
+          cat > "$guard" <<'PYGUARD'
+          import os,runpy,socket,sys
+          from pathlib import Path
+          host=sys.argv[1]
+          fields={k:v.strip() for k,v in (line.split(":",1) for line in Path("/proc/self/status").read_text().splitlines() if ":" in line)}
+          kernel=sorted(name for _,name in socket.if_nameindex())
+          proc_names=sorted(line.split(":",1)[0].strip() for line in Path("/proc/self/net/dev").read_text().splitlines()[2:] if ":" in line)
+          ipv4=Path("/proc/self/net/route").read_text().splitlines()[1:]
+          ipv6=Path("/proc/self/net/ipv6_route")
+          routes6=ipv6.read_text().splitlines() if ipv6.exists() else []
+          assert os.getuid()!=0 and os.geteuid()!=0
+          assert int(fields["CapEff"],16)==0 and fields["NoNewPrivs"]=="1"
+          assert os.readlink("/proc/self/ns/net")!=host
+          assert kernel==["lo"] and proc_names==["lo"]
+          assert not ipv4 and not any(line.split()[-1]!="lo" for line in routes6 if line.strip())
+          if len(sys.argv)==2:
+              print("OFFLINE_NAMESPACE_NONROOT_KERNEL_PROC_NO_EXTERNAL_ROUTES")
+          else:
+              print("ACTUAL_INSPECTION_NAMESPACE_VERIFIED",file=sys.stderr)
+              sys.argv=sys.argv[2:]
+              runpy.run_path(sys.argv[0],run_name="__main__")
+          PYGUARD
+          sudo unshare --net -- setpriv --reuid "$uid" --regid "$gid" --clear-groups --no-new-privs env -i PATH=/usr/bin:/bin python3 -I "$guard" "$host_ns" > "$ev/network-preflight.txt"
+          timeout --kill-after=5s 300s env -i PATH=/usr/bin:/bin python3 -I - "$store" "$ev" <<'PY'
+          import hashlib,json,os,re,sys,urllib.error,urllib.request
+          from pathlib import Path
+          from urllib.parse import urlsplit
+          store,ev=map(Path,sys.argv[1:])
+          cap=512*1024**2
+          image="sha256:9a36355fa2baacaae1c6dd5a1a80492bba89d1dec5a536af572ba5fb3e96e22f"
+          config="sha256:132971a4abd0f0274f66045f4a6fd37d89b45c4a1029d3c17849a54a3dc3d9f1"
+          base="https://ghcr.io/v2/openhands/agent-server/"
+          report=dict(status="ACQUISITION_STARTED",manifest_digest=image,config_digest=config,
+                      max_compressed_bytes=cap,verified_blobs=[],image_executed=False,
+                      installed=False,build_authorized=False,execution_authorized=False,release_authorized=False)
+          def save():
+              (ev/"acquisition.json").write_text(json.dumps(report,indent=2)+"\n")
+          save()
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*args,**kwargs): return None
+          opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+          def req(url,headers):
+              return opener.open(urllib.request.Request(url,headers=headers),timeout=25)
+          def digest(raw):
+              return "sha256:"+hashlib.sha256(raw).hexdigest()
+          def bounded(url,headers,max_bytes):
+              with req(url,headers) as response:
+                  assert response.status==200
+                  raw=response.read(max_bytes+1)
+                  assert len(raw)<=max_bytes
+                  return raw
+          def stream_blob(desc):
+              dg,size=desc["digest"],desc["size"]
+              assert re.fullmatch(r"sha256:[0-9a-f]{64}",dg) and type(size) is int and size>0
+              target=blobs/dg[7:]
+              assert not target.exists()
+              try:
+                  response=req(base+"blobs/"+dg,auth)
+              except urllib.error.HTTPError as e:
+                  if e.code not in (301,302,303,307,308): raise
+                  redirect=e.headers.get("Location","")
+                  u=urlsplit(redirect)
+                  assert u.scheme=="https" and u.hostname=="pkg-containers.githubusercontent.com" and not u.username and not u.password and u.port in (None,443)
+                  # Never forward registry authorization to the CDN.
+                  response=req(redirect,{"Accept-Encoding":"identity"})
+              h=hashlib.sha256(); count=0
+              with response, target.open("xb") as out:
+                  assert response.status==200
+                  assert response.headers.get("Content-Encoding","identity")=="identity"
+                  length=response.headers.get("Content-Length")
+                  assert length is None or int(length)==size
+                  while count<size:
+                      block=response.read(min(1024**2,size-count))
+                      assert block
+                      out.write(block); h.update(block); count+=len(block)
+                  assert response.read(1)==b""
+              assert count==size and "sha256:"+h.hexdigest()==dg
+              target.chmod(0o400)
+              report["verified_blobs"].append(dict(digest=dg,bytes=count))
+              save()
+          try:
+              v=os.statvfs(store)
+              assert v.f_frsize*v.f_blocks<=cap and v.f_frsize*v.f_bavail>=331915022
+              assert os.getuid()!=0
+              report["store_capacity_bytes"]=v.f_frsize*v.f_blocks
+              mount=(ev/"store-mount.txt").read_text().split()
+              assert mount[0]=="tmpfs" and {"nosuid","nodev","noexec"}<=set(mount[1].split(","))
+              blobs=store/"blobs"/"sha256"; blobs.mkdir(parents=True)
+              token=json.loads(bounded("https://ghcr.io/token?service=ghcr.io&scope=repository%3Aopenhands%2Fagent-server%3Apull",{},65536))["token"]
+              assert isinstance(token,str) and 0<len(token)<16384
+              auth={"Authorization":"Bearer "+token,"Accept-Encoding":"identity"}
+              raw=bounded(base+"manifests/"+image,dict(auth,Accept="application/vnd.oci.image.manifest.v1+json"),1048576)
+              assert digest(raw)==image
+              m=json.loads(raw)
+              assert m["schemaVersion"]==2 and m["mediaType"]=="application/vnd.oci.image.manifest.v1+json"
+              c=m["config"]
+              assert c["digest"]==config and c["size"]==14745 and c["mediaType"]=="application/vnd.oci.image.config.v1+json"
+              layers=m["layers"]; assert len(layers)==14
+              unique={}
+              for d in layers:
+                  assert d["mediaType"]=="application/vnd.oci.image.layer.v1.tar+gzip"
+                  assert re.fullmatch(r"sha256:[0-9a-f]{64}",d["digest"]) and type(d["size"]) is int and d["size"]>0
+                  assert d["digest"] not in (image,config)
+                  assert d["digest"] not in unique or d==unique[d["digest"]]
+                  unique[d["digest"]]=d
+              total=len(raw)+c["size"]+sum(d["size"] for d in unique.values())
+              assert len(unique)==12 and total==331915022 and total<=cap
+              assert sum(d["size"] for d in layers)==331897380
+              report.update(required_payload_bytes=total,unique_layer_count=12,ordered_layer_count=14)
+              (blobs/image[7:]).write_bytes(raw)
+              (blobs/image[7:]).chmod(0o400)
+              stream_blob(c)
+              cfg=json.loads((blobs/config[7:]).read_bytes())
+              assert cfg["os"]=="linux" and cfg["architecture"]=="amd64"
+              assert cfg["rootfs"]["type"]=="layers" and len(cfg["rootfs"]["diff_ids"])==14
+              assert all(re.fullmatch(r"sha256:[0-9a-f]{64}",x) for x in cfg["rootfs"]["diff_ids"])
+              for desc in unique.values(): stream_blob(desc)
+              assert sum(p.stat().st_size for p in blobs.iterdir())==total
+              report["status"]="ALL_COMPRESSED_BLOBS_VERIFIED"
+              report["layer_blobs_verified"]=12
+              report["raw_layers_exported"]=False
+              save()
+          except Exception as exc:
+              report["status"]="ACQUISITION_STOPPED"
+              report["failure_type"]=type(exc).__name__
+              if isinstance(exc,urllib.error.HTTPError): report["http_status"]=exc.code
+              save()
+              sys.exit("Acquisition stopped; see sanitized receipt")
+          PY
+          # Separate inspection phase, no network or inherited environment.
+          # The approved storage is only the tmpfs; read-only remount prevents mutation.
+          sudo mount -o remount,ro,nosuid,nodev,noexec "$store"
+          findmnt -n -o FSTYPE,OPTIONS --mountpoint "$store" > "$ev/inspection-mount.txt"
+          test "$(findmnt -n -o OPTIONS --mountpoint "$store" | cut -d, -f1)" = ro
+          # Reserve one byte for the verifier's overflow detection read.
+          timeout --kill-after=5s 180s sudo unshare --net -- setpriv --reuid "$uid" --regid "$gid" --clear-groups --no-new-privs env -i PATH=/usr/bin:/bin python3 -I "$guard" "$host_ns" "$PWD/ai_factory/oci_offline_evidence.py" "$store" --max-compressed-bytes 536870912 --max-expanded-bytes 2147483647 > "$ev/offline-layer-review.json"
+          python3 -I - "$ev/offline-layer-review.json" <<'PY'
+          import json,sys
+          r=json.load(open(sys.argv[1]))
+          assert r["status"]=="layer_bytes_verified_review_only"
+          assert r["layer_count"]==14 and r["unique_layer_count"]==12
+          assert r["required_unique_payload_bytes"]==331915022
+          assert r["expanded_bytes"]<=2147483648
+          assert r["execution_authorized"] is False and r["release_authorized"] is False
+          print("OFFLINE_LAYER_BYTES_VERIFIED; NO RUNTIME ADMISSION")
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-authorized-offline-inspection-receipts
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  offline-inspection-network-preflight-diagnosis:
+    # Diagnostic only. This job cannot fetch, install or execute image content.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '5489fa3ac4506f71717e62141f829666c32af324' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions: {}
+    steps:
+      - name: Diagnose namespace guard using independent kernel views (no network requests)
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          uid="$(id -u)"; gid="$(id -g)"
+          test "$uid" != 0
+          host_ns="$(readlink /proc/self/ns/net)"
+          sudo unshare --net -- setpriv --reuid "$uid" --regid "$gid" --clear-groups --no-new-privs env -i PATH=/usr/bin:/bin python3 -I - "$host_ns" > evidence/namespace-diagnosis.json <<'PY'
+          import json,os,socket,sys
+          from pathlib import Path
+          host=sys.argv[1]
+          proc=Path("/proc/self/status").read_text()
+          fields={k:v.strip() for k,v in (line.split(":",1) for line in proc.splitlines() if ":" in line)}
+          # if_nameindex queries the current network namespace via the kernel;
+          # /proc/self/net/dev also follows the current task's namespace.
+          kernel=sorted(name for _,name in socket.if_nameindex())
+          proc_names=sorted(line.split(":",1)[0].strip() for line in Path("/proc/self/net/dev").read_text().splitlines()[2:] if ":" in line)
+          sysfs=sorted(os.listdir("/sys/class/net"))
+          ipv4=Path("/proc/self/net/route").read_text().splitlines()[1:]
+          ipv6=Path("/proc/self/net/ipv6_route")
+          routes6=ipv6.read_text().splitlines() if ipv6.exists() else []
+          # Linux may expose a reject-all IPv6 route associated with lo; it
+          # is not an external route. Any route on another interface blocks.
+          external6=any(line.split()[-1]!="lo" for line in routes6 if line.strip())
+          changed=os.readlink("/proc/self/ns/net")!=host
+          report=dict(uid_nonroot=os.getuid()!=0 and os.geteuid()!=0,
+                      effective_capabilities_zero=int(fields["CapEff"],16)==0,
+                      no_new_privileges=fields["NoNewPrivs"]=="1",
+                      namespace_changed=changed,
+                      kernel_interfaces=kernel,proc_interfaces=proc_names,sysfs_interfaces=sysfs,
+                      ipv4_route_count=len(ipv4),ipv6_external_interface_route=external6,
+                      previous_guard_would_pass=os.getuid()!=0 and sysfs==["lo"],
+                      image_acquisition_attempted=False,network_requests_sent=False,
+                      execution_authorized=False,release_authorized=False)
+          independent=all((report["uid_nonroot"],report["effective_capabilities_zero"],report["no_new_privileges"],changed,kernel==["lo"],proc_names==["lo"],not ipv4,not external6))
+          report["independent_namespace_check_passed"]=independent
+          report["status"]="DIAGNOSTIC_ISOLATION_PASS" if independent else "DIAGNOSTIC_ISOLATION_BLOCKED"
+          print(json.dumps(report,indent=2),flush=True)
+          if not independent: sys.exit(1)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-offline-network-namespace-diagnosis
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  official-minimal-authorized-logical-inventory:
+    # Sprint14: single explicitly authorized reacquisition for logical inventory only.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '08c85e62eb35d7980aa059bbde8557609452b90a' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Acquire exact public image once and build logical inventory offline
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          # Confirm exact reviewed scanner bytes before acquisition.
+          test "$(git hash-object ai_factory/oci_offline_evidence.py)" = 58f7905f724abd8d9974b928b009d69afc0e3874
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          store="$(mktemp -d "${RUNNER_TEMP}/coden-oci.XXXXXXXX")"
+          guard="$(mktemp "${RUNNER_TEMP}/coden-offline-guard.XXXXXXXX.py")"
+          cleanup() {
+            rm -f -- "$guard"
+            if mountpoint -q "$store"; then
+              sudo umount "$store" || { printf '%s\n' 'CLEANUP_FAILED' > "$ev/cleanup.txt"; return 1; }
+            fi
+            rmdir "$store" || return 1
+            printf '%s\n' 'STORE_UNMOUNTED_AND_REMOVED' > "$ev/cleanup.txt"
+          }
+          trap cleanup EXIT
+          test "$(id -u)" != 0
+          # Host-only quota mount; no privileged container, Docker socket or image execution.
+          sudo mount -t tmpfs -o "size=512m,nosuid,nodev,noexec,mode=0700,uid=$(id -u),gid=$(id -g)" tmpfs "$store"
+          mountpoint -q "$store"
+          findmnt -n -o FSTYPE,OPTIONS --mountpoint "$store" > "$ev/store-mount.txt"
+          # Prove network namespace and unprivileged execution before acquisition.
+          uid="$(id -u)"; gid="$(id -g)"
+          host_ns="$(readlink /proc/self/ns/net)"
+          cat > "$guard" <<'PYGUARD'
+          import os,runpy,socket,sys
+          from pathlib import Path
+          host=sys.argv[1]
+          fields={k:v.strip() for k,v in (line.split(":",1) for line in Path("/proc/self/status").read_text().splitlines() if ":" in line)}
+          kernel=sorted(name for _,name in socket.if_nameindex())
+          proc_names=sorted(line.split(":",1)[0].strip() for line in Path("/proc/self/net/dev").read_text().splitlines()[2:] if ":" in line)
+          ipv4=Path("/proc/self/net/route").read_text().splitlines()[1:]
+          ipv6=Path("/proc/self/net/ipv6_route")
+          routes6=ipv6.read_text().splitlines() if ipv6.exists() else []
+          assert os.getuid()!=0 and os.geteuid()!=0
+          assert int(fields["CapEff"],16)==0 and fields["NoNewPrivs"]=="1"
+          assert os.readlink("/proc/self/ns/net")!=host
+          assert kernel==["lo"] and proc_names==["lo"]
+          assert not ipv4 and not any(line.split()[-1]!="lo" for line in routes6 if line.strip())
+          if len(sys.argv)==2:
+              print("OFFLINE_NAMESPACE_NONROOT_KERNEL_PROC_NO_EXTERNAL_ROUTES")
+          else:
+              print("ACTUAL_INSPECTION_NAMESPACE_VERIFIED",file=sys.stderr)
+              sys.argv=sys.argv[2:]
+              runpy.run_path(sys.argv[0],run_name="__main__")
+          PYGUARD
+          sudo unshare --net -- setpriv --reuid "$uid" --regid "$gid" --clear-groups --no-new-privs env -i PATH=/usr/bin:/bin python3 -I "$guard" "$host_ns" > "$ev/network-preflight.txt"
+          timeout --kill-after=5s 300s env -i PATH=/usr/bin:/bin python3 -I - "$store" "$ev" <<'PY'
+          import hashlib,json,os,re,sys,urllib.error,urllib.request
+          from pathlib import Path
+          from urllib.parse import urlsplit
+          store,ev=map(Path,sys.argv[1:])
+          cap=512*1024**2
+          image="sha256:9a36355fa2baacaae1c6dd5a1a80492bba89d1dec5a536af572ba5fb3e96e22f"
+          config="sha256:132971a4abd0f0274f66045f4a6fd37d89b45c4a1029d3c17849a54a3dc3d9f1"
+          base="https://ghcr.io/v2/openhands/agent-server/"
+          report=dict(status="ACQUISITION_STARTED",manifest_digest=image,config_digest=config,
+                      max_compressed_bytes=cap,verified_blobs=[],image_executed=False,
+                      installed=False,build_authorized=False,execution_authorized=False,release_authorized=False)
+          def save():
+              (ev/"acquisition.json").write_text(json.dumps(report,indent=2)+"\n")
+          save()
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*args,**kwargs): return None
+          opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+          def req(url,headers):
+              return opener.open(urllib.request.Request(url,headers=headers),timeout=25)
+          def digest(raw):
+              return "sha256:"+hashlib.sha256(raw).hexdigest()
+          def bounded(url,headers,max_bytes):
+              with req(url,headers) as response:
+                  assert response.status==200
+                  raw=response.read(max_bytes+1)
+                  assert len(raw)<=max_bytes
+                  return raw
+          def stream_blob(desc):
+              dg,size=desc["digest"],desc["size"]
+              assert re.fullmatch(r"sha256:[0-9a-f]{64}",dg) and type(size) is int and size>0
+              target=blobs/dg[7:]
+              assert not target.exists()
+              try:
+                  response=req(base+"blobs/"+dg,auth)
+              except urllib.error.HTTPError as e:
+                  if e.code not in (301,302,303,307,308): raise
+                  redirect=e.headers.get("Location","")
+                  u=urlsplit(redirect)
+                  assert u.scheme=="https" and u.hostname=="pkg-containers.githubusercontent.com" and not u.username and not u.password and u.port in (None,443)
+                  # Never forward registry authorization to the CDN.
+                  response=req(redirect,{"Accept-Encoding":"identity"})
+              h=hashlib.sha256(); count=0
+              with response, target.open("xb") as out:
+                  assert response.status==200
+                  assert response.headers.get("Content-Encoding","identity")=="identity"
+                  length=response.headers.get("Content-Length")
+                  assert length is None or int(length)==size
+                  while count<size:
+                      block=response.read(min(1024**2,size-count))
+                      assert block
+                      out.write(block); h.update(block); count+=len(block)
+                  assert response.read(1)==b""
+              assert count==size and "sha256:"+h.hexdigest()==dg
+              target.chmod(0o400)
+              report["verified_blobs"].append(dict(digest=dg,bytes=count))
+              save()
+          try:
+              v=os.statvfs(store)
+              assert v.f_frsize*v.f_blocks<=cap and v.f_frsize*v.f_bavail>=331915022
+              assert os.getuid()!=0
+              report["store_capacity_bytes"]=v.f_frsize*v.f_blocks
+              mount=(ev/"store-mount.txt").read_text().split()
+              assert mount[0]=="tmpfs" and {"nosuid","nodev","noexec"}<=set(mount[1].split(","))
+              blobs=store/"blobs"/"sha256"; blobs.mkdir(parents=True)
+              token=json.loads(bounded("https://ghcr.io/token?service=ghcr.io&scope=repository%3Aopenhands%2Fagent-server%3Apull",{},65536))["token"]
+              assert isinstance(token,str) and 0<len(token)<16384
+              auth={"Authorization":"Bearer "+token,"Accept-Encoding":"identity"}
+              raw=bounded(base+"manifests/"+image,dict(auth,Accept="application/vnd.oci.image.manifest.v1+json"),1048576)
+              assert digest(raw)==image
+              m=json.loads(raw)
+              assert m["schemaVersion"]==2 and m["mediaType"]=="application/vnd.oci.image.manifest.v1+json"
+              c=m["config"]
+              assert c["digest"]==config and c["size"]==14745 and c["mediaType"]=="application/vnd.oci.image.config.v1+json"
+              layers=m["layers"]; assert len(layers)==14
+              unique={}
+              for d in layers:
+                  assert d["mediaType"]=="application/vnd.oci.image.layer.v1.tar+gzip"
+                  assert re.fullmatch(r"sha256:[0-9a-f]{64}",d["digest"]) and type(d["size"]) is int and d["size"]>0
+                  assert d["digest"] not in (image,config)
+                  assert d["digest"] not in unique or d==unique[d["digest"]]
+                  unique[d["digest"]]=d
+              total=len(raw)+c["size"]+sum(d["size"] for d in unique.values())
+              assert len(unique)==12 and total==331915022 and total<=cap
+              assert sum(d["size"] for d in layers)==331897380
+              report.update(required_payload_bytes=total,unique_layer_count=12,ordered_layer_count=14)
+              (blobs/image[7:]).write_bytes(raw)
+              (blobs/image[7:]).chmod(0o400)
+              stream_blob(c)
+              cfg=json.loads((blobs/config[7:]).read_bytes())
+              assert cfg["os"]=="linux" and cfg["architecture"]=="amd64"
+              assert cfg["rootfs"]["type"]=="layers" and len(cfg["rootfs"]["diff_ids"])==14
+              assert all(re.fullmatch(r"sha256:[0-9a-f]{64}",x) for x in cfg["rootfs"]["diff_ids"])
+              for desc in unique.values(): stream_blob(desc)
+              assert sum(p.stat().st_size for p in blobs.iterdir())==total
+              report["status"]="ALL_COMPRESSED_BLOBS_VERIFIED"
+              report["layer_blobs_verified"]=12
+              report["raw_layers_exported"]=False
+              save()
+          except Exception as exc:
+              report["status"]="ACQUISITION_STOPPED"
+              report["failure_type"]=type(exc).__name__
+              if isinstance(exc,urllib.error.HTTPError): report["http_status"]=exc.code
+              save()
+              sys.exit("Acquisition stopped; see sanitized receipt")
+          PY
+          # Separate inspection phase, no network or inherited environment.
+          # The approved storage is only the tmpfs; read-only remount prevents mutation.
+          sudo mount -o remount,ro,nosuid,nodev,noexec "$store"
+          findmnt -n -o FSTYPE,OPTIONS --mountpoint "$store" > "$ev/inspection-mount.txt"
+          test "$(findmnt -n -o OPTIONS --mountpoint "$store" | cut -d, -f1)" = ro
+          # No nested archive reader is admitted; do not decompress inner archives.
+          # Reserve one byte for the verifier's overflow detection read.
+          # Bound generated metadata, not raw image files, to 32 MiB per file.
+          ulimit -f 32768
+          timeout --kill-after=5s 180s sudo unshare --net -- setpriv --reuid "$uid" --regid "$gid" --clear-groups --no-new-privs env -i PATH=/usr/bin:/bin python3 -I "$guard" "$host_ns" "$PWD/ai_factory/oci_offline_evidence.py" "$store" --max-compressed-bytes 536870912 --max-expanded-bytes 2147483647 --logical-inventory > "$ev/offline-layer-review.json"
+          python3 -I - "$ev/offline-layer-review.json" <<'PY'
+          import json,sys
+          r=json.load(open(sys.argv[1]))
+          assert r["status"]=="layer_bytes_verified_review_only"
+          assert r["layer_count"]==14 and r["unique_layer_count"]==12
+          assert r["required_unique_payload_bytes"]==331915022
+          assert r["expanded_bytes"]<=2147483648
+          assert r["execution_authorized"] is False and r["release_authorized"] is False
+          assert r["whiteout_semantics_applied"] is True
+          assert r["final_inventory_verified"] is False
+          inv=r["logical_inventory"]
+          assert inv["status"]=="logical_inventory_candidate_review_required"
+          assert inv["entry_count"]==len(inv["entries"])
+          assert inv["package_metadata_count"]==len(inv["package_metadata"])
+          assert inv["embedded_archive_inventory_verified"] is False
+          assert inv["complete_sbom"] is False
+          assert r["embedded_inventory_verified"] is False
+          assert r["license_approved"] is False and r["security_approved"] is False
+          print("LOGICAL_FILESYSTEM_INVENTORY_REVIEW_ONLY",inv["entry_count"],"package metadata",inv["package_metadata_count"])
+          print("EMBEDDED_ARCHIVE_READER_NOT_ADMITTED; NO RUNTIME ADMISSION")
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-authorized-logical-inventory-receipts
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+
+  sprint15-public-schema-security-metadata:
+    # Public metadata only; no OCI registry, image layers, installation or execution.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '36c8e3730799135b9174f98ac783cd3d80069cf3' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Retrieve pinned public CycloneDX schema data
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          timeout 60s env -i PATH=/usr/bin:/bin python3 -I - <<'PY'
+          import base64,hashlib,json,urllib.request
+          from pathlib import Path
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*args,**kwargs): return None
+          opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+          pinned={"bom-1.5.schema.json":"c149728127117c39317b795032ed6e9a92e2f950","spdx.schema.json":"f04d013c74c48de35726e93e367f0f738f51135d","jsf-0.82.schema.json":"f46bfb1e52731ad1280123ff3e2bd29bd18d4bc2"}
+          records=[]
+          for name,sha in pinned.items():
+              url="https://api.github.com/repos/CycloneDX/specification/git/blobs/"+sha
+              with opener.open(urllib.request.Request(url,headers={"Accept":"application/vnd.github+json","User-Agent":"CODEN-schema-review"}),timeout=15) as res:
+                  assert res.status==200
+                  data=res.read(1024*1024+1)
+              assert len(data)<=1024*1024
+              obj=json.loads(data)
+              assert obj["sha"]==sha and obj["encoding"]=="base64"
+              raw=base64.b64decode("".join(obj["content"].splitlines()),validate=True)
+              assert len(raw)==obj["size"]
+              assert hashlib.sha1(b"blob "+str(len(raw)).encode()+b"\0"+raw).hexdigest()==sha
+              schema=json.loads(raw)
+              assert schema["$id"]=="http://cyclonedx.org/schema/"+name
+              Path("evidence",name).write_bytes(raw)
+              records.append(dict(name=name,git_blob=sha,sha256=hashlib.sha256(raw).hexdigest(),bytes=len(raw)))
+          Path("evidence/schema-receipt.json").write_text(json.dumps(records,indent=2)+"\n")
+          PY
+      - name: Retrieve bounded Debian security tracker records for observed source packages
+        if: always()
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p evidence
+          timeout 120s env -i PATH=/usr/bin:/bin python3 -I - <<'PY'
+          import datetime,hashlib,json,urllib.request
+          from pathlib import Path
+          url="https://security-tracker.debian.org/tracker/data/json"
+          sources=set("acl apt attr audit base-files base-passwd bash brotli bzip2 ca-certificates cdebconf coreutils curl cyrus-sasl2 dash db5.3 debconf debian-archive-keyring debianutils diffutils dpkg e2fsprogs expat findutils gcc-14 gdbm git glibc gmp gnutls28 grep gzip hostname init-system-helpers jemalloc keyutils krb5 libbsd libcap-ng libcap2 liberror-perl libevent libffi libidn2 libmd libpsl libseccomp libselinux libsemanage libsepol libssh2 libtasn1-6 libunistring libxcrypt libzstd lz4 mawk ncurses netbase nettle nghttp2 nghttp3 ngtcp2 openldap openssl p11-kit pam pcre2 perl readline rtmpdump rust-sequoia-sqv sed shadow sqlite3 systemd sysvinit tar tini tmux tzdata util-linux xxhash xz-utils zlib".split())
+          assert len(sources)==85
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*args,**kwargs): return None
+          opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+          cap=128*1024**2
+          receipt=dict(status="BLOCKED",source_url=url,requested_sources=sorted(sources),
+                       image_downloaded=False,release_authorized=False)
+          path=Path("evidence/debian-tracker-receipt.json")
+          def save(): path.write_text(json.dumps(receipt,indent=2)+"\n")
+          save()
+          try:
+              with opener.open(urllib.request.Request(url,headers={"Accept-Encoding":"identity","User-Agent":"CODEN-metadata-review"}),timeout=45) as res:
+                  assert res.status==200 and res.headers.get("Content-Encoding","identity")=="identity"
+                  raw=res.read(cap+1)
+                  assert len(raw)<=cap
+                  receipt["http_date"]=res.headers.get("Date")
+              data=json.loads(raw)
+              assert isinstance(data,dict)
+              filtered={n:data[n] for n in sorted(sources) if n in data}
+              assert all(isinstance(v,dict) for v in filtered.values())
+              out=json.dumps(filtered,sort_keys=True,separators=(",",":")).encode()
+              assert len(out)<=24*1024**2
+              Path("evidence/debian-tracker-selected.json").write_bytes(out)
+              receipt.update(status="TRACKER_METADATA_CAPTURED",fetched_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),source_sha256=hashlib.sha256(raw).hexdigest(),source_bytes=len(raw),filtered_sha256=hashlib.sha256(out).hexdigest(),found_sources=sorted(filtered),missing_sources=sorted(sources-set(filtered)))
+              save()
+          except Exception as exc:
+              receipt["error_type"]=type(exc).__name__;save();raise SystemExit("Security metadata acquisition blocked")
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: sprint15-public-schema-security-metadata
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+
+  sprint15-cyclonedx-schema-raw-review:
+    # Static schema data only. Separate from OCI acquisition and tracker capture.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == 'a99e3c0b161d5db68b0d5b4d51319d32665f774d' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions: {}
+    steps:
+      - name: Verify static public schema bytes against pinned Git blob hashes
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          timeout 60s env -i PATH=/usr/bin:/bin python3 -I - <<'PY'
+          import hashlib,json,urllib.request
+          from pathlib import Path
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*args,**kwargs): return None
+          opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+          pinned={"bom-1.5.schema.json":"c149728127117c39317b795032ed6e9a92e2f950","spdx.schema.json":"f04d013c74c48de35726e93e367f0f738f51135d","jsf-0.82.schema.json":"f46bfb1e52731ad1280123ff3e2bd29bd18d4bc2"}
+          receipt=[]
+          for name,sha in pinned.items():
+              url="https://raw.githubusercontent.com/CycloneDX/specification/1.5/schema/"+name
+              with opener.open(urllib.request.Request(url,headers={"Accept-Encoding":"identity"}),timeout=15) as res:
+                  assert res.status==200 and res.headers.get("Content-Encoding","identity")=="identity"
+                  raw=res.read(1024*1024+1)
+              assert 0<len(raw)<=1024*1024
+              assert hashlib.sha1(b"blob "+str(len(raw)).encode()+b"\0"+raw).hexdigest()==sha
+              assert json.loads(raw)["$id"]=="http://cyclonedx.org/schema/"+name
+              Path("evidence",name).write_bytes(raw)
+              receipt.append(dict(name=name,source=url,git_blob=sha,sha256=hashlib.sha256(raw).hexdigest(),bytes=len(raw)))
+          Path("evidence/schema-receipt.json").write_text(json.dumps(receipt,indent=2)+"\n")
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: sprint15-cyclonedx-schema-raw-review
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+
+  sprint17-offline-containment-preflight:
+    # Synthetic host containment probe only. Never acquire image data or install a tool.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '8e941ed3faf31121eaba1aa939361de97439cf30' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions: {}
+    steps:
+      - name: Verify actual kernel caps for a nonroot offline synthetic process
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          unit="coden-s17-probe-${GITHUB_RUN_ID}.service"
+          store=""
+          cleanup() {
+            status=$?
+            trap - EXIT
+            sudo systemctl stop "$unit" >/dev/null 2>&1 || true
+            active="$(sudo systemctl show -p ActiveState --value "$unit" 2>/dev/null || true)"
+            if [[ "$active" != inactive && "$active" != failed ]]; then
+              printf '%s\n' 'SERVICE_CLEANUP_UNCERTAIN' > "$ev/cleanup.txt"
+              status=1
+            else
+              printf 'SERVICE_%s\n' "$active" > "$ev/cleanup.txt"
+            fi
+            if [[ -n "$store" ]]; then
+              if mountpoint -q "$store"; then
+                sudo umount "$store" || { echo STORE_UNMOUNT_FAILED >> "$ev/cleanup.txt"; exit 1; }
+              fi
+              sudo rmdir "$store" || exit 1
+              echo STORE_UNMOUNTED_AND_REMOVED >> "$ev/cleanup.txt"
+            fi
+            exit "$status"
+          }
+          trap cleanup EXIT
+          test "$(id -u)" != 0
+          uid="$(id -u)"; gid="$(id -g)"
+          host_ns="$(readlink /proc/self/ns/net)"
+          store="$(sudo mktemp -d /run/coden-s17.XXXXXXXX)"
+          sudo mount -t tmpfs -o "size=512m,nosuid,nodev,noexec,mode=0700,uid=$uid,gid=$gid" tmpfs "$store"
+          printf 'synthetic-only\n' > "$store/probe.txt"
+          sudo mount -o remount,ro,nosuid,nodev,noexec "$store"
+          findmnt -n -o FSTYPE,OPTIONS --mountpoint "$store" > "$ev/store-mount.txt"
+          script="$(cat <<'PY'
+          import json,os,pathlib,socket,stat,subprocess,sys
+          from pathlib import Path
+          host,store=sys.argv[1:]
+          p=Path(store)
+          assert (p/"probe.txt").read_bytes()==b"synthetic-only\n"
+          v=os.statvfs(p)
+          assert v.f_frsize*v.f_blocks==536870912 and v.f_flag & os.ST_RDONLY
+          def cgroup():
+              return next(x.split(":",2)[2] for x in Path("/proc/self/cgroup").read_text().splitlines() if x.startswith("0::"))
+          cg=cgroup()
+          root=Path("/sys/fs/cgroup")/cg.lstrip("/")
+          cpu=(root/"cpu.max").read_text().split()
+          mem=int((root/"memory.max").read_text())
+          pids=int((root/"pids.max").read_text())
+          assert int(cpu[0])==2*int(cpu[1]) and mem==4294967296 and pids==128
+          st=dict(line.split(":",1) for line in Path("/proc/self/status").read_text().splitlines() if ":" in line)
+          assert os.getuid()!=0 and os.geteuid()!=0 and int(st["CapEff"],16)==0 and st["NoNewPrivs"].strip()=="1"
+          assert os.readlink("/proc/self/ns/net")!=host
+          assert sorted(n for _,n in socket.if_nameindex())==["lo"]
+          assert len(Path("/proc/self/net/route").read_text().splitlines())==1
+          v6=Path("/proc/self/net/ipv6_route")
+          assert not v6.exists() or all(x.split()[-1]=="lo" for x in v6.read_text().splitlines() if x.strip())
+          for name in ("/run/docker.sock","/var/run/docker.sock"):
+              try: mode=os.stat(name).st_mode
+              except OSError: continue
+              assert not stat.S_ISSOCK(mode)
+          assert set(os.environ)<= {"PATH","HOME","TMPDIR","LC_ALL"}
+          child=subprocess.check_output([sys.executable,"-I","-B","-c","from pathlib import Path; print(next(x.split(':',2)[2] for x in Path('/proc/self/cgroup').read_text().splitlines() if x.startswith('0::')))"],text=True).strip()
+          assert child==cg
+          print(json.dumps(dict(status="SYNTHETIC_SCAN_CONTAINMENT_PREFLIGHT",cpu_max=cpu,memory_max=mem,pids_max=pids,child_same_cgroup=True,uid=os.getuid(),cap_eff=0,no_new_privs=True,network_interfaces=["lo"],no_external_routes=True,store_capacity=v.f_frsize*v.f_blocks,store_readonly=True,docker_socket_not_visible=True,environment_keys=sorted(os.environ),real_binary_scanned=False,real_agent_tree_verified=False,timeout_kill_verified=False,release_authorized=False),sort_keys=True))
+          PY
+          )"
+          # Host systemd only establishes the restrictive sandbox; the probe
+          # and its child run unprivileged. No actual scanner or image supplied.
+          timeout --kill-after=5s 60s sudo systemd-run --unit="$unit" --wait --pipe --quiet \
+            -p "User=$uid" -p "Group=$gid" -p CPUQuota=200% -p MemoryMax=4294967296 -p TasksMax=128 \
+            -p RuntimeMaxSec=600 -p KillMode=control-group -p NoNewPrivileges=yes \
+            -p CapabilityBoundingSet= -p AmbientCapabilities= -p PrivateNetwork=yes \
+            -p PrivateTmp=yes -p PrivateDevices=yes -p ProtectHome=tmpfs -p ProtectSystem=strict \
+            -p 'InaccessiblePaths=-/run/docker.sock -/var/run/docker.sock' -p RestrictSUIDSGID=yes \
+            /usr/bin/env -i PATH=/usr/bin:/bin HOME=/tmp TMPDIR=/tmp LC_ALL=C /usr/bin/python3 -I -B -c "$script" "$host_ns" "$store" > "$ev/containment.json"
+          sudo systemctl show "$unit" -p RuntimeMaxUSec -p KillMode -p Result -p ActiveState > "$ev/service-properties.txt"
+          grep -Fx 'KillMode=control-group' "$ev/service-properties.txt"
+          grep -Fx 'RuntimeMaxUSec=10min' "$ev/service-properties.txt"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: sprint17-synthetic-scan-containment-receipts
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  sprint17-offline-containment-masked-run:
+    # Synthetic host containment probe only. Never acquire image data or install a tool.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == 'e635ddc21998c45722d94229976b84478a2303c0' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions: {}
+    steps:
+      - name: Verify actual kernel caps for a nonroot offline synthetic process
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          unit="coden-s17-probe-${GITHUB_RUN_ID}.service"
+          store=""
+          cleanup() {
+            status=$?
+            trap - EXIT
+            sudo systemctl stop "$unit" >/dev/null 2>&1 || true
+            active="$(sudo systemctl show -p ActiveState --value "$unit" 2>/dev/null || true)"
+            if [[ "$active" != inactive && "$active" != failed ]]; then
+              printf '%s\n' 'SERVICE_CLEANUP_UNCERTAIN' > "$ev/cleanup.txt"
+              status=1
+            else
+              printf 'SERVICE_%s\n' "$active" > "$ev/cleanup.txt"
+            fi
+            if [[ -n "$store" ]]; then
+              if mountpoint -q "$store"; then
+                sudo umount "$store" || { echo STORE_UNMOUNT_FAILED >> "$ev/cleanup.txt"; exit 1; }
+              fi
+              sudo rmdir "$store" || exit 1
+              echo STORE_UNMOUNTED_AND_REMOVED >> "$ev/cleanup.txt"
+            fi
+            exit "$status"
+          }
+          trap cleanup EXIT
+          test "$(id -u)" != 0
+          uid="$(id -u nobody)"; gid="$(id -g nobody)"
+          test "$uid" != 0; test "$gid" != 0
+          host_ns="$(readlink /proc/self/ns/net)"
+          store="$(sudo mktemp -d /opt/coden-s17.XXXXXXXX)"
+          sudo mount -t tmpfs -o "size=512m,nosuid,nodev,noexec,mode=0700,uid=$uid,gid=$gid" tmpfs "$store"
+          printf 'synthetic-only\n' | sudo tee "$store/probe.txt" >/dev/null
+          sudo chown "$uid:$gid" "$store/probe.txt"
+          sudo chmod 0400 "$store/probe.txt"
+          sudo mount -o remount,ro,nosuid,nodev,noexec "$store"
+          findmnt -n -o FSTYPE,OPTIONS --mountpoint "$store" > "$ev/store-mount.txt"
+          script="$(cat <<'PY'
+          import json,os,pathlib,socket,stat,subprocess,sys
+          from pathlib import Path
+          host,store=sys.argv[1:]
+          p=Path(store)
+          assert (p/"probe.txt").read_bytes()==b"synthetic-only\n"
+          v=os.statvfs(p)
+          assert v.f_frsize*v.f_blocks==536870912 and v.f_flag & os.ST_RDONLY
+          def cgroup():
+              return next(x.split(":",2)[2] for x in Path("/proc/self/cgroup").read_text().splitlines() if x.startswith("0::"))
+          cg=cgroup()
+          root=Path("/sys/fs/cgroup")/cg.lstrip("/")
+          cpu=(root/"cpu.max").read_text().split()
+          mem=int((root/"memory.max").read_text())
+          pids=int((root/"pids.max").read_text())
+          assert int(cpu[0])==2*int(cpu[1]) and mem==4294967296 and pids==128
+          st=dict(line.split(":",1) for line in Path("/proc/self/status").read_text().splitlines() if ":" in line)
+          assert os.getuid()!=0 and os.geteuid()!=0 and int(st["CapEff"],16)==0 and st["NoNewPrivs"].strip()=="1"
+          assert set(os.getgroups()) <= {os.getgid()}
+          assert os.readlink("/proc/self/ns/net")!=host
+          assert sorted(n for _,n in socket.if_nameindex())==["lo"]
+          assert len(Path("/proc/self/net/route").read_text().splitlines())==1
+          v6=Path("/proc/self/net/ipv6_route")
+          assert not v6.exists() or all(x.split()[-1]=="lo" for x in v6.read_text().splitlines() if x.strip())
+          for name in ("/run/docker.sock","/var/run/docker.sock"):
+              assert not os.path.lexists(name), "host socket path still visible"
+          assert set(os.environ)<= {"PATH","HOME","TMPDIR","LC_ALL"}
+          child=subprocess.check_output([sys.executable,"-I","-B","-c","from pathlib import Path; print(next(x.split(':',2)[2] for x in Path('/proc/self/cgroup').read_text().splitlines() if x.startswith('0::')))"],text=True).strip()
+          assert child==cg
+          print(json.dumps(dict(status="SYNTHETIC_SCAN_CONTAINMENT_PREFLIGHT",cpu_max=cpu,memory_max=mem,pids_max=pids,child_same_cgroup=True,uid=os.getuid(),cap_eff=0,no_new_privs=True,network_interfaces=["lo"],no_external_routes=True,store_capacity=v.f_frsize*v.f_blocks,store_readonly=True,docker_socket_not_visible=True,environment_keys=sorted(os.environ),real_binary_scanned=False,real_agent_tree_verified=False,timeout_kill_verified=False,release_authorized=False),sort_keys=True))
+          PY
+          )"
+          # Host systemd only establishes the restrictive sandbox; the probe
+          # and its child run unprivileged. No actual scanner or image supplied.
+          timeout --kill-after=5s 60s sudo systemd-run --unit="$unit" --wait --pipe --quiet \
+            -p "User=$uid" -p "Group=$gid" -p CPUQuota=200% -p MemoryMax=4294967296 -p TasksMax=128 \
+            -p RuntimeMaxSec=600 -p KillMode=control-group -p NoNewPrivileges=yes \
+            -p CapabilityBoundingSet= -p AmbientCapabilities= -p PrivateNetwork=yes \
+            -p PrivateTmp=yes -p PrivateDevices=yes -p ProtectHome=tmpfs -p ProtectSystem=strict \
+            -p 'TemporaryFileSystem=/run:ro' -p RestrictSUIDSGID=yes \
+            /usr/bin/env -i PATH=/usr/bin:/bin HOME=/tmp TMPDIR=/tmp LC_ALL=C /usr/bin/python3 -I -B -c "$script" "$host_ns" "$store" > "$ev/containment.json"
+          sudo systemctl show "$unit" -p RuntimeMaxUSec -p KillMode -p Result -p ActiveState > "$ev/service-properties.txt"
+          grep -Fx 'KillMode=control-group' "$ev/service-properties.txt"
+          grep -Fx 'RuntimeMaxUSec=10min' "$ev/service-properties.txt"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: sprint17-masked-run-containment-receipts
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+
+  sprint17-live-timeout-preflight:
+    # Synthetic process tree only. No OCI, image bytes, packages or model.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '5824bf414bd7d94456f943a52ffd7823b4a9d828' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions: {}
+    steps:
+      - name: Observe live service deadline and prove synthetic child tree cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          long="coden-s17-live-${GITHUB_RUN_ID}.service"
+          short="coden-s17-timeout-${GITHUB_RUN_ID}.service"
+          cleanup() {
+            status=$?
+            trap - EXIT
+            for unit in "$long" "$short"; do
+              sudo systemctl stop "$unit" >/dev/null 2>&1 || true
+              state="$(sudo systemctl show -p ActiveState --value "$unit" 2>/dev/null || true)"
+              case "$state" in inactive|failed) ;; *) status=1;; esac
+              printf '%s %s\n' "$unit" "$state"
+            done > "$ev/cleanup.txt"
+            exit "$status"
+          }
+          trap cleanup EXIT
+          uid="$(id -u nobody)"; gid="$(id -g nobody)"
+          test "$uid" != 0; test "$gid" != 0
+          start() {
+            sudo systemd-run --quiet --unit="$1" \
+              -p "User=$uid" -p "Group=$gid" -p CPUQuota=200% -p MemoryMax=4294967296 -p TasksMax=128 \
+              -p "RuntimeMaxSec=$2" -p TimeoutStopSec=2 -p KillMode=control-group \
+              -p NoNewPrivileges=yes -p CapabilityBoundingSet= -p AmbientCapabilities= \
+              -p PrivateNetwork=yes -p PrivateTmp=yes -p PrivateDevices=yes -p ProtectHome=tmpfs \
+              -p ProtectSystem=strict -p 'TemporaryFileSystem=/run:ro' -p RestrictSUIDSGID=yes \
+              /usr/bin/env -i PATH=/usr/bin:/bin HOME=/tmp TMPDIR=/tmp LC_ALL=C /usr/bin/python3 -I -B -c \
+              'import subprocess,sys,time; p=subprocess.Popen([sys.executable,"-I","-B","-c","import time; time.sleep(30)"]); time.sleep(30)'
+          }
+          observe() {
+            unit="$1"; label="$2"
+            for n in $(seq 1 30); do
+              cg="$(sudo systemctl show "$unit" -p ControlGroup --value)"
+              if [[ "$cg" == /system.slice/coden-s17-* && -r "/sys/fs/cgroup$cg/cgroup.procs" ]]; then
+                mapfile -t ps < "/sys/fs/cgroup$cg/cgroup.procs"
+                if [[ "${#ps[@]}" -ge 2 ]]; then
+                  printf '%s\n' "$cg" > "$ev/$label-cgroup.txt"
+                  printf '%s\n' "${ps[@]}" > "$ev/$label-pids.txt"
+                  sudo systemctl show "$unit" -p RuntimeMaxUSec -p KillMode -p ActiveState -p MainPID > "$ev/$label-live-properties.txt"
+                  return 0
+                fi
+              fi
+              sleep .1
+            done
+            return 1
+          }
+          gone() {
+            label="$1"
+            cg="$(cat "$ev/$label-cgroup.txt")"
+            for n in $(seq 1 30); do
+              if [[ ! -e "/sys/fs/cgroup$cg/cgroup.events" ]] || grep -Fxq 'populated 0' "/sys/fs/cgroup$cg/cgroup.events"; then
+                echo CGROUP_EMPTY_OR_REMOVED > "$ev/$label-tree-cleanup.txt"
+                return 0
+              fi
+              sleep .1
+            done
+            return 1
+          }
+          start "$long" 600
+          observe "$long" long
+          grep -Fx 'ActiveState=active' "$ev/long-live-properties.txt"
+          grep -Fx 'KillMode=control-group' "$ev/long-live-properties.txt"
+          grep -Fx 'RuntimeMaxUSec=10min' "$ev/long-live-properties.txt"
+          sudo systemctl stop "$long"
+          gone long
+          start "$short" 6
+          observe "$short" short
+          grep -Fx 'RuntimeMaxUSec=6s' "$ev/short-live-properties.txt"
+          for n in $(seq 1 35); do
+            state="$(sudo systemctl show "$short" -p ActiveState --value)"
+            [[ "$state" == failed ]] && break
+            sleep .3
+          done
+          sudo systemctl show "$short" -p ActiveState -p Result > "$ev/short-result.txt"
+          grep -Fx 'ActiveState=failed' "$ev/short-result.txt"
+          grep -Fx 'Result=timeout' "$ev/short-result.txt"
+          gone short
+          printf '%s\n' '{"status":"SYNTHETIC_TIMEOUT_AND_TREE_CLEANUP_VERIFIED","configured_candidate_seconds":600,"tested_short_timeout_seconds":6,"real_agent_tree_verified":false,"release_authorized":false}' > "$ev/timeout-receipt.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: sprint17-live-timeout-receipts
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+
+  sprint18-synthetic-aggregate-scratch:
+    # Synthetic quota proof only; no OCI acquisition, SDK, dependencies or model.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == 'e6f2ac415c1b317da2b4ef9871546b03e3a642e9' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions: {}
+    steps:
+      - name: Prove aggregate 960 MiB quota across synthetic workspace and child
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          unit="coden-s18-scratch-${GITHUB_RUN_ID}.service"
+          store=""
+          cleanup() {
+            status=$?
+            trap - EXIT
+            sudo systemctl stop "$unit" >/dev/null 2>&1 || true
+            state="$(sudo systemctl show "$unit" -p ActiveState --value 2>/dev/null || true)"
+            case "$state" in inactive|failed) ;; *) status=1;; esac
+            printf 'SERVICE_%s\n' "$state" > "$ev/cleanup.txt"
+            if [[ -n "$store" ]]; then
+              if mountpoint -q "$store"; then
+                sudo umount "$store" || { echo STORE_UNMOUNT_FAILED >> "$ev/cleanup.txt"; exit 1; }
+              fi
+              sudo rmdir "$store" || exit 1
+              echo STORE_UNMOUNTED_AND_REMOVED >> "$ev/cleanup.txt"
+            fi
+            exit "$status"
+          }
+          trap cleanup EXIT
+          uid="$(id -u nobody)"; gid="$(id -g nobody)"
+          test "$uid" != 0; test "$gid" != 0
+          host_ns="$(readlink /proc/self/ns/net)"
+          store="$(sudo mktemp -d /opt/coden-s18.XXXXXXXX)"
+          sudo mount -t tmpfs -o "size=960m,nosuid,nodev,noexec,mode=0700,uid=$uid,gid=$gid" tmpfs "$store"
+          sudo mkdir "$store/workspace" "$store/home" "$store/tmp"
+          sudo chown "$uid:$gid" "$store/workspace" "$store/home" "$store/tmp"
+          sudo chmod 0700 "$store/workspace" "$store/home" "$store/tmp"
+          findmnt -n -o FSTYPE,OPTIONS --mountpoint "$store" > "$ev/store-mount.txt"
+          script="$(cat <<'PY'
+          import errno,json,os,socket,subprocess,sys
+          from pathlib import Path
+          root=Path(sys.argv[1]); host=sys.argv[2]
+          cap=960*1024**2
+          v=os.statvfs(root)
+          assert v.f_frsize*v.f_blocks==cap
+          assert all(os.stat(p).st_dev==os.stat(root).st_dev for p in (root/"workspace",root/"home",root/"tmp",Path("/tmp"),Path("/var/tmp")))
+          assert os.getuid()!=0 and set(os.getgroups())<={os.getgid()}
+          status=dict(x.split(":",1) for x in Path("/proc/self/status").read_text().splitlines() if ":" in x)
+          assert int(status["CapEff"],16)==0 and status["NoNewPrivs"].strip()=="1"
+          assert os.readlink("/proc/self/ns/net")!=host and sorted(n for _,n in socket.if_nameindex())==["lo"]
+          assert not any(os.path.lexists(x) for x in ("/run/docker.sock","/var/run/docker.sock"))
+          assert not os.path.exists("/dev/shm") or not os.access("/dev/shm",os.W_OK)
+          cg=next(x.split(":",2)[2] for x in Path("/proc/self/cgroup").read_text().splitlines() if x.startswith("0::"))
+          p=Path("/sys/fs/cgroup")/cg.lstrip("/")
+          cpu=(p/"cpu.max").read_text().split()
+          assert int(cpu[0])==2*int(cpu[1]) and (p/"memory.max").read_text().strip()=="4294967296" and (p/"pids.max").read_text().strip()=="128"
+          def alloc(path,size):
+              fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+              try: os.posix_fallocate(fd,0,size)
+              finally: os.close(fd)
+          alloc(root/"workspace"/"a",480*1024**2)
+          child="""import os,sys,pathlib
+          cg=next(x.split(':',2)[2] for x in pathlib.Path('/proc/self/cgroup').read_text().splitlines() if x.startswith('0::'))
+          assert cg==sys.argv[2]
+          fd=os.open(sys.argv[1],os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+          try: os.posix_fallocate(fd,0,480*1024**2)
+          finally: os.close(fd)
+          """
+          subprocess.run([sys.executable,"-I","-B","-c",child,str(root/"home"/"b"),cg],check=True,timeout=30)
+          assert os.statvfs(root).f_bavail==0
+          try:
+              alloc(Path("/tmp")/"overflow",4096)
+          except OSError as e:
+              assert e.errno==errno.ENOSPC
+          else:
+              raise AssertionError("aggregate quota failed")
+          assert os.stat(root/"workspace"/"a").st_size+os.stat(root/"home"/"b").st_size==cap
+          print(json.dumps(dict(status="SYNTHETIC_SHARED_SCRATCH_QUOTA_VERIFIED",capacity_bytes=cap,allocated_bytes=cap,overflow_errno=errno.ENOSPC,same_filesystem_workspace_home_tmp=True,child_same_cgroup=True,uid=os.getuid(),cpu_max=cpu,memory_max=4294967296,pids_max=128,real_agent_tree_verified=False,release_authorized=False),sort_keys=True))
+          PY
+          )"
+          timeout --kill-after=5s 90s sudo systemd-run --unit="$unit" --wait --pipe --quiet \
+            -p "User=$uid" -p "Group=$gid" -p CPUQuota=200% -p MemoryMax=4294967296 -p TasksMax=128 \
+            -p RuntimeMaxSec=600 -p KillMode=control-group -p NoNewPrivileges=yes \
+            -p CapabilityBoundingSet= -p AmbientCapabilities= -p PrivateNetwork=yes \
+            -p PrivateDevices=yes -p ProtectHome=tmpfs -p ProtectSystem=strict \
+            -p 'TemporaryFileSystem=/run:ro' -p 'TemporaryFileSystem=/dev/shm:ro' \
+            -p "BindPaths=$store/tmp:/tmp $store/tmp:/var/tmp" -p "ReadWritePaths=$store /tmp /var/tmp" \
+            -p RestrictSUIDSGID=yes \
+            /usr/bin/env -i PATH=/usr/bin:/bin "HOME=$store/home" TMPDIR=/tmp LC_ALL=C /usr/bin/python3 -I -B -c "$script" "$store" "$host_ns" > "$ev/scratch.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: sprint18-synthetic-scratch-receipts
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+
+  sprint19-integrated-synthetic-scanner:
+    # Exact existing scanner on trusted generated fixtures only. No image acquisition.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == 'e9229c8a3cfba2e5bee796e0089fb9188d45575e' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: e9229c8a3cfba2e5bee796e0089fb9188d45575e
+          persist-credentials: false
+      - name: Exercise exact scanner in combined read-only input and bounded scratch sandbox
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          unit="coden-s19-fixture-${GITHUB_RUN_ID}.service"
+          store=""; scratch=""
+          cleanup() {
+            status=$?
+            trap - EXIT
+            sudo systemctl stop "$unit" >/dev/null 2>&1 || true
+            state="$(sudo systemctl show "$unit" -p ActiveState --value 2>/dev/null || true)"
+            case "$state" in inactive|failed) ;; *) status=1;; esac
+            printf 'SERVICE_%s\n' "$state" > "$ev/cleanup.txt"
+            for dir in "$scratch" "$store"; do
+              [[ -n "$dir" ]] || continue
+              if mountpoint -q "$dir"; then
+                sudo umount "$dir" || { echo UNMOUNT_FAILED >> "$ev/cleanup.txt"; status=1; continue; }
+              fi
+              sudo rmdir "$dir" || { status=1; continue; }
+              echo MOUNT_UNMOUNTED_AND_REMOVED >> "$ev/cleanup.txt"
+            done
+            exit "$status"
+          }
+          trap cleanup EXIT
+          test "$(git rev-parse HEAD)" = e9229c8a3cfba2e5bee796e0089fb9188d45575e
+          test "$(git hash-object ai_factory/oci_offline_evidence.py)" = 0f8151441285396b1d98979f7b89c25571a50d9d
+          uid="$(id -u nobody)"; gid="$(id -g nobody)"
+          host_ns="$(readlink /proc/self/ns/net)"
+          store="$(sudo mktemp -d /opt/coden-s19-input.XXXXXXXX)"
+          scratch="$(sudo mktemp -d /opt/coden-s19-scratch.XXXXXXXX)"
+          sudo mount -t tmpfs -o "size=512m,nosuid,nodev,noexec,mode=0755,uid=$(id -u),gid=$(id -g)" tmpfs "$store"
+          sudo mount -t tmpfs -o "size=960m,nosuid,nodev,noexec,mode=0700,uid=$uid,gid=$gid" tmpfs "$scratch"
+          sudo mkdir "$scratch/home" "$scratch/tmp"
+          sudo chown "$uid:$gid" "$scratch/home" "$scratch/tmp"
+          sudo chmod 0700 "$scratch/home" "$scratch/tmp"
+          install -m 0444 ai_factory/oci_offline_evidence.py "$store/scanner.py"
+          # Trusted synthetic bytes only. No real binary, code object or package.
+          env -i PATH=/usr/bin:/bin python3 -I -B - "$store" <<'PY'
+          import gzip,hashlib,io,json,marshal,os,struct,sys,tarfile,zlib
+          from pathlib import Path
+          root=Path(sys.argv[1]); blobs=root/"oci/blobs/sha256"
+          blobs.mkdir(parents=True)
+          module=b"trusted synthetic opaque bytes"
+          packed=zlib.compress(module)
+          pyz=b"PYZ\0\xf3\x0d\x0d\x0a"+struct.pack("!i",17+len(packed))+b"\0"*5+packed+marshal.dumps([("demo",(0,17,len(packed)))],4)
+          name=b"PYZ.pyz\0"; n=18+len(name); n+=(-n)%16
+          toc=struct.pack("!IIIIBc",n,0,len(pyz),len(pyz),0,b"z")+name+b"\0"*(n-18-len(name))
+          binary=b"\x7fELF"+pyz+toc+struct.pack("!8sIIII64s",b"MEI\x0c\x0b\x0a\x0b\x0e",len(pyz)+len(toc)+88,len(pyz),len(toc),313,b"libpython3.13.so.1.0")
+          def put(raw,media):
+              h=hashlib.sha256(raw).hexdigest()
+              (blobs/h).write_bytes(raw)
+              return dict(digest="sha256:"+h,size=len(raw),mediaType=media)
+          def layer(payload=None):
+              out=io.BytesIO()
+              with tarfile.open(fileobj=out,mode="w") as t:
+                  if payload is not None:
+                      item=tarfile.TarInfo("usr/local/bin/openhands-agent-server")
+                      item.size=len(payload);item.mode=0o755
+                      t.addfile(item,io.BytesIO(payload))
+              raw=out.getvalue()
+              return put(gzip.compress(raw,mtime=0),"application/vnd.oci.image.layer.v1.tar+gzip"),"sha256:"+hashlib.sha256(raw).hexdigest()
+          empty,diff=layer(); last,lastdiff=layer(binary)
+          config=put(json.dumps(dict(os="linux",architecture="amd64",rootfs=dict(type="layers",diff_ids=[diff]*12+[lastdiff,diff]))).encode(),"application/vnd.oci.image.config.v1+json")
+          manifest=put(json.dumps(dict(schemaVersion=2,mediaType="application/vnd.oci.image.manifest.v1+json",config=config,layers=[empty]*12+[last,empty])).encode(),"application/vnd.oci.image.manifest.v1+json")
+          (root/"fixture.json").write_text(json.dumps(dict(manifest=manifest["digest"],binary_size=len(binary),binary_sha256=hashlib.sha256(binary).hexdigest(),module_sha256=hashlib.sha256(module).hexdigest())))
+          for p in root.rglob("*"): p.chmod(0o555 if p.is_dir() else 0o444)
+          PY
+          sudo mount -o remount,ro,nosuid,nodev,noexec "$store"
+          findmnt -n -o FSTYPE,OPTIONS --mountpoint "$store" > "$ev/input-mount.txt"
+          findmnt -n -o FSTYPE,OPTIONS --mountpoint "$scratch" > "$ev/scratch-mount.txt"
+          script="$(cat <<'PY'
+          import hashlib,importlib.util,json,os,socket,sys,resource
+          from pathlib import Path
+          root,scratch,host=Path(sys.argv[1]),Path(sys.argv[2]),sys.argv[3]
+          a,b=os.statvfs(root),os.statvfs(scratch)
+          assert a.f_frsize*a.f_blocks==536870912 and a.f_flag&os.ST_RDONLY
+          assert b.f_frsize*b.f_blocks==1006632960
+          assert all(os.stat(p).st_dev==os.stat(scratch).st_dev for p in (scratch/"home",scratch/"tmp",Path("/tmp"),Path("/var/tmp")))
+          assert os.getuid()!=0 and set(os.getgroups())<={os.getgid()}
+          st=dict(x.split(":",1) for x in Path("/proc/self/status").read_text().splitlines() if ":" in x)
+          assert int(st["CapEff"],16)==0 and st["NoNewPrivs"].strip()=="1"
+          assert os.readlink("/proc/self/ns/net")!=host and sorted(n for _,n in socket.if_nameindex())==["lo"]
+          assert len(Path("/proc/self/net/route").read_text().splitlines())==1
+          v6=Path("/proc/self/net/ipv6_route")
+          assert not v6.exists() or all(x.split()[-1]=="lo" for x in v6.read_text().splitlines() if x.strip())
+          assert not any(os.path.lexists(x) for x in ("/run/docker.sock","/var/run/docker.sock"))
+          assert set(os.environ)<={"PATH","HOME","TMPDIR","LC_ALL"}
+          cg=next(x.split(":",2)[2] for x in Path("/proc/self/cgroup").read_text().splitlines() if x.startswith("0::"))
+          p=Path("/sys/fs/cgroup")/cg.lstrip("/")
+          cpu=(p/"cpu.max").read_text().split()
+          assert int(cpu[0])==2*int(cpu[1]) and (p/"memory.max").read_text().strip()=="4294967296" and (p/"pids.max").read_text().strip()=="128"
+          raw=(root/"scanner.py").read_bytes()
+          blob=hashlib.sha1(b"blob "+str(len(raw)).encode()+b"\0"+raw).hexdigest()
+          assert blob=="0f8151441285396b1d98979f7b89c25571a50d9d"
+          spec=importlib.util.spec_from_file_location("coden_fixture_scanner",root/"scanner.py")
+          scanner=importlib.util.module_from_spec(spec);spec.loader.exec_module(scanner)
+          fixture=json.loads((root/"fixture.json").read_text())
+          # Override only identity pins in memory for generated fixture, never
+          # modify source or authorize use of a different real image.
+          scanner.PINNED_MANIFEST=fixture["manifest"]
+          scanner.PINNED_BINARY_SIZE=fixture["binary_size"]
+          scanner.PINNED_BINARY_SHA256=fixture["binary_sha256"]
+          result=scanner.verify(root/"oci",fixture["manifest"],max_expanded_bytes=2147483647,max_compressed_bytes=536870912,logical_inventory=True,embedded_inventory=True)
+          embedded=result["embedded_archive_review"]
+          assert result["layer_count"]==14 and embedded["layer"]==13 and embedded["binary_sha256"]==fixture["binary_sha256"]
+          assert embedded["pyz_archives"][0]["entries"][0]["sha256"]==fixture["module_sha256"]
+          assert not result["release_authorized"] and not result["execution_authorized"] and not result["embedded_inventory_verified"]
+          assert result["aggregate_expanded_and_nested_read_bytes"]<=2147483647
+          print(json.dumps(dict(status="INTEGRATED_SYNTHETIC_SCANNER_REVIEW_ONLY",scanner_git_blob=blob,scanner_sha256=hashlib.sha256(raw).hexdigest(),synthetic_identity_override=True,fixture_manifest=fixture["manifest"],fixture_binary_sha256=fixture["binary_sha256"],layer_count=result["layer_count"],pyz_module_sha256=fixture["module_sha256"],aggregate_expanded_and_nested_read_bytes=result["aggregate_expanded_and_nested_read_bytes"],input_capacity=536870912,input_readonly=True,scratch_capacity=1006632960,cpu_max=cpu,memory_max=4294967296,pids_max=128,uid=os.getuid(),no_new_privs=True,cap_eff=0,network_interfaces=["lo"],docker_socket_absent=True,max_rss_kib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,real_binary_scanned=False,independent_approval=False,release_authorized=False),sort_keys=True))
+          PY
+          )"
+          timeout --kill-after=5s 90s sudo systemd-run --unit="$unit" --wait --pipe --quiet \
+            -p "User=$uid" -p "Group=$gid" -p CPUQuota=200% -p MemoryMax=4294967296 -p TasksMax=128 \
+            -p RuntimeMaxSec=600 -p KillMode=control-group -p NoNewPrivileges=yes \
+            -p CapabilityBoundingSet= -p AmbientCapabilities= -p PrivateNetwork=yes \
+            -p PrivateDevices=yes -p ProtectHome=tmpfs -p ProtectSystem=strict \
+            -p 'TemporaryFileSystem=/run:ro' -p 'TemporaryFileSystem=/dev/shm:ro' \
+            -p "BindPaths=$scratch/tmp:/tmp $scratch/tmp:/var/tmp" -p "ReadWritePaths=$scratch /tmp /var/tmp" \
+            -p RestrictSUIDSGID=yes \
+            /usr/bin/env -i PATH=/usr/bin:/bin "HOME=$scratch/home" TMPDIR=/tmp LC_ALL=C /usr/bin/python3 -I -B -c "$script" "$store" "$scratch" "$host_ns" > "$ev/integrated-scanner.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: sprint19-integrated-synthetic-scanner-receipts
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+
+  sprint20-modeb-public-metadata:
+    # Public metadata only. Never fetch distribution payloads, install or import packages.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '304e2342bce14242e2edc2ceef1fcb8fd7b229b2' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45459482500
+          name: optional-tom-runtime-scope
+          path: input
+      - name: Reconcile wheel pins and inspect public core metadata only
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          echo '6bcb3f75c6a1803e3c47cad87c4881c5e250431b876d79e1deec2f82bd1a4301  input/optional-tom.lock' | sha256sum -c -
+          echo 'acb0247cbcce90314ea3dc34cfff5cde5c6ae258c7bb2e32a607fe3a3c320c66  input/optional-tom-non-dev.txt' | sha256sum -c -
+          env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/python3 -I -B - <<'PY'
+          import concurrent.futures,datetime,email.parser,hashlib,json,re,threading,tomllib,urllib.parse,urllib.request
+          from pathlib import Path
+          out=Path("evidence")
+          def emit(name,obj):
+              (out/name).write_text(json.dumps(obj,sort_keys=True,indent=2)+"\n")
+          def sha(raw): return hashlib.sha256(raw).hexdigest()
+          lock=tomllib.loads(Path("input/optional-tom.lock").read_text())
+          exported={}; key=None
+          for line in Path("input/optional-tom-non-dev.txt").read_text().splitlines():
+              if re.match(r'^[a-z0-9-]+==',line):
+                  key=tuple(line.split(' ;',1)[0].split('=='));exported[key]=set()
+              elif (match:=re.search(r'--hash=sha256:([a-f0-9]{64})',line)):
+                  exported[key].add(match[1])
+          def rank(fn):
+              assert fn.endswith(".whl")
+              py,abi,plats=fn[:-4].rsplit("-",3)[-3:]
+              ranks=[]
+              for p in plats.split("."):
+                  m=re.fullmatch(r'manylinux_2_(\d+)_x86_64',p)
+                  if p=="any" and abi=="none" and "py3" in py.split("."):
+                      ranks.append((3,0,0));continue
+                  if not m or not 5<=int(m[1])<=41: continue
+                  if py=="cp313" and abi=="cp313":ranks.append((0,0,-int(m[1])))
+                  elif abi=="abi3" and re.fullmatch(r'cp3\d+',py) and 2<=int(py[3:])<=13:
+                      ranks.append((1,-int(py[3:]),-int(m[1])))
+              return min(ranks) if ranks else None
+          rows=[]
+          for pkg in lock["package"]:
+              k=(pkg["name"],pkg["version"])
+              if k not in exported: continue
+              choices=[]
+              for w in pkg["wheels"]:
+                  fn=w["url"].rsplit("/",1)[-1]; r=rank(fn)
+                  if r is not None and w["hash"][7:] in exported[k]: choices.append((r,fn,w))
+              choices.sort(key=lambda x:x[:2])
+              r,fn,w=choices[0]
+              rows.append(dict(name=k[0],version=k[1],filename=fn,url=w["url"],sha256=w["hash"][7:],size=w["size"],compatible_choices=len(choices)))
+          rows.sort(key=lambda x:(x["name"],x["version"]))
+          exact=sha(("\n".join(" ".join((x["name"],x["version"],x["sha256"])) for x in rows)+"\n").encode())
+          assert len(exported)==len(rows)==126 and exact=="240b32737dafed61b8fc9ab7446fd6ce069ff3775a8c525e60cc55501c885b00"
+          assert sum(x["size"] for x in rows)==103180372 and sum(x["compatible_choices"]>1 for x in rows)==10
+          emit("selection.json",dict(rows=rows,selection_digest=exact,actual_wheel_bytes_verified=False,release_authorized=False))
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*a,**kw): return None
+          budget=128*1024**2
+          lock_budget=threading.Lock()
+          consumed=0
+          def get(url,cap,accept):
+              global consumed
+              u=urllib.parse.urlsplit(url)
+              assert u.scheme=="https" and u.netloc in ("pypi.org","files.pythonhosted.org") and not u.query and not u.fragment
+              assert (u.netloc=="pypi.org" and re.fullmatch(r'/simple/[a-z0-9-]+/',u.path)) or (u.netloc=="files.pythonhosted.org" and re.fullmatch(r'/packages/[a-f0-9]{2}/[a-f0-9]{2}/[a-f0-9]+/[A-Za-z0-9_.+-]+\.whl\.metadata',u.path))
+              req=urllib.request.Request(url,headers={"Accept":accept,"Accept-Encoding":"identity","User-Agent":"CODEN-metadata-review/1"})
+              with lock_budget:
+                  if consumed+cap+1>budget: raise ValueError("aggregate metadata budget")
+                  consumed+=cap+1
+              raw=None
+              try:
+                  opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+                  with opener.open(req,timeout=8) as response:
+                      if response.headers.get("Content-Encoding","identity")!="identity":raise ValueError("encoded metadata")
+                      raw=response.read(cap+1)
+                      if len(raw)>cap:raise ValueError("metadata cap")
+                      return raw
+              finally:
+                  if raw is not None:
+                      with lock_budget: consumed-=cap+1-len(raw)
+          def review(row):
+              result=dict(row,status="BLOCKED",actual_wheel_bytes_verified=False,legal_approval=False)
+              try:
+                  raw=get("https://pypi.org/simple/"+row["name"]+"/",8*1024**2,"application/vnd.pypi.simple.v1+json")
+                  result["simple_response_sha256"]=sha(raw)
+                  files=json.loads(raw)["files"]
+                  exact=[x for x in files if x["filename"]==row["filename"]]
+                  if len(exact)!=1: raise ValueError("exact filename missing or ambiguous")
+                  f=exact[0]
+                  if f["hashes"].get("sha256")!=row["sha256"] or f["url"]!=row["url"]:raise ValueError("index identity mismatch")
+                  if f.get("size") is not None and f["size"]!=row["size"]:raise ValueError("index size mismatch")
+                  result.update(index_identity_verified=True,yanked=f.get("yanked",False),index_requires_python=f.get("requires-python"),index_size=f.get("size"))
+                  md=f.get("core-metadata",f.get("dist-info-metadata"))
+                  if not isinstance(md,dict) or not re.fullmatch(r"[0-9a-f]{64}",md.get("sha256","")):
+                      result["status"]="METADATA_HASH_NOT_ADVERTISED";return result
+                  body=get(row["url"]+".metadata",512*1024,"application/octet-stream")
+                  if sha(body)!=md["sha256"]:raise ValueError("sidecar digest mismatch")
+                  msg=email.parser.BytesParser().parsebytes(body,headersonly=True)
+                  canonical=lambda n:re.sub(r"[-_.]+","-",n).lower()
+                  if len(msg.get_all("Name",[]))!=1 or len(msg.get_all("Version",[]))!=1 or canonical(msg["Name"])!=row["name"] or msg["Version"]!=row["version"]:raise ValueError("metadata identity mismatch")
+                  result.update(status="PUBLIC_CORE_METADATA_VERIFIED",metadata_sha256=sha(body),metadata_bytes=len(body),metadata_version=msg.get("Metadata-Version"),requires_python=msg.get("Requires-Python"),license_expression=msg.get_all("License-Expression",[]),license_files=msg.get_all("License-File",[]),license_field=(msg.get("License") or "")[:8192],license_classifiers=[x for x in msg.get_all("Classifier",[]) if x.startswith("License ::")],requires_dist=msg.get_all("Requires-Dist",[]),provides_extra=msg.get_all("Provides-Extra",[]),record_verified=False,native_contents_verified=False)
+                  (out/(row["name"]+".metadata")).write_bytes(body)
+              except Exception as exc:
+                  result["error_type"]=type(exc).__name__
+                  if isinstance(exc,ValueError):result["reason"]=str(exc)[:160]
+                  elif hasattr(exc,"code"):result["http_status"]=exc.code
+              return result
+          started=datetime.datetime.now(datetime.timezone.utc).isoformat()
+          with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool: results=list(pool.map(review,rows))
+          emit("metadata-review.json",dict(started_utc=started,finished_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),results=results,metadata_budget=budget,metadata_bytes_or_reserved=consumed,distribution_payload_downloaded=False,installed=False,imported=False,legal_approval=False,release_authorized=False))
+          verified=sum(x["status"]=="PUBLIC_CORE_METADATA_VERIFIED" for x in results)
+          print("PUBLIC_CORE_METADATA_VERIFIED",verified,"of",len(results))
+          print("INDEX_IDENTITY_VERIFIED",sum(x.get("index_identity_verified",False) for x in results))
+          if verified!=126: raise SystemExit(1)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: sprint20-modeb-public-core-metadata
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+
+  sprint20-targeted-package-security-metadata:
+    # Only the previously blocked package version and public OSV identifiers.
+    # No distribution download, installation, SDK import or agent.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == 'd888857b299712dbe8ea00a44ca257e1030a5946' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      actions: read
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45673022673
+          name: sprint20-modeb-public-core-metadata
+          path: input
+      - name: Query only missing version metadata and public OSV package matches
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          echo '061f21ef773d698c55499aa0a6f7781e9625270c1f005522bfa4ce027167e953  input/metadata-review.json' | sha256sum -c -
+          echo '831d816715ba4958c95760fc209f0036e355eae2a08f78a64ea7d0d5de5a8f50  input/selection.json' | sha256sum -c -
+          env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/python3 -I -B - <<'PY'
+          import datetime,hashlib,json,urllib.request
+          from pathlib import Path
+          out=Path("evidence")
+          def emit(name,obj): (out/name).write_text(json.dumps(obj,sort_keys=True,indent=2)+"\n")
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*a,**kw): return None
+          opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+          def get(req,cap):
+              with opener.open(req,timeout=15) as response:
+                  assert response.headers.get("Content-Encoding","identity")=="identity"
+                  raw=response.read(cap+1)
+                  if len(raw)>cap:raise ValueError("metadata cap")
+                  return raw
+          def digest(raw):return hashlib.sha256(raw).hexdigest()
+          rows=json.loads(Path("input/selection.json").read_text())["rows"]
+          prior=json.loads(Path("input/metadata-review.json").read_text())["results"]
+          missing=[x for x in prior if x["status"]!="PUBLIC_CORE_METADATA_VERIFIED"]
+          assert len(rows)==126 and len(missing)==1 and missing[0]["name"]=="pydantic-core" and missing[0]["version"]=="2.50.4"
+          p=missing[0]
+          report=dict(status="BLOCKED",actual_wheel_bytes_verified=False,exact_core_metadata_verified=False,legal_approval=False,release_authorized=False)
+          try:
+              raw=get(urllib.request.Request("https://pypi.org/pypi/pydantic-core/2.50.4/json",headers={"Accept":"application/json","Accept-Encoding":"identity"}),8*1024**2)
+              doc=json.loads(raw)
+              exact=[x for x in doc["urls"] if x["filename"]==p["filename"]]
+              assert len(exact)==1
+              f=exact[0]; info=doc["info"]
+              assert f["digests"]["sha256"]==p["sha256"] and f["size"]==p["size"] and f["url"]==p["url"]
+              assert info["version"]==p["version"]
+              report.update(status="VERSION_JSON_IDENTITY_MATCH",source="https://pypi.org/pypi/pydantic-core/2.50.4/json",response_sha256=digest(raw),exact_filename=p["filename"],wheel_sha256=p["sha256"],yanked=f.get("yanked"),requires_python=info.get("requires_python"),requires_dist=info.get("requires_dist"),license_expression=info.get("license_expression"),license_field=info.get("license"),license_classifiers=[x for x in info.get("classifiers",[]) if x.startswith("License ::")])
+              (out/"pydantic-core-version.json").write_bytes(raw)
+          except Exception as exc:
+              report["error_type"]=type(exc).__name__
+          emit("pydantic-core-review.json",report)
+          print("TARGETED_VERSION_METADATA",report["status"])
+          queries=[dict(package=dict(ecosystem="PyPI",name=x["name"]),version=x["version"]) for x in rows]
+          body=json.dumps({"queries":queries},sort_keys=True).encode()
+          (out/"osv-query.json").write_bytes(body)
+          screening=dict(status="BLOCKED",release_authorized=False,actual_wheel_contents_scanned=False,absence_of_matches_is_not_clearance=True)
+          try:
+              raw=get(urllib.request.Request("https://api.osv.dev/v1/querybatch",data=body,headers={"Content-Type":"application/json","Accept":"application/json","Accept-Encoding":"identity"},method="POST"),2*1024**2)
+              data=json.loads(raw)
+              assert len(data["results"])==len(rows)
+              # Paged results are not complete; record pagination and do not
+              # interpret no matches as a security admission decision.
+              matches=[]
+              for row,result in zip(rows,data["results"]):
+                  matches.append(dict(name=row["name"],version=row["version"],matches=result.get("vulns",[]),next_page_token_present=bool(result.get("next_page_token"))))
+              screening.update(status="PUBLIC_OSV_MATCHES_REVIEW_ONLY",response_sha256=digest(raw),query_sha256=digest(body),as_of_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),rows=matches,paged_results=sum(x["next_page_token_present"] for x in matches),packages_with_matches=sum(bool(x["matches"]) for x in matches))
+              (out/"osv-response.json").write_bytes(raw)
+          except Exception as exc:
+              screening["error_type"]=type(exc).__name__
+          emit("osv-screening.json",screening)
+          print("OSV_METADATA_SCREENING",screening["status"],screening.get("packages_with_matches"))
+          if report["status"]=="BLOCKED" or screening["status"]=="BLOCKED":raise SystemExit(1)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: sprint20-targeted-security-metadata
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+
+  sprint21-r2-targeted-provenance:
+    # Public PEP 740 metadata only, not wheels, source archives or executable artifacts.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '79df0df43aee18ff70bf5d801f07bb9a89d151f8' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - name: Inspect public provenance for only the three residual package concerns
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/python3 -I -B - <<'PY'
+          import base64,datetime,hashlib,json,urllib.error,urllib.request
+          from pathlib import Path
+          rows=[
+              ("jiter","0.16.0","jiter-0.16.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl","c682bea068a90b764577bdb78a60a4c1d1606daf9cd4c893832a37c7cc9d9026","pydantic/jiter"),
+              ("tokenizers","0.23.2","tokenizers-0.23.2-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl","41c2f84d172449b4dadb9cdc508e3e364076613c35b16e76ecfe47a60d1e3305","huggingface/tokenizers"),
+              ("fastmcp-slim","4.2.0","fastmcp_slim-4.2.0-py3-none-any.whl","174239bed3ac47275afa7fe82941a65f86ad0314205195766c92b138c6dcfebe","PrefectHQ/fastmcp"),
+          ]
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*a,**kw): return None
+          opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+          out=Path("evidence")
+          results=[]
+          for name,version,filename,digest,repo in rows:
+              url=f"https://pypi.org/integrity/{name}/{version}/{filename}/provenance"
+              row=dict(name=name,version=version,filename=filename,wheel_sha256=digest,expected_repository=repo,url=url,status="BLOCKED",signature_verified=False,compiled_membership_verified=False)
+              try:
+                  req=urllib.request.Request(url,headers={"Accept":"application/json","Accept-Encoding":"identity"})
+                  with opener.open(req,timeout=8) as response:
+                      assert response.headers.get("Content-Encoding","identity")=="identity"
+                      raw=response.read(2*1024**2+1)
+                  if len(raw)>2*1024**2:raise ValueError("metadata cap")
+                  doc=json.loads(raw)
+                  assert isinstance(doc,dict) and isinstance(doc.get("attestation_bundles"),list)
+                  statements=[]
+                  for bundle in doc["attestation_bundles"]:
+                      publisher=bundle.get("publisher",{})
+                      for attestation in bundle["attestations"]:
+                          statement_raw=base64.b64decode(attestation["envelope"]["statement"],validate=True)
+                          statement=json.loads(statement_raw)
+                          subjects=statement.get("subject",[])
+                          statements.append(dict(predicate_type=statement.get("predicateType"),subject_digest_match=any(x.get("name")==filename and x.get("digest",{}).get("sha256")==digest for x in subjects),publisher=publisher,statement_sha256=hashlib.sha256(statement_raw).hexdigest()))
+                  row.update(status="PROVENANCE_METADATA_COLLECTED",response_sha256=hashlib.sha256(raw).hexdigest(),bytes=len(raw),statements=statements)
+                  (out/(name+".provenance.json")).write_bytes(raw)
+              except urllib.error.HTTPError as exc:
+                  row.update(status="NOT_PUBLISHED_AT_ENDPOINT" if exc.code==404 else "HTTP_BLOCKED",http_status=exc.code)
+              except Exception as exc:
+                  row.update(error_type=type(exc).__name__)
+              results.append(row)
+          receipt=dict(status="PUBLIC_PROVENANCE_DISCOVERY_ONLY",as_of_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),rows=results,distribution_downloaded=False,signature_verified=False,installation_authorized=False,release_authorized=False)
+          (out/"provenance-review.json").write_text(json.dumps(receipt,sort_keys=True,indent=2)+"\n")
+          print(json.dumps([(r["name"],r["status"],len(r.get("statements",[]))) for r in results]))
+          # A 404 is a completed discovery, not an authenticity decision.
+          if any(r["status"] not in ("PROVENANCE_METADATA_COLLECTED","NOT_PUBLISHED_AT_ENDPOINT") for r in results):raise SystemExit(1)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: sprint21-r2-targeted-provenance
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  sprint23-wheel-kernel-preflight:
+    # Exact existing wheel/ELF auditors on generated trusted fixtures. No distributions.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '65782cd650e22d9f01a4522ce516549a6d9c75b4' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 65782cd650e22d9f01a4522ce516549a6d9c75b4
+          persist-credentials: false
+      - name: Exercise strict wheel auditor under rootless containment
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          unit="coden-s23-fixture-${GITHUB_RUN_ID}.service"
+          store=""; scratch=""
+          cleanup() {
+            status=$?
+            trap - EXIT
+            sudo systemctl stop "$unit" >/dev/null 2>&1 || true
+            state="$(sudo systemctl show "$unit" -p ActiveState --value 2>/dev/null || true)"
+            case "$state" in inactive|failed) ;; *) status=1;; esac
+            printf 'SERVICE_%s\n' "$state" > "$ev/cleanup.txt"
+            for dir in "$scratch" "$store"; do
+              [[ -n "$dir" ]] || continue
+              if mountpoint -q "$dir"; then
+                sudo umount "$dir" || { echo UNMOUNT_FAILED >> "$ev/cleanup.txt"; status=1; continue; }
+              fi
+              sudo rmdir "$dir" || { status=1; continue; }
+              echo MOUNT_UNMOUNTED_AND_REMOVED >> "$ev/cleanup.txt"
+            done
+            exit "$status"
+          }
+          trap cleanup EXIT
+          test "$(git rev-parse HEAD)" = 65782cd650e22d9f01a4522ce516549a6d9c75b4
+          test "$(git hash-object ai_factory/factory_wheel_notice_audit.py)" = 8c0cd6f18cb9072dd38f6d2081067d32e177f248
+          test "$(git hash-object ai_factory/factory_python_elf.py)" = fc1426358f3cc374af01fe453ece23c9dbef120e
+          uid="$(id -u nobody)"; gid="$(id -g nobody)"
+          host_ns="$(readlink /proc/self/ns/net)"
+          store="$(sudo mktemp -d /opt/coden-s23-input.XXXXXXXX)"
+          scratch="$(sudo mktemp -d /opt/coden-s23-scratch.XXXXXXXX)"
+          sudo mount -t tmpfs -o "size=8m,nosuid,nodev,noexec,mode=0755,uid=$(id -u),gid=$(id -g)" tmpfs "$store"
+          sudo mount -t tmpfs -o "size=960m,nosuid,nodev,noexec,mode=0700,uid=$uid,gid=$gid" tmpfs "$scratch"
+          sudo mkdir "$scratch/home" "$scratch/tmp"
+          sudo chown "$uid:$gid" "$scratch/home" "$scratch/tmp"
+          sudo chmod 0700 "$scratch/home" "$scratch/tmp"
+          mkdir -m 0755 "$store/ai_factory"
+          install -m 0444 ai_factory/factory_wheel_notice_audit.py ai_factory/factory_python_elf.py "$store/ai_factory/"
+          sudo mount -o remount,ro,nosuid,nodev,noexec "$store"
+          findmnt -n -o FSTYPE,OPTIONS --mountpoint "$store" > "$ev/input-mount.txt"
+          findmnt -n -o FSTYPE,OPTIONS --mountpoint "$scratch" > "$ev/scratch-mount.txt"
+          script="$(cat <<'PY'
+          import hashlib,importlib.util,json,os,socket,sys,resource
+          from pathlib import Path
+          root,scratch,host=Path(sys.argv[1]),Path(sys.argv[2]),sys.argv[3]
+          a,b=os.statvfs(root),os.statvfs(scratch)
+          assert a.f_frsize*a.f_blocks==8388608 and a.f_flag&os.ST_RDONLY
+          assert b.f_frsize*b.f_blocks==1006632960
+          assert all(os.stat(p).st_dev==os.stat(scratch).st_dev for p in (scratch/"home",scratch/"tmp",Path("/tmp"),Path("/var/tmp")))
+          assert os.getuid()!=0 and set(os.getgroups())<={os.getgid()}
+          st=dict(x.split(":",1) for x in Path("/proc/self/status").read_text().splitlines() if ":" in x)
+          assert int(st["CapEff"],16)==0 and st["NoNewPrivs"].strip()=="1"
+          assert os.readlink("/proc/self/ns/net")!=host and sorted(n for _,n in socket.if_nameindex())==["lo"]
+          assert len(Path("/proc/self/net/route").read_text().splitlines())==1
+          v6=Path("/proc/self/net/ipv6_route")
+          assert not v6.exists() or all(x.split()[-1]=="lo" for x in v6.read_text().splitlines() if x.strip())
+          assert not any(os.path.lexists(x) for x in ("/run/docker.sock","/var/run/docker.sock"))
+          assert set(os.environ)<={"PATH","HOME","TMPDIR","LC_ALL"}
+          cg=next(x.split(":",2)[2] for x in Path("/proc/self/cgroup").read_text().splitlines() if x.startswith("0::"))
+          p=Path("/sys/fs/cgroup")/cg.lstrip("/")
+          cpu=(p/"cpu.max").read_text().split()
+          assert int(cpu[0])==2*int(cpu[1]) and (p/"memory.max").read_text().strip()=="4294967296" and (p/"pids.max").read_text().strip()=="128"
+          import base64,csv,io,zipfile
+          sys.path.insert(0,str(root))
+          from ai_factory.factory_wheel_notice_audit import inspect_wheel,inspect_wheel_batch,WheelBudget
+          def fixture(name,payload):
+              prefix=name+"-1.dist-info/"
+              files={name+"/object":payload,prefix+"METADATA":("Name: "+name+"\nVersion: 1\n").encode(),prefix+"WHEEL":b"Wheel-Version: 1.0\nTag: py3-none-any\n",prefix+"LICENSE":b"generated test fixture"}
+              rows=[[n,"sha256="+base64.urlsafe_b64encode(hashlib.sha256(data).digest()).decode().rstrip("="),str(len(data))] for n,data in files.items()]
+              rows.append([prefix+"RECORD","",""])
+              text=io.StringIO(newline="");csv.writer(text,lineterminator="\n").writerows(rows)
+              files[prefix+"RECORD"]=text.getvalue().encode()
+              out=io.BytesIO()
+              with zipfile.ZipFile(out,"w",compression=zipfile.ZIP_DEFLATED) as z:
+                  for n,data in files.items():z.writestr(n,data)
+              raw=out.getvalue()
+              return (raw,hashlib.sha256(raw).hexdigest()),sum(map(len,files.values()))
+          good=[fixture("first",b"fixture"),fixture("second",Path("/bin/true").read_bytes()),fixture("third",b"fixture")]
+          result=inspect_wheel_batch([x[0] for x in good],scratch=scratch/"tmp",inspect_native=True)
+          assert result["record_verified"] and result["native_count"]==1 and not result["release_authorized"]
+          assert result["expanded_bytes"]==sum(x[1] for x in good)
+          assert result["compressed_bytes"]==sum(len(x[0][0]) for x in good)
+          assert result["wheels"][1]["files"]["second/object"]["native"]["machine"]
+          assert not list((scratch/"tmp").iterdir())
+          bad=[good[0],fixture("broken",b"\x7fELF"+b"\0"*16),good[2]]
+          try:inspect_wheel_batch([x[0] for x in bad],scratch=scratch/"tmp",inspect_native=True)
+          except ValueError:pass
+          else:raise AssertionError("malformed ELF accepted")
+          assert not list((scratch/"tmp").iterdir())
+          budget=WheelBudget()
+          large=[fixture(n,b"x"*(mib*1024**2)) for n,mib in (("largeone",40),("largetwo",40),("largethree",49))]
+          for pair,expanded in large[:2]:
+              assert inspect_wheel(*pair,budget=budget)["expanded_bytes"]==expanded
+          before=budget.expanded_bytes
+          assert before==sum(x[1] for x in large[:2])
+          try:inspect_wheel(*large[2][0],budget=budget)
+          except ValueError:pass
+          else:raise AssertionError("aggregate expanded limit not enforced")
+          assert budget.failed and budget.expanded_bytes==before
+          try:inspect_wheel(*large[0][0],budget=budget)
+          except ValueError:pass
+          else:raise AssertionError("failed budget reused")
+          assert not list((scratch/"tmp").iterdir())
+          print(json.dumps(dict(status="SYNTHETIC_WHEEL_KERNEL_PREFLIGHT",source_commit="65782cd650e22d9f01a4522ce516549a6d9c75b4",wheel_count=3,record_verified=True,expanded_bytes=result["expanded_bytes"],compressed_bytes=result["compressed_bytes"],native_count=result["native_count"],native_output_bytes=result["native_output_bytes"],malformed_elf_batch_rejected=True,large_expanded_before_third=before,third_declared_expanded_bytes=large[2][1],aggregate_expanded_limit=128*1024**2,third_rejected=True,failed_budget_reuse_rejected=True,scratch_empty=True,uid=os.getuid(),input_capacity=8388608,scratch_capacity=1006632960,cpu_max=cpu,memory_max=4294967296,pids_max=128,network_interfaces=["lo"],docker_socket_absent=True,max_rss_kib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,real_wheels_scanned=False,readelf_io_metered=False,independent_approval=False,release_authorized=False),sort_keys=True))
+          PY
+          )"
+          timeout --kill-after=5s 90s sudo systemd-run --unit="$unit" --wait --pipe --quiet \
+            -p "User=$uid" -p "Group=$gid" -p CPUQuota=200% -p MemoryMax=4294967296 -p TasksMax=128 \
+            -p RuntimeMaxSec=600 -p KillMode=control-group -p NoNewPrivileges=yes \
+            -p CapabilityBoundingSet= -p AmbientCapabilities= -p PrivateNetwork=yes \
+            -p PrivateDevices=yes -p ProtectHome=tmpfs -p ProtectSystem=strict \
+            -p 'TemporaryFileSystem=/run:ro' -p 'TemporaryFileSystem=/dev/shm:ro' \
+            -p "BindPaths=$scratch/tmp:/tmp $scratch/tmp:/var/tmp" -p "ReadWritePaths=$scratch /tmp /var/tmp" \
+            -p RestrictSUIDSGID=yes \
+            /usr/bin/env -i PATH=/usr/bin:/bin "HOME=$scratch/home" TMPDIR=/tmp LC_ALL=C /usr/bin/python3 -I -B -c "$script" "$store" "$scratch" "$host_ns" > "$ev/wheel-kernel-preflight.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: sprint23-wheel-kernel-preflight-receipts
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  sprint24-logical-io-kernel-preflight:
+    # Exact existing wheel/ELF auditors on generated trusted fixtures. No distributions.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '9f3e6cfd9ff6a91ad4854509711d5a1cc8db2199' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 9f3e6cfd9ff6a91ad4854509711d5a1cc8db2199
+          persist-credentials: false
+      - name: Exercise strict wheel auditor under rootless containment
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          unit="coden-s24-fixture-${GITHUB_RUN_ID}.service"
+          store=""; scratch=""
+          cleanup() {
+            status=$?
+            trap - EXIT
+            sudo systemctl stop "$unit" >/dev/null 2>&1 || true
+            state="$(sudo systemctl show "$unit" -p ActiveState --value 2>/dev/null || true)"
+            case "$state" in inactive|failed) ;; *) status=1;; esac
+            printf 'SERVICE_%s\n' "$state" > "$ev/cleanup.txt"
+            for dir in "$scratch" "$store"; do
+              [[ -n "$dir" ]] || continue
+              if mountpoint -q "$dir"; then
+                sudo umount "$dir" || { echo UNMOUNT_FAILED >> "$ev/cleanup.txt"; status=1; continue; }
+              fi
+              sudo rmdir "$dir" || { status=1; continue; }
+              echo MOUNT_UNMOUNTED_AND_REMOVED >> "$ev/cleanup.txt"
+            done
+            exit "$status"
+          }
+          trap cleanup EXIT
+          test "$(git rev-parse HEAD)" = 9f3e6cfd9ff6a91ad4854509711d5a1cc8db2199
+          test "$(git hash-object ai_factory/factory_wheel_notice_audit.py)" = 0f626b4140df120dfac565f8bcd470dddd9bb5a2
+          test "$(git hash-object ai_factory/factory_python_elf.py)" = fc1426358f3cc374af01fe453ece23c9dbef120e
+          uid="$(id -u nobody)"; gid="$(id -g nobody)"
+          host_ns="$(readlink /proc/self/ns/net)"
+          store="$(sudo mktemp -d /opt/coden-s24-input.XXXXXXXX)"
+          scratch="$(sudo mktemp -d /opt/coden-s24-scratch.XXXXXXXX)"
+          sudo mount -t tmpfs -o "size=8m,nosuid,nodev,noexec,mode=0755,uid=$(id -u),gid=$(id -g)" tmpfs "$store"
+          sudo mount -t tmpfs -o "size=960m,nosuid,nodev,noexec,mode=0700,uid=$uid,gid=$gid" tmpfs "$scratch"
+          sudo mkdir "$scratch/home" "$scratch/tmp"
+          sudo chown "$uid:$gid" "$scratch/home" "$scratch/tmp"
+          sudo chmod 0700 "$scratch/home" "$scratch/tmp"
+          mkdir -m 0755 "$store/ai_factory"
+          install -m 0444 ai_factory/factory_wheel_notice_audit.py ai_factory/factory_python_elf.py "$store/ai_factory/"
+          sudo mount -o remount,ro,nosuid,nodev,noexec "$store"
+          findmnt -n -o FSTYPE,OPTIONS --mountpoint "$store" > "$ev/input-mount.txt"
+          findmnt -n -o FSTYPE,OPTIONS --mountpoint "$scratch" > "$ev/scratch-mount.txt"
+          script="$(cat <<'PY'
+          import hashlib,importlib.util,json,os,socket,sys,resource
+          from pathlib import Path
+          root,scratch,host=Path(sys.argv[1]),Path(sys.argv[2]),sys.argv[3]
+          a,b=os.statvfs(root),os.statvfs(scratch)
+          assert a.f_frsize*a.f_blocks==8388608 and a.f_flag&os.ST_RDONLY
+          assert b.f_frsize*b.f_blocks==1006632960
+          assert all(os.stat(p).st_dev==os.stat(scratch).st_dev for p in (scratch/"home",scratch/"tmp",Path("/tmp"),Path("/var/tmp")))
+          assert os.getuid()!=0 and set(os.getgroups())<={os.getgid()}
+          st=dict(x.split(":",1) for x in Path("/proc/self/status").read_text().splitlines() if ":" in x)
+          assert int(st["CapEff"],16)==0 and st["NoNewPrivs"].strip()=="1"
+          assert os.readlink("/proc/self/ns/net")!=host and sorted(n for _,n in socket.if_nameindex())==["lo"]
+          assert len(Path("/proc/self/net/route").read_text().splitlines())==1
+          v6=Path("/proc/self/net/ipv6_route")
+          assert not v6.exists() or all(x.split()[-1]=="lo" for x in v6.read_text().splitlines() if x.strip())
+          assert not any(os.path.lexists(x) for x in ("/run/docker.sock","/var/run/docker.sock"))
+          assert set(os.environ)<={"PATH","HOME","TMPDIR","LC_ALL"}
+          cg=next(x.split(":",2)[2] for x in Path("/proc/self/cgroup").read_text().splitlines() if x.startswith("0::"))
+          p=Path("/sys/fs/cgroup")/cg.lstrip("/")
+          cpu=(p/"cpu.max").read_text().split()
+          assert int(cpu[0])==2*int(cpu[1]) and (p/"memory.max").read_text().strip()=="4294967296" and (p/"pids.max").read_text().strip()=="128"
+          import base64,csv,io,zipfile
+          sys.path.insert(0,str(root))
+          from ai_factory.factory_wheel_notice_audit import inspect_wheel,inspect_wheel_batch,WheelBudget
+          def fixture(name,payload):
+              prefix=name+"-1.dist-info/"
+              files={name+"/object":payload,prefix+"METADATA":("Name: "+name+"\nVersion: 1\n").encode(),prefix+"WHEEL":b"Wheel-Version: 1.0\nTag: py3-none-any\n",prefix+"LICENSE":b"generated test fixture"}
+              rows=[[n,"sha256="+base64.urlsafe_b64encode(hashlib.sha256(data).digest()).decode().rstrip("="),str(len(data))] for n,data in files.items()]
+              rows.append([prefix+"RECORD","",""])
+              text=io.StringIO(newline="");csv.writer(text,lineterminator="\n").writerows(rows)
+              files[prefix+"RECORD"]=text.getvalue().encode()
+              out=io.BytesIO()
+              with zipfile.ZipFile(out,"w",compression=zipfile.ZIP_DEFLATED) as z:
+                  for n,data in files.items():z.writestr(n,data)
+              raw=out.getvalue()
+              return (raw,hashlib.sha256(raw).hexdigest()),sum(map(len,files.values()))
+          good=[fixture("first",b"fixture"),fixture("second",Path("/bin/true").read_bytes()),fixture("third",b"fixture")]
+          result=inspect_wheel_batch([x[0] for x in good],scratch=scratch/"tmp",inspect_native=True,fixture_native=True)
+          assert result["record_verified"] and result["native_count"]==1 and not result["release_authorized"]
+          assert result["expanded_bytes"]==sum(x[1] for x in good)
+          assert result["compressed_bytes"]==sum(len(x[0][0]) for x in good)
+          assert result["archive_read_bytes"]>result["compressed_bytes"]
+          assert result["native_input_reserved_bytes"]==4*len(Path("/bin/true").read_bytes())
+          assert result["logical_io_bytes"]==result["archive_read_bytes"]+result["expanded_bytes"]+result["native_input_reserved_bytes"]
+          assert not result["native_internal_io_verified"]
+          assert 0<result["evidence_bytes"]<=16*1024**2
+          evprobe=WheelBudget()
+          first=inspect_wheel(*good[0][0],budget=evprobe)
+          evbudget=WheelBudget(evidence_limit=first["evidence_bytes"])
+          inspect_wheel(*good[0][0],budget=evbudget)
+          try:inspect_wheel(*good[2][0],budget=evbudget)
+          except ValueError as exc:assert "evidence limit" in str(exc)
+          else:raise AssertionError("aggregate evidence budget bypass")
+          assert evbudget.failed and evbudget.evidence_bytes==first["evidence_bytes"]
+
+          try:inspect_wheel_batch([x[0] for x in good],scratch=scratch/"tmp",inspect_native=True)
+          except ValueError as exc:assert "native inspection blocked" in str(exc)
+          else:raise AssertionError("native admission path was not blocked")
+          # Prove a limit reached by reads alone even when decompression fits.
+          from ai_factory.factory_wheel_notice_audit import _MeteredArchive
+          tiny=WheelBudget(io_limit=10)
+          reader=_MeteredArchive(b"abcdef",tiny)
+          assert reader.read(4)==b"abcd";reader.seek(0)
+          assert reader.read(4)==b"abcd"
+          try:reader.read(3)
+          except ValueError:pass
+          else:raise AssertionError("unmetered repeated read")
+          assert reader.tell()==4 and tiny.archive_read_bytes==8 and tiny.failed
+          io_only=WheelBudget(io_limit=len(good[0][0][0]))
+          try:inspect_wheel(*good[0][0],budget=io_only)
+          except ValueError:pass
+          else:raise AssertionError("ZIP read budget bypass")
+          assert io_only.failed and io_only.logical_io_bytes<=len(good[0][0][0])
+
+          assert result["wheels"][1]["files"]["second/object"]["native"]["machine"]
+          assert not list((scratch/"tmp").iterdir())
+          bad=[good[0],fixture("broken",b"\x7fELF"+b"\0"*16),good[2]]
+          try:inspect_wheel_batch([x[0] for x in bad],scratch=scratch/"tmp",inspect_native=True,fixture_native=True)
+          except ValueError:pass
+          else:raise AssertionError("malformed ELF accepted")
+          assert not list((scratch/"tmp").iterdir())
+          budget=WheelBudget()
+          large=[fixture(n,b"x"*(mib*1024**2)) for n,mib in (("largeone",40),("largetwo",40),("largethree",49))]
+          for pair,expanded in large[:2]:
+              assert inspect_wheel(*pair,budget=budget)["expanded_bytes"]==expanded
+          before=budget.expanded_bytes
+          before_io=budget.logical_io_bytes
+          assert before==sum(x[1] for x in large[:2])
+          try:inspect_wheel(*large[2][0],budget=budget)
+          except ValueError:pass
+          else:raise AssertionError("aggregate expanded limit not enforced")
+          assert budget.failed and budget.expanded_bytes==before
+          assert before_io>before and budget.logical_io_bytes<=128*1024**2
+          try:inspect_wheel(*large[0][0],budget=budget)
+          except ValueError:pass
+          else:raise AssertionError("failed budget reused")
+          assert not list((scratch/"tmp").iterdir())
+          print(json.dumps(dict(status="SYNTHETIC_LOGICAL_IO_KERNEL_PREFLIGHT",source_commit="9f3e6cfd9ff6a91ad4854509711d5a1cc8db2199",wheel_count=3,record_verified=True,expanded_bytes=result["expanded_bytes"],compressed_bytes=result["compressed_bytes"],native_count=result["native_count"],native_output_bytes=result["native_output_bytes"],archive_read_bytes=result["archive_read_bytes"],logical_io_bytes=result["logical_io_bytes"],native_input_reserved_bytes=result["native_input_reserved_bytes"],native_real_path_blocked=True,repeated_read_limit_pass=True,read_only_budget_limit_pass=True,evidence_bytes=result["evidence_bytes"],evidence_budget_limit_pass=True,large_logical_io_before_third=before_io,large_logical_io_after_reject=budget.logical_io_bytes,cgroup_memory_peak_bytes=int((p/"memory.peak").read_text().strip()),malformed_elf_batch_rejected=True,large_expanded_before_third=before,third_declared_expanded_bytes=large[2][1],aggregate_expanded_limit=128*1024**2,third_rejected=True,failed_budget_reuse_rejected=True,scratch_empty=True,uid=os.getuid(),input_capacity=8388608,scratch_capacity=1006632960,cpu_max=cpu,memory_max=4294967296,pids_max=128,network_interfaces=["lo"],docker_socket_absent=True,max_rss_kib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,real_wheels_scanned=False,readelf_io_metered=False,independent_approval=False,release_authorized=False),sort_keys=True))
+          PY
+          )"
+          timeout --kill-after=5s 90s sudo systemd-run --unit="$unit" --wait --pipe --quiet \
+            -p "User=$uid" -p "Group=$gid" -p CPUQuota=200% -p MemoryMax=4294967296 -p TasksMax=128 \
+            -p RuntimeMaxSec=600 -p KillMode=control-group -p NoNewPrivileges=yes \
+            -p CapabilityBoundingSet= -p AmbientCapabilities= -p PrivateNetwork=yes \
+            -p PrivateDevices=yes -p ProtectHome=tmpfs -p ProtectSystem=strict \
+            -p 'TemporaryFileSystem=/run:ro' -p 'TemporaryFileSystem=/dev/shm:ro' \
+            -p "BindPaths=$scratch/tmp:/tmp $scratch/tmp:/var/tmp" -p "ReadWritePaths=$scratch /tmp /var/tmp" \
+            -p RestrictSUIDSGID=yes \
+            /usr/bin/env -i PATH=/usr/bin:/bin "HOME=$scratch/home" TMPDIR=/tmp LC_ALL=C /usr/bin/python3 -I -B -c "$script" "$store" "$scratch" "$host_ns" > "$ev/logical-io-kernel-preflight.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: sprint24-logical-io-kernel-preflight-receipts
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  split-identity-cgroup-preflight:
+    # One-shot synthetic evidence: cross-UID isolation, aggregate scratch quota and cgroup cleanup.
+    # Generated synthetic processes; no distribution acquisition, SDK or Qwen.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '66d7376e24deb8f70800ee37ac5cc8b6dbf229b5' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    permissions: {}
+    steps:
+      - name: Verify split identities, aggregate scratch ENOSPC and cgroup cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          broker="coden-broker-fixture-${GITHUB_RUN_ID}.service"
+          tool="coden-tool-fixture-${GITHUB_RUN_ID}.service"
+          base=""
+          cleanup() {
+            status=$?
+            trap - EXIT
+            for unit in "$tool" "$broker"; do
+              sudo systemctl stop "$unit" >/dev/null 2>&1 || true
+              state="$(sudo systemctl show "$unit" -p ActiveState --value 2>/dev/null || true)"
+              case "$state" in inactive|failed) ;; *) status=1;; esac
+              printf '%s %s\n' "$unit" "$state"
+            done > "$ev/cleanup.txt"
+            if [[ -n "$base" ]]; then
+              sudo rm -f -- "$base/private/socket" "$base/private/credential"
+              if mountpoint -q "$base/scratch"; then
+                sudo umount "$base/scratch" || status=1
+              fi
+              if ! mountpoint -q "$base/scratch"; then
+                sudo rmdir "$base/private" "$base/scratch" "$base" || status=1
+              else
+                status=1
+              fi
+              test ! -e "$base" && echo FIXTURE_DIRECTORY_REMOVED >> "$ev/cleanup.txt"
+            fi
+            exit "$status"
+          }
+          trap cleanup EXIT
+          bu="$(id -u daemon)"; bg="$(id -g daemon)"
+          tu="$(id -u nobody)"; tg="$(id -g nobody)"
+          test "$bu" != 0; test "$tu" != 0; test "$bu" != "$tu"; test "$bg" != "$tg"
+          base="$(sudo mktemp -d /opt/coden-split-fixture.XXXXXXXX)"
+          sudo chmod 0755 "$base"
+          sudo install -d -m 0700 -o "$bu" -g "$bg" "$base/private"
+          sudo install -d -m 0700 -o "$tu" -g "$tg" "$base/scratch"
+          sudo mount -t tmpfs -o "size=960m,nosuid,nodev,noexec,mode=0700,uid=$tu,gid=$tg" tmpfs "$base/scratch"
+          sudo install -d -m 0700 -o "$tu" -g "$tg" "$base/scratch/tmp"
+          findmnt -n -o FSTYPE,OPTIONS --mountpoint "$base/scratch" > "$ev/scratch-mount.txt"
+          # Each service receives half of the existing total limits; no heavy work.
+          common=(-p CPUQuota=100% -p MemoryMax=2147483648 -p TasksMax=64
+                  -p RuntimeMaxSec=60 -p TimeoutStopSec=2 -p KillMode=control-group
+                  -p NoNewPrivileges=yes -p CapabilityBoundingSet= -p AmbientCapabilities=
+                  -p PrivateNetwork=yes -p PrivateDevices=yes -p ProtectHome=tmpfs
+                  -p ProtectSystem=strict -p TemporaryFileSystem=/run:ro
+                  -p TemporaryFileSystem=/dev/shm:ro -p RestrictSUIDSGID=yes)
+          broker_code="$(cat <<'PY'
+          import os,socket,struct,sys,time
+          from pathlib import Path
+          private=Path(sys.argv[1])
+          assert os.getuid()!=0
+          (private/"credential").write_bytes(b"synthetic-not-a-real-secret")
+          os.chmod(private/"credential",0o600)
+          s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+          s.bind(str(private/"socket")); os.chmod(private/"socket",0o600); s.listen(1)
+          c=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+          c.connect(str(private/"socket")); a,_=s.accept()
+          pid,uid,gid=struct.unpack("3i",a.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))
+          assert uid==os.getuid() and gid==os.getgid()
+          assert (private/"credential").read_bytes()==b"synthetic-not-a-real-secret"
+          a.close();c.close()
+          time.sleep(50)
+          PY
+          )"
+          sudo systemd-run --quiet --unit="$broker" -p "User=$bu" -p "Group=$bg" \
+            -p "ReadWritePaths=$base/private" "${common[@]}" \
+            /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/python3 -I -B -c "$broker_code" "$base/private"
+          for n in $(seq 1 50); do
+            sudo test -S "$base/private/socket" && break
+            sleep .1
+          done
+          sudo test -S "$base/private/socket"
+          bp="$(sudo systemctl show "$broker" -p MainPID --value)"
+          test "$bp" -gt 1
+          tool_code="$(cat <<'PY'
+          import errno,json,os,signal,socket,subprocess,sys,time
+          from pathlib import Path
+          private,scratch,bp=Path(sys.argv[1]),Path(sys.argv[2]),int(sys.argv[3])
+          assert os.getuid()!=0
+          st=dict(x.split(":",1) for x in Path("/proc/self/status").read_text().splitlines() if ":" in x)
+          assert int(st["CapEff"],16)==0 and st["NoNewPrivs"].strip()=="1"
+          assert sorted(n for _,n in socket.if_nameindex())==["lo"]
+          assert not any(os.path.lexists(p) for p in ("/run/docker.sock","/var/run/docker.sock"))
+          def denied(fn):
+              try: fn()
+              except PermissionError: return True
+              raise AssertionError("cross-identity access unexpectedly allowed")
+          checks={
+              "credential_read_denied":denied(lambda:(private/"credential").read_bytes()),
+              "broker_proc_environ_denied":denied(lambda:Path(f"/proc/{bp}/environ").read_bytes()),
+              "broker_signal_denied":denied(lambda:os.kill(bp,0)),
+          }
+          with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as s:
+              checks["broker_socket_denied"]=denied(lambda:s.connect(str(private/"socket")))
+          cg=next(x.split(":",2)[2] for x in Path("/proc/self/cgroup").read_text().splitlines() if x.startswith("0::"))
+          p=Path("/sys/fs/cgroup")/cg.lstrip("/")
+          cpu=(p/"cpu.max").read_text().split()
+          assert int(cpu[0])==int(cpu[1])
+          assert (p/"memory.max").read_text().strip()=="2147483648"
+          assert (p/"pids.max").read_text().strip()=="64"
+          # Exercise actual shared tmpfs capacity, not sparse file length or
+          # an application-level reservation. The only workload is trusted data.
+          v=os.statvfs(scratch); block=v.f_frsize
+          capacity=v.f_blocks*block
+          assert capacity==960*1024*1024 and block>0
+          assert all(os.stat(q).st_dev==os.stat(scratch).st_dev for q in
+                     (scratch/"tmp",Path("/tmp"),Path("/var/tmp")))
+          assert all(os.statvfs(q).f_blocks*os.statvfs(q).f_frsize==capacity for q in
+                     (Path("/tmp"),Path("/var/tmp")))
+          paths=(scratch/"quota-root",Path("/tmp/quota-tmp"),Path("/var/tmp/quota-overflow"))
+          before=os.statvfs(scratch).f_bavail*block
+          try:
+              with paths[0].open("xb") as a:
+                  os.posix_fallocate(a.fileno(),0,16*1024*1024)
+                  remain=os.statvfs(scratch).f_bavail*block
+                  assert before-remain>=16*1024*1024 and remain>2*block
+                  with paths[1].open("xb") as b:
+                      os.posix_fallocate(b.fileno(),0,remain-block)
+                      assert os.statvfs(scratch).f_bavail*block<=block
+                      with paths[2].open("xb") as c:
+                          try: os.posix_fallocate(c.fileno(),0,2*block)
+                          except OSError as exc: assert exc.errno==errno.ENOSPC
+                          else: raise AssertionError("aggregate quota did not reject overflow")
+          finally:
+              for q in paths: q.unlink(missing_ok=True)
+          after=os.statvfs(scratch).f_bavail*block
+          assert after==before and not list((scratch/"tmp").iterdir())
+          checks.update(scratch_capacity_bytes=capacity,shared_tmp_aliases=True,
+                        scratch_enospc=True,scratch_reclaimed=True,
+                        scratch_available_before=before,scratch_available_after=after)
+          # The child changes its session and ignores SIGTERM. Process-group
+          # cancellation alone cannot prove its absence.
+          child=subprocess.Popen([sys.executable,"-I","-B","-c",
+              "import os,signal,sys,time; from pathlib import Path; signal.signal(signal.SIGTERM,signal.SIG_IGN); Path(sys.argv[1]).write_text(str(os.getsid(0))); time.sleep(45)",
+              str(scratch/"ready")],start_new_session=True,stdin=subprocess.DEVNULL,
+              stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+          deadline=time.monotonic()+5
+          while not (scratch/"ready").is_file() and time.monotonic()<deadline:time.sleep(.05)
+          assert (scratch/"ready").read_text()==str(child.pid)
+          assert os.getsid(0)!=os.getsid(child.pid)
+          assert cg in Path(f"/proc/{child.pid}/cgroup").read_text()
+          assert int(child.pid) in [int(x) for x in (p/"cgroup.procs").read_text().split()]
+          print(json.dumps(dict(checks,tool_uid=os.getuid(),child_pid=child.pid,
+              separate_session=True,cgroup=cg,cpu_max=cpu,agent_ran=False,
+              real_qwen_connected=False,release_authorized=False),sort_keys=True),flush=True)
+          time.sleep(45)
+          PY
+          )"
+          sudo systemd-run --quiet --unit="$tool" -p "User=$tu" -p "Group=$tg" \
+            -p "BindPaths=$base/scratch/tmp:/tmp $base/scratch/tmp:/var/tmp" \
+            -p "ReadWritePaths=$base/scratch /tmp /var/tmp" "${common[@]}" \
+            /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/python3 -I -B -c "$tool_code" "$base/private" "$base/scratch" "$bp"
+          for n in $(seq 1 200); do
+            sudo journalctl -u "$tool" -o cat --no-pager | grep '^{' > "$ev/tool-receipt.json" || true
+            test -s "$ev/tool-receipt.json" && break
+            sleep .1
+          done
+          test -s "$ev/tool-receipt.json"
+          python3 - "$ev/tool-receipt.json" <<'PY'
+          import json,sys
+          d=json.load(open(sys.argv[1]))
+          assert all(d[k] is True for k in ("credential_read_denied","broker_proc_environ_denied","broker_signal_denied","broker_socket_denied","separate_session","shared_tmp_aliases","scratch_enospc","scratch_reclaimed"))
+          assert d["scratch_capacity_bytes"]==1006632960
+          assert d["agent_ran"] is False and d["real_qwen_connected"] is False
+          PY
+          cg="$(sudo systemctl show "$tool" -p ControlGroup --value)"
+          [[ "$cg" == /system.slice/coden-tool-fixture-* ]]
+          grep -Fxq 'populated 1' "/sys/fs/cgroup$cg/cgroup.events"
+          sudo systemctl stop "$tool"
+          if [[ -e "/sys/fs/cgroup$cg/cgroup.events" ]]; then
+            grep -Fxq 'populated 0' "/sys/fs/cgroup$cg/cgroup.events"
+          fi
+          # Broker survives stopping the tool service, proving distinct lifecycles.
+          test "$(sudo systemctl show "$broker" -p ActiveState --value)" = active
+          sudo systemctl stop "$broker"
+          printf '%s\n' '{"status":"SYNTHETIC_SPLIT_IDENTITY_AND_CGROUP_CLEANUP","tool_cgroup_empty_or_removed":true,"broker_survived_tool_stop":true,"scratch_enospc_verified":true,"real_runtime_isolation_verified":false,"release_authorized":false}' > "$ev/containment-receipt.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: split-identity-scratch-quota-preflight-receipts
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  broker-cross-uid-ipc-integration:
+    # One-shot synthetic test of the pinned existing broker, not runtime admission.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '6412a5b005c15e3148eb0010f0517938c4de8ff2' && github.event.pull_request.number == 200 && github.head_ref == 'review/factory-v3-sprint05-candidate-20261125' && github.base_ref == 'feat/factory-acceleration-batch01-20261124' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 561a113cdc99b14d722cb6ecf02f99c7ef760651
+          persist-credentials: false
+      - name: Exercise existing broker with independent unprivileged processes
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          test "$(git rev-parse HEAD)" = 561a113cdc99b14d722cb6ecf02f99c7ef760651
+          base="$(sudo mktemp -d /opt/coden-ipc-fixture.XXXXXXXX)"
+          cleanup() {
+            status=$?
+            trap - EXIT
+            sudo rm -rf -- "$base" || status=1
+            test ! -e "$base" || status=1
+            exit "$status"
+          }
+          trap cleanup EXIT
+          sudo chmod 0755 "$base"
+          sudo install -d -m 0755 "$base/source/ai_factory"
+          for name in factory_qwen_tool_benchmark factory_qwen_tool_schema openhands_sdk_operator openhands_multifile_review project review_queue intake; do
+            file="ai_factory/$name.py"
+            test -f "$file" && test ! -L "$file"
+            test "$(git hash-object "$file")" = "$(git rev-parse HEAD:"$file")"
+            sudo install -m 0444 "$file" "$base/source/$file"
+          done
+          unit="coden-broker-ipc-$GITHUB_RUN_ID"
+          timeout --kill-after=5s 45s sudo systemd-run --unit="$unit" --wait --pipe --quiet \
+            -p PrivateNetwork=yes -p NoNewPrivileges=yes -p PrivateDevices=yes \
+            -p ProtectHome=tmpfs -p ProtectSystem=strict -p "ReadWritePaths=$base" \
+            -p 'CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_CHOWN CAP_DAC_OVERRIDE CAP_KILL CAP_FSETID CAP_FOWNER' \
+            -p CPUQuota=100% -p MemoryMax=536870912 -p TasksMax=32 \
+            -p RuntimeMaxSec=35 -p TimeoutStopSec=2 -p KillMode=control-group \
+            /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/python3 -I -B - "$base" \
+            > "$PWD/evidence/broker-cross-uid.json" <<'PY'
+          import json, os, pathlib, pwd, select, subprocess, sys
+          base=pathlib.Path(sys.argv[1])
+          bu,bg=pwd.getpwnam("daemon").pw_uid,pwd.getpwnam("daemon").pw_gid
+          tu,tg=pwd.getpwnam("nobody").pw_uid,pwd.getpwnam("nobody").pw_gid
+          assert bu and tu and bu!=tu and bg!=tg
+          private=base/"private"; private.mkdir(mode=0o700); os.chown(private,bu,bg)
+          channel=base/"channel"; channel.mkdir(); os.chown(channel,bu,tg); channel.chmod(0o2750)
+          broker_code=r'''
+          import hashlib,json,os,pathlib,socket,struct,sys,threading
+          sys.path.insert(0,sys.argv[1])
+          from ai_factory.factory_qwen_tool_benchmark import PreflightBroker
+          private,path=pathlib.Path(sys.argv[2]),sys.argv[3]
+          assert os.getuid()!=0 and sorted(n for _,n in socket.if_nameindex())==["lo"]
+          secret=private/"credential"; secret.write_bytes(b"synthetic-not-a-real-secret"); secret.chmod(0o600)
+          token=b"synthetic-one-shot-grant"
+          broker=PreflightBroker(token_sha256=hashlib.sha256(token).hexdigest(),case_id="count")
+          with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as listener:
+              listener.bind(path); os.chmod(path,0o660); listener.listen(1); listener.settimeout(6)
+              print("ready",flush=True)
+              for mode in ("wrong","success","replay","cancel","expiry"):
+                  expected=tuple(json.loads(sys.stdin.readline()))
+                  conn,_=listener.accept()
+                  actual=struct.unpack("3i",conn.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))
+                  event=None; timer=None
+                  if mode in ("cancel","expiry"):
+                      broker=PreflightBroker(token_sha256=hashlib.sha256(token).hexdigest(),
+                                             case_id="count",ttl_seconds=1 if mode=="expiry" else 30)
+                  if mode=="cancel":
+                      event=threading.Event(); timer=threading.Timer(.2,event.set); timer.start()
+                  try:
+                      result=broker.execute_ipc(token=token,channel=conn,expected_peer=expected,
+                                                fixture_only=True,deadline_seconds=3,cancel_event=event)
+                  finally:
+                      if timer: timer.cancel(); timer.join()
+                  assert conn.fileno()==-1
+                  assert result["qwen_connected"] is False and result["release_authorized"] is False
+                  print(json.dumps({"mode":mode,"peer":actual,"status":result["status"],
+                                    "closed":True,"broker_uid":os.getuid(),"broker_pid":os.getpid()}),flush=True)
+          '''
+          peer_code=r'''
+          import json,os,pathlib,socket,struct,sys,time
+          path,private,mode=sys.argv[1:4]
+          expected=tuple(map(int,sys.argv[4:7]))
+          assert os.getuid()!=0 and sorted(n for _,n in socket.if_nameindex())==["lo"]
+          try: (pathlib.Path(private)/"credential").read_bytes()
+          except PermissionError: pass
+          else: raise AssertionError("credential readable")
+          with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as s:
+              s.settimeout(5); s.connect(path)
+              actual=struct.unpack("3i",s.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))
+              assert actual==expected
+              if mode in ("wrong","replay"):
+                  assert s.recv(1)==b""
+              else:
+                  def receive(n):
+                      out=b""
+                      while len(out)<n:
+                          chunk=s.recv(n-len(out))
+                          if not chunk: raise AssertionError("truncated request")
+                          out+=chunk
+                      return out
+                  size=struct.unpack("!I",receive(4))[0]; assert 0<size<=16384
+                  raw=receive(size); req=json.loads(raw)
+                  assert req["model"]=="local-qwen" and req["stream"] is False
+                  assert b"synthetic-one-shot-grant" not in raw and b"synthetic-not-a-real-secret" not in raw
+                  assert s.recv(1)==b""
+                  if mode=="success":
+                      body=json.dumps({"model":"local-qwen","choices":[{"finish_reason":"tool_calls",
+                        "message":{"role":"assistant","content":None,"tool_calls":[{"id":"call_test",
+                        "type":"function","function":{"name":"count_flags",
+                        "arguments":json.dumps({"flags":["queued","ready","done"]})}}]}}],
+                        "usage":{"completion_tokens":22}}).encode()
+                      s.sendall(struct.pack("!HI",200,len(body))+body)
+                  else:
+                      time.sleep(1.3)
+          '''
+          env={"PATH":"/usr/bin:/bin","LC_ALL":"C"}
+          def launch(code,args,uid,gid,**extra):
+              return subprocess.Popen([sys.executable,"-I","-B","-c",code,*map(str,args)],
+                user=uid,group=gid,extra_groups=[],cwd="/",env=env,**extra)
+          def line(p):
+              assert select.select([p.stdout],[],[],8)[0],"broker output deadline"
+              raw=p.stdout.readline()
+              assert raw,"broker stopped without receipt"
+              return raw
+          path=channel/"socket"
+          children=[]
+          try:
+              broker=launch(broker_code,[base/"source",private,path],bu,bg,
+                  stdin=subprocess.PIPE,stdout=subprocess.PIPE,text=True)
+              children.append(broker)
+              assert line(broker).strip()=="ready"
+              rows=[]
+              for mode,status in (("wrong","fixture_peer_rejected"),("success","fixture_preflight_match"),
+                                  ("replay","grant_consumed"),("cancel","cancelled"),("expiry","timeout")):
+                  peer=launch(peer_code,[path,private,mode,broker.pid,bu,bg],tu,tg,stdin=subprocess.DEVNULL)
+                  children.append(peer)
+                  expected=[peer.pid,tu,tg]
+                  if mode=="wrong": expected[0]=broker.pid
+                  broker.stdin.write(json.dumps(expected)+"\n"); broker.stdin.flush()
+                  receipt=json.loads(line(broker))
+                  assert receipt["peer"]==[peer.pid,tu,tg] and receipt["status"]==status,receipt
+                  assert receipt["broker_pid"]==broker.pid and receipt["broker_uid"]==bu and receipt["closed"]
+                  assert peer.wait(timeout=6)==0
+                  rows.append(receipt)
+              assert broker.wait(timeout=5)==0
+              print(json.dumps({"status":"BROKER_CROSS_UID_INTEGRATION_TESTED","cases":rows,
+                                "credential_read_denied":True,"real_runtime_isolation_verified":False,
+                                "qwen_connected":False,"sdk_imported":False,"release_authorized":False}))
+          finally:
+              for child in reversed(children):
+                  if child.poll() is None: child.kill(); child.wait(timeout=3)
+          PY
+          python3 -c 'import json; d=json.load(open("evidence/broker-cross-uid.json")); assert len(d["cases"])==5 and d["release_authorized"] is False'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: sprint31-broker-cross-uid-integration
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7

@@ -16,6 +16,7 @@ import json
 import os
 from pathlib import Path
 import stat
+import subprocess
 import sys
 import tempfile
 import zipfile
@@ -43,13 +44,38 @@ def _trusted_dir(path):
     return directory
 
 
+def _review_paths(candidate_root, output_root):
+    """Validate disjoint existing operator directories before any side effects."""
+    export = _trusted_dir(candidate_root).resolve()
+    outputs = _trusted_dir(output_root).resolve()
+    if (outputs == export or outputs in export.parents or export in outputs.parents):
+        raise ValueError("review output must be disjoint from agent export")
+    return export, outputs
+
+
 def _read_regular(path, max_bytes):
     # The upstream SDK export is not a trust source. Do not follow symlinks,
     # FIFOs/devices or unexpectedly large files.
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    # O_NOFOLLOW on the leaf alone does not protect intermediate directories.
+    # Walk from the filesystem root through directory descriptors so a parent
+    # replaced with a symlink after export inspection cannot redirect reads.
+    path = Path(path).absolute()
+    if ".." in path.parts:
+        raise ValueError("unexpected parent traversal in generated file")
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    parent_fd = os.open(path.anchor, directory_flags)
+    try:
+        for part in path.parts[1:-1]:
+            next_fd = os.open(part, directory_flags, dir_fd=parent_fd)
+            os.close(parent_fd)
+            parent_fd = next_fd
+        fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                     dir_fd=parent_fd)
+    finally:
+        os.close(parent_fd)
     try:
         info = os.fstat(fd)
-        if not stat.S_ISREG(info.st_mode) or info.st_size > max_bytes:
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > max_bytes:
             raise ValueError("invalid generated file")
         with os.fdopen(os.dup(fd), "rb") as stream:
             data = stream.read(max_bytes + 1)
@@ -104,8 +130,8 @@ def review(task, candidate_root, output_root):
     """Operator-controlled review; this does not invoke OpenHands itself."""
     if not project.valid(task) or task.get("recipe") != "python-transform":
         raise ValueError("only approved synthetic transform task allowed")
-    outputs = _trusted_dir(output_root)
-    source = _read_export(candidate_root)
+    export, outputs = _review_paths(candidate_root, output_root)
+    source = _read_export(export)
 
     # Only app/logic.py is executable source in the zipapp. The generated
     # tests are treated as evidence for human inspection, NOT as CI scripts.
@@ -128,7 +154,7 @@ def review(task, candidate_root, output_root):
         visible = project.verify(archive, task["cases"])
         hidden = project.verify(archive, task["review_cases"])
     except (OSError, ValueError, RuntimeError, SyntaxError, RecursionError,
-            ArithmeticError):
+            ArithmeticError, subprocess.TimeoutExpired):
         # Keep the untrusted archive for operator inspection. Never create an
         # approval receipt or automatically replay the untrusted candidate.
         return _result("failed", work)
@@ -140,6 +166,11 @@ def review(task, candidate_root, output_root):
         "visible_cases": visible,
         "review_cases": hidden,
         "agent_files_examined": sorted(EXPECTED_FILES),
+        "source_files_sha256": {
+            path: hashlib.sha256(text.encode("utf-8")).hexdigest()
+            for path, text in sorted(source.items())
+        },
+        "task_sha256": hashlib.sha256(project.encoded(task).encode("utf-8")).hexdigest(),
         "agent_authored_tests_executed": False,
         "sandbox": "bubblewrap 0.12.0",
         "execution_authorized": False,

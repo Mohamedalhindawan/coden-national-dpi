@@ -4,6 +4,7 @@ Skills are text procedures discoverable by compatible agents; they do not
 install, invoke, authorize, deploy or automatically merge any component.
 """
 import copy
+import hashlib
 import json
 from pathlib import Path
 import tempfile
@@ -110,6 +111,88 @@ class FactoryAccelerationSkillsTests(unittest.TestCase):
         self.assertIn(".github/skills", agents)
         self.assertIn("factory_skill_catalog", agents)
         self.assertIn("not automatically installed", agents.lower())
+
+
+    def test_ambiguous_frontmatter_and_extra_capability_fields_rejected(self):
+        name = "factory-tdd-multifile"
+        original = (ROOT / ".github/skills" / name / "SKILL.md").read_text()
+        for extra in (" name: " + name, "mcp_tools: {}", "allowed-tools: Bash"):
+            with self.subTest(extra=extra), tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / "SKILL.md"
+                path.write_text(original.replace("\n---\n", "\n" + extra + "\n---\n", 1))
+                with self.assertRaises(ValueError):
+                    factory_skill_catalog._read_skill(path, name)
+
+    def test_stage_only_reviewed_text_into_empty_private_workspace(self):
+        row = factory_skill_catalog.choose("multifile")
+        raw = (ROOT / row["skill_path"]).read_bytes()
+        digest = hashlib.sha256(raw).hexdigest()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with self.assertRaises(ValueError):
+                factory_skill_catalog.stage_reviewed("multifile", root, "0"*64)
+            self.assertEqual(list(root.iterdir()), [])
+            result = factory_skill_catalog.stage_reviewed("multifile", root, digest)
+            target = root / ".agents/skills/factory-tdd-multifile/SKILL.md"
+            self.assertEqual(target.read_bytes(), raw)
+            self.assertEqual([p for p in root.rglob("*") if p.is_file()], [target])
+            self.assertEqual(result["sha256"], digest)
+            self.assertEqual(result["required_environment"], {
+                "OH_PUBLIC_SKILLS_ENABLED": "false", "OH_PUBLIC_CATALOG_ENABLED": "false"})
+            self.assertFalse(result["runtime_invoked"])
+            self.assertFalse(result["execution_authorized"])
+            self.assertFalse(result["release_authorized"])
+            with self.assertRaises(ValueError):
+                factory_skill_catalog.stage_reviewed("multifile", root, digest)
+
+    def test_stage_rejects_nonempty_or_linked_workspace(self):
+        row = factory_skill_catalog.choose("multifile")
+        digest = hashlib.sha256((ROOT / row["skill_path"]).read_bytes()).hexdigest()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".openhands").mkdir()
+            with self.assertRaises(ValueError):
+                factory_skill_catalog.stage_reviewed("multifile", root, digest)
+            target = root / "empty"
+            target.mkdir(mode=0o700)
+            link = root / "linked"
+            link.symlink_to(target, target_is_directory=True)
+            with self.assertRaises(ValueError):
+                factory_skill_catalog.stage_reviewed("multifile", link, digest)
+            self.assertEqual(list(target.iterdir()), [])
+
+
+    def test_failed_skill_write_rolls_back_only_owned_staging(self):
+        row = factory_skill_catalog.choose("multifile")
+        digest = hashlib.sha256((ROOT / row["skill_path"]).read_bytes()).hexdigest()
+        real_open = Path.open
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            def fail_after_create(path, *args, **kwargs):
+                if path.name == "SKILL.md" and args and args[0] == "xb":
+                    with real_open(path, "xb") as stream:
+                        stream.write(b"partial")
+                    raise OSError("synthetic interrupted write")
+                return real_open(path, *args, **kwargs)
+            with patch.object(Path, "open", fail_after_create):
+                with self.assertRaises(OSError):
+                    factory_skill_catalog.stage_reviewed("multifile", root, digest)
+            self.assertEqual(list(root.iterdir()), [])
+            result = factory_skill_catalog.stage_reviewed("multifile", root, digest)
+            self.assertEqual(result["status"], "REVIEW_ONLY_STAGED")
+            self.assertFalse(result["execution_authorized"])
+
+    def test_staging_refuses_lexical_parent_traversal(self):
+        row = factory_skill_catalog.choose("multifile")
+        digest = hashlib.sha256((ROOT / row["skill_path"]).read_bytes()).hexdigest()
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            (base / "other").mkdir()
+            target = base / "private"
+            target.mkdir(mode=0o700)
+            with self.assertRaises(ValueError):
+                factory_skill_catalog.stage_reviewed("multifile", base / "other" / ".." / "private", digest)
+            self.assertEqual(list(target.iterdir()), [])
 
 
 if __name__ == "__main__":

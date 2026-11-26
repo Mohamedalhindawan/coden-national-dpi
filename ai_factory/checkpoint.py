@@ -71,10 +71,25 @@ def _key(value):
 
 def _path(root, task_id):
     _id(task_id)
-    folder = Path(root)
-    if folder.is_symlink():
-        raise ValueError("symlink checkpoint root is forbidden")
+    folder = Path(root).absolute()
+    if ".." in folder.parts or any(p.is_symlink() for p in (folder, *folder.parents)):
+        raise ValueError("untrusted checkpoint root")
     return folder / f"{task_id}.jsonl"
+
+
+def _unique_json_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate journal key")
+        result[key] = value
+    return result
+
+
+def _regular_journal(fd):
+    info = os.fstat(fd)
+    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+        raise ValueError("invalid or aliased journal file")
 
 
 def _read_locked(fd):
@@ -87,8 +102,8 @@ def _read_locked(fd):
     if len(raw) > MAX_BYTES or not raw or not raw.endswith(b"\n"):
         raise ValueError("missing or incomplete journal")
     try:
-        records = [json.loads(line) for line in raw.splitlines()]
-    except (ValueError, UnicodeError) as exc:
+        records = [json.loads(line, object_pairs_hook=_unique_json_keys) for line in raw.splitlines()]
+    except (ValueError, UnicodeError, RecursionError) as exc:
         raise ValueError("malformed journal") from exc
     if not 1 <= len(records) <= MAX_EVENTS:
         raise ValueError("invalid journal length")
@@ -218,9 +233,11 @@ def create(root, task_id, *, branch, commit):
 
 def read(root, task_id):
     path = _path(root, task_id)
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
-        fcntl.flock(fd, fcntl.LOCK_SH)
+        _regular_journal(fd)
+        # A busy cooperating writer/reader requires review, not an indefinite wait.
+        fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
         records = _read_locked(fd)
         return dict(task_id=task_id, **_state(records))
     finally:
@@ -235,9 +252,11 @@ def record(root, task_id, *, event, branch=None, commit=None, next_action=None, 
     _commit(commit)
     _action(next_action)
     key = _key(event_key) if event_key is not None else uuid4().hex
-    fd = os.open(path, os.O_RDWR | os.O_NOFOLLOW)
+    fd = os.open(path, os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
+        _regular_journal(fd)
+        # A busy cooperating writer/reader requires review, not an indefinite wait.
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         events = _read_locked(fd)
         for old in events:
             if old["key"] == key:

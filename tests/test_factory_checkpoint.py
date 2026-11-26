@@ -135,5 +135,84 @@ class CheckpointTests(unittest.TestCase):
         self.assertFalse(state["execution_authorized"])
 
 
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "POSIX named pipe")
+    def test_fifo_journal_rejected_without_blocking_cli(self):
+        self.root.mkdir()
+        os.mkfifo(self.root / "pipe.jsonl", 0o600)
+        command = [sys.executable, "-m", "ai_factory.checkpoint", "--store",
+                   str(self.root), "show", "pipe"]
+        result = subprocess.run(command, cwd=Path(__file__).resolve().parents[1],
+                                capture_output=True, timeout=2)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn(b"Checkpoint error", result.stderr)
+
+    def test_duplicate_json_key_rejected_even_if_parsed_hash_matches(self):
+        self.create()
+        path = self.root / "task_1.jsonl"
+        raw = path.read_bytes()
+        # Duplicate branch has the same final parsed value and canonical hash.
+        path.write_bytes(raw.replace(b'"branch":', b'"branch":"feat/factory","branch":', 1))
+        with self.assertRaises(ValueError):
+            checkpoint.read(self.root, "task_1")
+        with self.assertRaises(ValueError):
+            checkpoint.record(self.root, "task_1", event="checkpoint")
+
+    def test_deeply_nested_invalid_journal_has_safe_value_error(self):
+        self.create()
+        path = self.root / "task_1.jsonl"
+        path.write_bytes(b"[" * 5000 + b"0" + b"]" * 5000 + b"\\n")
+        with self.assertRaises(ValueError):
+            checkpoint.read(self.root, "task_1")
+
+
+    def test_busy_journal_read_and_append_return_without_waiting(self):
+        import fcntl
+        self.create()
+        path = self.root / "task_1.jsonl"
+        before = path.read_bytes()
+        base = [sys.executable, "-m", "ai_factory.checkpoint", "--store", str(self.root)]
+        with path.open("rb") as locked:
+            fcntl.flock(locked, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            for args in (["show", "task_1"],
+                         ["record", "task_1", "--event", "checkpoint"]):
+                with self.subTest(args=args):
+                    result = subprocess.run(base + args,
+                        cwd=Path(__file__).resolve().parents[1], capture_output=True, timeout=2)
+                    self.assertEqual(result.returncode, 2)
+                    self.assertIn(b"Checkpoint error", result.stderr)
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(checkpoint.record(self.root, "task_1", event="checkpoint")["status"],
+                         "checkpointed")
+
+
+    def test_intermediate_alias_rejected_by_direct_journal_operations(self):
+        self.create()
+        alias = self.root.parent / "alias"
+        alias.symlink_to(self.root.parent, target_is_directory=True)
+        indirect = alias / self.root.name
+        original = (self.root / "task_1.jsonl").read_bytes()
+        with self.assertRaises(ValueError):
+            checkpoint.read(indirect, "task_1")
+        with self.assertRaises(ValueError):
+            checkpoint.record(indirect, "task_1", event="checkpoint")
+        with self.assertRaises(ValueError):
+            checkpoint.create(indirect, "other", branch="feat/factory", commit=COMMIT)
+        self.assertEqual((self.root / "task_1.jsonl").read_bytes(), original)
+        self.assertFalse((self.root / "other.jsonl").exists())
+
+    def test_hardlinked_journal_rejected_without_mutating_original(self):
+        self.create()
+        original = self.root / "task_1.jsonl"
+        before = original.read_bytes()
+        os.link(original, self.root / "other.jsonl")
+        for task in ("task_1", "other"):
+            with self.subTest(task=task):
+                with self.assertRaises(ValueError):
+                    checkpoint.read(self.root, task)
+                with self.assertRaises(ValueError):
+                    checkpoint.record(self.root, task, event="checkpoint")
+        self.assertEqual(original.read_bytes(), before)
+
+
 if __name__ == "__main__":
     unittest.main()

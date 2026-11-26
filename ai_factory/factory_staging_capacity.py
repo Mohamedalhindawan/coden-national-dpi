@@ -37,7 +37,15 @@ def plan_staging(records, *, capacity_bytes=960 * 1024**2, reserve_bytes=0,
     concurrent = initial + sum(e for _, _, e in inputs)
     current = peak = initial
     steps = []
-    for name, compressed, expanded in sorted(inputs, key=lambda r: (-r[1], r[0])):
+    # Minimize this replacement model's peak: reclaiming jobs first,
+    # ordered by expanded payload; growing jobs last, ordered by decreasing
+    # compressed payload. The adjacent-swap rule minimizes max(e1, d1+e2)
+    # where d1=e1-c1; it does not model real installer or filesystem overhead.
+    def staging_order(row):
+        name, compressed, expanded = row
+        return (0, expanded, name) if expanded <= compressed else (1, -compressed, name)
+
+    for name, compressed, expanded in sorted(inputs, key=staging_order):
         transient = current + expanded
         current = transient - compressed
         peak = max(peak, transient)

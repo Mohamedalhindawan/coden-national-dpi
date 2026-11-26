@@ -38,3 +38,27 @@ class StagingCapacityTest(unittest.TestCase):
                        {'page_bytes': 3000}, {'reserve_bytes': 100, 'capacity_bytes': 99}):
             with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
                 plan_staging([item('a')], **kwargs)
+
+
+    def test_reclaim_first_order_avoids_false_capacity_rejection(self):
+        records = [item("large", 100, 90), item("reclaim", 80, 1)]
+        result = plan_staging(records, capacity_bytes=200, page_bytes=1)
+        self.assertEqual([s["name"] for s in result["steps"]], ["reclaim", "large"])
+        self.assertEqual(result["peak_bytes"], 191)
+        self.assertTrue(result["fits_model"])
+        self.assertFalse(result["actual_peak_build_capacity_proven"])
+        self.assertFalse(result["build_authorized"])
+
+    def test_order_minimizes_model_peak_against_exhaustive_small_cases(self):
+        from itertools import permutations, product
+        # Exhaustive oracle for three archives with positive/negative/zero deltas.
+        for sizes in product(((1, 4), (4, 1), (2, 2), (4, 3), (3, 5)), repeat=3):
+            records = [item(str(i), c, e) for i, (c, e) in enumerate(sizes)]
+            def peak(order):
+                current = highest = sum(c for c, e in sizes)
+                for c, e in order:
+                    highest = max(highest, current + e)
+                    current += e - c
+                return highest
+            self.assertEqual(plan_staging(records, page_bytes=1)["peak_bytes"],
+                             min(peak(order) for order in permutations(sizes)), sizes)

@@ -20,6 +20,11 @@ def _unique_pairs(pairs):
     return obj
 
 
+def _reject_constant(_value):
+    # Python's JSON decoder otherwise accepts NaN and infinities (not JSON).
+    raise json.JSONDecodeError("nonstandard JSON constant", "", 0)
+
+
 def audit_response(body, *, expected_tool='count_flags', expected_args=None):
     if expected_args is None:
         expected_args = {'flags': ['pending', 'approved']}
@@ -49,7 +54,7 @@ def audit_response(body, *, expected_tool='count_flags', expected_args=None):
         raw = fn["arguments"]
         if not isinstance(raw, str) or len(raw) > 4096:
             raise ValueError("invalid argument representation")
-        args = json.loads(raw, object_pairs_hook=_unique_pairs)
+        args = json.loads(raw, object_pairs_hook=_unique_pairs, parse_constant=_reject_constant)
         if json.dumps(args, sort_keys=True) != json.dumps(expected_args, sort_keys=True):
             raise ValueError("unexpected arguments")
     except (KeyError, TypeError, IndexError, AttributeError, OverflowError) as exc:
@@ -83,7 +88,7 @@ def evaluate_response(raw, **expectations):
     if len(raw) > MAX_RESPONSE_BYTES:
         return {**result, "reason_code": "oversized_response"}
     try:
-        body = json.loads(raw, object_pairs_hook=_unique_pairs)
+        body = json.loads(raw, object_pairs_hook=_unique_pairs, parse_constant=_reject_constant)
     except (json.JSONDecodeError, UnicodeError, RecursionError):
         return {**result, "reason_code": "invalid_json"}
     except ValueError as exc:

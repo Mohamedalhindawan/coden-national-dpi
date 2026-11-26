@@ -148,6 +148,73 @@ class RuntimeContractTests(unittest.TestCase):
                                                       artifact_sha256=None))
 
 
+    def test_bound_local_report_requires_exact_request_and_model(self):
+        import hashlib
+        import json
+        req = request()
+        digest = hashlib.sha256(json.dumps(req, sort_keys=True, separators=(",", ":"),
+                                          ensure_ascii=True).encode("ascii")).hexdigest()
+        evidence = report(schema="coden.runtime.bound_report.v1", request_sha256=digest)
+        result = runtime_contract.assess_bound_local(req, evidence, expected_model_id="qwen_local")
+        self.assertTrue(result["request_digest_matches"])
+        self.assertFalse(result["report_origin_verified"])
+        self.assertFalse(result["artifact_verified"])
+        self.assertFalse(result["execution_authorized"])
+        self.assertFalse(result["provider_approved"])
+        for changed in (request(task_sha256="c"*64), request(max_tokens_total=4096)):
+            with self.assertRaises(ValueError):
+                runtime_contract.assess_bound_local(changed, evidence, expected_model_id="qwen_local")
+        with self.assertRaises(ValueError):
+            runtime_contract.assess_bound_local(req, evidence, expected_model_id="other_model")
+
+    def test_bound_local_report_never_accepts_external_or_positive_cost_scope(self):
+        import hashlib
+        import json
+        for req in (request(allow_external_api=True), request(max_cost_usd="0.01"),
+                    request(allowed_providers=["local_qwen", "fallback"])):
+            digest = hashlib.sha256(json.dumps(req, sort_keys=True, separators=(",", ":"),
+                                              ensure_ascii=True).encode("ascii")).hexdigest()
+            evidence = report(schema="coden.runtime.bound_report.v1", request_sha256=digest)
+            with self.assertRaises(ValueError):
+                runtime_contract.assess_bound_local(req, evidence, expected_model_id="qwen_local")
+
+
+    def test_bound_json_receipt_is_validated_from_actual_wire_bytes(self):
+        import hashlib
+        import json
+        req = request()
+        digest = hashlib.sha256(json.dumps(req, sort_keys=True, separators=(",", ":"),
+                                          ensure_ascii=True).encode("ascii")).hexdigest()
+        # A fixture is not an inference run. Record only a blocked outcome.
+        evidence = report(schema="coden.runtime.bound_report.v1", request_sha256=digest,
+                          status="blocked", error_code="policy_denied", artifact_sha256=None,
+                          input_tokens=0, output_tokens=0, duration_ms=0)
+        raw = json.dumps(evidence, separators=(",", ":")).encode("utf-8")
+        result = runtime_contract.assess_bound_local_json(req, raw, expected_model_id="qwen_local")
+        self.assertTrue(result["request_digest_matches"])
+        self.assertEqual(result["status"], "blocked")
+        self.assertFalse(result["artifact_hash_recorded"])
+        self.assertFalse(result["report_origin_verified"])
+        self.assertFalse(result["execution_authorized"])
+
+    def test_bound_json_rejects_ambiguous_or_oversized_wire_data(self):
+        import hashlib
+        import json
+        req = request()
+        digest = hashlib.sha256(json.dumps(req, sort_keys=True, separators=(",", ":"),
+                                          ensure_ascii=True).encode("ascii")).hexdigest()
+        evidence = report(schema="coden.runtime.bound_report.v1", request_sha256=digest)
+        raw = json.dumps(evidence, separators=(",", ":")).encode("utf-8")
+        for invalid in (
+            raw.replace(b'"status":', b'"status":"failed","status":', 1),
+            raw.replace(b'"cost_usd":"0"', b'"cost_usd":NaN'),
+            raw + b" " * 8193, raw + b"{}", b"\xff",
+            b"["*5000 + b"0" + b"]"*5000, raw.decode("utf-8"),
+        ):
+            with self.subTest(kind=type(invalid).__name__), self.assertRaises(ValueError):
+                runtime_contract.assess_bound_local_json(req, invalid, expected_model_id="qwen_local")
+
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import sqlite3
 import stat
 import subprocess
 import sys
@@ -28,16 +29,23 @@ class SupervisorError(ValueError):
     """Safe supervisor error without raw provider/host exception details."""
 
 
+def _unsafe_path(path):
+    # Operator-owned paths only. This preflight rejects existing symlink
+    # components and traversal, not concurrent hostile path replacement.
+    absolute = path.absolute()
+    return ".." in absolute.parts or any(p.is_symlink() for p in (absolute, *absolute.parents))
+
+
 def _dir(path, *, label):
     directory = Path(path)
-    if directory.is_symlink() or directory.parent.is_symlink() or not directory.is_dir():
+    if _unsafe_path(directory) or not directory.is_dir():
         raise ValueError(f"trusted existing {label} directory required")
     return str(directory.resolve())
 
 
 def _db(path):
     db = Path(path)
-    if db.is_symlink() or db.parent.is_symlink() or not db.is_file():
+    if _unsafe_path(db) or not db.is_file():
         raise ValueError("trusted existing queue database required")
     return str(db.resolve())
 
@@ -94,10 +102,20 @@ def _monitor_bound_task(proc, *, queue_db, journal, task_id, timeout_seconds):
     """
     from .durable_queue import DurableQueue
 
-    queue = DurableQueue(queue_db)
+    def monitor_read(read):
+        try:
+            return read()
+        except (OSError, sqlite3.Error, ValueError, TypeError, KeyError) as exc:
+            # Lost durable state is not permission to keep executing.
+            # Stop only the owned process group; preserve the lease for review.
+            if proc.returncode is None:
+                _terminate_process_group(proc)
+            raise SupervisorError("worker queue monitoring failed; operator review required") from exc
+
+    queue = monitor_read(lambda: DurableQueue(queue_db))
     deadline = time.monotonic() + timeout_seconds
     while True:
-        state = queue.read(task_id)["status"]
+        state = monitor_read(lambda: queue.read(task_id)["status"])
         if state in ("cancel_requested", "cancelled", "needs_review"):
             if proc.returncode is None:
                 _terminate_process_group(proc)
@@ -137,9 +155,13 @@ def _monitor_bound_task(proc, *, queue_db, journal, task_id, timeout_seconds):
             proc.wait(timeout=min(0.10, remaining))
         except subprocess.TimeoutExpired:
             continue
+        except OSError as exc:
+            if proc.returncode is None:
+                _terminate_process_group(proc)
+            raise SupervisorError("worker wait failed; operator review required") from exc
         # Exit can race with a cancel request. Re-read at least once so a
         # successful child exit never masks an already registered cancel.
-        final_state = queue.read(task_id)["status"]
+        final_state = monitor_read(lambda: queue.read(task_id)["status"])
         if final_state in ("cancel_requested", "cancelled", "needs_review"):
             continue
         if final_state == "queued":
@@ -182,25 +204,33 @@ def run_once(*, queue_db, journal, task_dir, output_root, worker_id,
                                     env=_minimal_environment(), stdin=subprocess.DEVNULL,
                                     stdout=stdout, stderr=subprocess.DEVNULL,
                                     start_new_session=True, close_fds=True)
-            if task_id is not None:
-                # NEW opt-in branch: actual SQLite cancellation is monitored
-                # while our single explicitly bound child is running.
-                monitored = _monitor_bound_task(
-                    proc, queue_db=db, journal=journals,
-                    task_id=task_id, timeout_seconds=timeout_seconds
-                )
-                if monitored is not None:
-                    return monitored
-            else:
-                # Preserve the proven old operator-only FIFO path.
-                try:
-                    proc.communicate(timeout=timeout_seconds)
-                except subprocess.TimeoutExpired:
+            try:
+                if task_id is not None:
+                    # NEW opt-in branch: actual SQLite cancellation is monitored
+                    # while our single explicitly bound child is running.
+                    monitored = _monitor_bound_task(
+                        proc, queue_db=db, journal=journals,
+                        task_id=task_id, timeout_seconds=timeout_seconds
+                    )
+                    if monitored is not None:
+                        return monitored
+                else:
+                    # Preserve the proven old operator-only FIFO path.
+                    try:
+                        proc.communicate(timeout=timeout_seconds)
+                    except subprocess.TimeoutExpired:
+                        _terminate_process_group(proc)
+                        return _result("timed_out_review_required")
+                    except OSError as exc:
+                        _terminate_process_group(proc)
+                        raise SupervisorError("worker communication failed; manual review required") from exc
+            except KeyboardInterrupt:
+                # The operator interrupt is not permission to leave our child
+                # running. Preserve the durable lease for manual reconciliation;
+                # leader reap still does not prove full process-tree absence.
+                if proc.returncode is None:
                     _terminate_process_group(proc)
-                    return _result("timed_out_review_required")
-                except OSError as exc:
-                    _terminate_process_group(proc)
-                    raise SupervisorError("worker communication failed; manual review required") from exc
+                raise
             if proc.returncode != 0:
                 return _result("worker_failed_review_required")
             stdout.seek(0)
@@ -209,10 +239,12 @@ def run_once(*, queue_db, journal, task_dir, output_root, worker_id,
                 return _result("untrusted_worker_result")
             try:
                 parsed = json.loads(raw, object_pairs_hook=_unique_json_keys)
-            except (UnicodeError, ValueError, TypeError):
+            except (UnicodeError, ValueError, TypeError, RecursionError):
                 return _result("untrusted_worker_result")
             if parsed is None:
-                return _result("idle")
+                # A bound child must account for its selected task. A null
+                # receipt cannot establish that a claimed task was idle.
+                return _result("untrusted_worker_result" if task_id is not None else "idle")
             required = {"task_id", "status", "execution_authorized"}
             if not isinstance(parsed, dict) or set(parsed) not in (
                 required, required | {"directory"}
@@ -231,7 +263,12 @@ def run_once(*, queue_db, journal, task_dir, output_root, worker_id,
                 return _result("untrusted_worker_result")
             if task_id is not None:
                 from .durable_queue import DurableQueue
-                state = DurableQueue(db).read(task_id)["status"]
+                try:
+                    state = DurableQueue(db).read(task_id)["status"]
+                except (OSError, sqlite3.Error, ValueError, TypeError, KeyError) as exc:
+                    # The child has already exited; do not approve its receipt
+                    # when the final durable state cannot be independently read.
+                    raise SupervisorError("final worker state unverified; operator review required") from exc
                 expected = {
                     "awaiting_human_review": "awaiting_human_review",
                     "blocked": "blocked",

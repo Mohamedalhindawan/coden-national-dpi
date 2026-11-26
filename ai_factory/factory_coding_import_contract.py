@@ -1,8 +1,8 @@
-"""Candidate import contract. Never import excluded modules to check absence.
+"""Legacy import entrypoint blocked pending independent R2 admission.
 
-Run only in an approved isolated, synthetic runtime. No agent session is created.
+Pure absence checks remain available for synthetic tests; this CLI cannot
+perform module discovery or imports, create an agent or authorize a release.
 """
-import importlib
 from importlib import metadata, util
 import json
 import re
@@ -36,24 +36,15 @@ def current_absence():
 
 
 def main():
-    errors=current_absence()
-    imported=[]
-    if not errors:
-        for name in CODING:
-            try:
-                mod=importlib.import_module(name)
-                imported.append({"module":name,"origin":str(mod.__file__)})
-            except Exception as exc:
-                errors.append("coding_import:"+name+":"+type(exc).__name__)
-        errors.extend(current_absence())
-        for name in sys.modules:
-            if name.split(".")[0] in BANNED.values():
-                errors.append("loaded:"+name)
-    result={"status":"OVERLAY_IMPORT_CONTRACT_RED" if errors else "OVERLAY_IMPORT_CONTRACT_GREEN",
-            "errors":sorted(set(errors)), "imported":imported,
-            "runtime_admitted":False,"sdk_conversation_ran":False,"release_authorized":False}
-    print(json.dumps(result,indent=2))
-    return 1 if errors else 0
+    # The legacy command has no independent admission mechanism. Do not
+    # discover or import installed candidate modules from this entrypoint.
+    # Keep the pure absence checker available for synthetic review only.
+    result = {"status": "BLOCKED",
+              "errors": ["independent_r2_admission_required"],
+              "imported": [], "runtime_admitted": False,
+              "sdk_conversation_ran": False, "release_authorized": False}
+    print(json.dumps(result, indent=2))
+    return 1
 
 
 if __name__=="__main__":

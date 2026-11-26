@@ -1,0 +1,2750 @@
+{
+  "schema_version": "1.0.0",
+  "plan": "CODEN AI Factory Adopt-First & Accelerated Runtime Activation v1.1",
+  "as_of": "2026-11-26",
+  "status": "proposed_only",
+  "baseline": {
+    "path": "configs/factory_84_source_availability_audit_2026-11-23.json",
+    "git_blob": "9203cbe2a7193dcaffec0683cd50c703e16feadd",
+    "source_entries": 84,
+    "unique_repositories": 76
+  },
+  "counts": {
+    "plan_repository_references": 89,
+    "plan_overlap_with_legacy": 37,
+    "new_repository_candidates": 52,
+    "combined_unique_repositories": 128,
+    "additional_public_repository_metadata_checked": 52,
+    "additional_archived": 1,
+    "approved_by_catalog": 0,
+    "enabled_by_catalog": 0,
+    "installed_by_catalog": 0
+  },
+  "auto_install": false,
+  "run_unreviewed_components": false,
+  "paid_usage_enabled": false,
+  "release_authorized": false,
+  "reference_corrections": [
+    {
+      "from": "google/gvisor",
+      "to": "gvisor/gvisor",
+      "method": "historical audit"
+    },
+    {
+      "from": "abelten/llama-cpp-python",
+      "to": "abetlen/llama-cpp-python",
+      "method": "corrected spelling and successful separate metadata lookup"
+    },
+    {
+      "from": "containers/podman",
+      "to": "podman-container-tools/podman",
+      "method": "GitHub repository metadata canonical name"
+    },
+    {
+      "from": "nedbat/coveragepy",
+      "to": "coveragepy/coveragepy",
+      "method": "GitHub repository metadata canonical name"
+    }
+  ],
+  "notes": [
+    "Supplemental discovery index only; existing 72/84 source-file registries and their runtime interface remain unchanged.",
+    "Public repository metadata checked for the 52 additions only; earlier 76 retain historical link evidence, not a fresh source audit.",
+    "Groups are editorial routing labels, not original plan section numbers or adoption decisions.",
+    "Repository metadata is not an immutable pin, license review, security approval or proof of installation. Archived candidate is held; no alternate engine is selected automatically.",
+    "No claims of verified source contents or commercial licensing."
+  ],
+  "entries": [
+    {
+      "repository": "aaif-goose/goose",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "aaif-goose/goose"
+      ],
+      "capability_groups": [
+        "agent_runtime"
+      ],
+      "source_url": "https://github.com/aaif-goose/goose",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "abetlen/llama-cpp-python",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "abelten/llama-cpp-python"
+      ],
+      "capability_groups": [
+        "local_model"
+      ],
+      "source_url": "https://github.com/abetlen/llama-cpp-python",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "aboutcode-org/scancode-toolkit",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "aboutcode-org/scancode-toolkit"
+      ],
+      "capability_groups": [
+        "security"
+      ],
+      "source_url": "https://github.com/aboutcode-org/scancode-toolkit",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "actions/dependency-review-action",
+      "legacy_entry_ids": [
+        "source-070"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/actions/dependency-review-action",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "actions/runner",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "actions/runner"
+      ],
+      "capability_groups": [
+        "developer_environment"
+      ],
+      "source_url": "https://github.com/actions/runner",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "agentskills/agentskills",
+      "legacy_entry_ids": [
+        "source-067"
+      ],
+      "plan_references": [
+        "agentskills/agentskills"
+      ],
+      "capability_groups": [
+        "skills_mcp"
+      ],
+      "source_url": "https://github.com/agentskills/agentskills",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "Aider-AI/aider",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "Aider-AI/aider"
+      ],
+      "capability_groups": [
+        "agent_runtime"
+      ],
+      "source_url": "https://github.com/Aider-AI/aider",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "anchore/grype",
+      "legacy_entry_ids": [
+        "r29-08"
+      ],
+      "plan_references": [
+        "anchore/grype"
+      ],
+      "capability_groups": [
+        "security"
+      ],
+      "source_url": "https://github.com/anchore/grype",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "anchore/syft",
+      "legacy_entry_ids": [
+        "source-020"
+      ],
+      "plan_references": [
+        "anchore/syft"
+      ],
+      "capability_groups": [
+        "security"
+      ],
+      "source_url": "https://github.com/anchore/syft",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "anomalyco/opencode",
+      "legacy_entry_ids": [
+        "source-050"
+      ],
+      "plan_references": [
+        "anomalyco/opencode"
+      ],
+      "capability_groups": [
+        "agent_runtime"
+      ],
+      "source_url": "https://github.com/anomalyco/opencode",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "ansible/ansible",
+      "legacy_entry_ids": [
+        "source-054"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/ansible/ansible",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "anthropics/skills",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "anthropics/skills"
+      ],
+      "capability_groups": [
+        "skills_mcp"
+      ],
+      "source_url": "https://github.com/anthropics/skills",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "aquasecurity/trivy",
+      "legacy_entry_ids": [
+        "source-018"
+      ],
+      "plan_references": [
+        "aquasecurity/trivy"
+      ],
+      "capability_groups": [
+        "security"
+      ],
+      "source_url": "https://github.com/aquasecurity/trivy",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "argoproj/argo-rollouts",
+      "legacy_entry_ids": [
+        "r29-10"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/argoproj/argo-rollouts",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "Arize-ai/phoenix",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "Arize-ai/phoenix"
+      ],
+      "capability_groups": [
+        "observability"
+      ],
+      "source_url": "https://github.com/Arize-ai/phoenix",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "ast-grep/ast-grep",
+      "legacy_entry_ids": [
+        "source-027"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/ast-grep/ast-grep",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "astral-sh/agent-plugins",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "astral-sh/agent-plugins"
+      ],
+      "capability_groups": [
+        "skills_mcp"
+      ],
+      "source_url": "https://github.com/astral-sh/agent-plugins",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "astral-sh/ruff",
+      "legacy_entry_ids": [
+        "source-015"
+      ],
+      "plan_references": [
+        "astral-sh/ruff"
+      ],
+      "capability_groups": [
+        "python_toolchain"
+      ],
+      "source_url": "https://github.com/astral-sh/ruff",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "astral-sh/uv",
+      "legacy_entry_ids": [
+        "source-063"
+      ],
+      "plan_references": [
+        "astral-sh/uv"
+      ],
+      "capability_groups": [
+        "python_toolchain"
+      ],
+      "source_url": "https://github.com/astral-sh/uv",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "backstage/backstage",
+      "legacy_entry_ids": [
+        "source-056"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/backstage/backstage",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "BerriAI/litellm",
+      "legacy_entry_ids": [
+        "source-041"
+      ],
+      "plan_references": [
+        "BerriAI/litellm"
+      ],
+      "capability_groups": [
+        "gateway"
+      ],
+      "source_url": "https://github.com/BerriAI/litellm",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "BookStackApp/BookStack",
+      "legacy_entry_ids": [
+        "source-058"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/BookStackApp/BookStack",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "bridgecrewio/checkov",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "bridgecrewio/checkov"
+      ],
+      "capability_groups": [
+        "security"
+      ],
+      "source_url": "https://github.com/bridgecrewio/checkov",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "celery/celery",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "celery/celery"
+      ],
+      "capability_groups": [
+        "orchestration"
+      ],
+      "source_url": "https://github.com/celery/celery",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "cheaper-inference/OmniRoute",
+      "legacy_entry_ids": [
+        "source-042"
+      ],
+      "plan_references": [
+        "cheaper-inference/OmniRoute"
+      ],
+      "capability_groups": [
+        "gateway"
+      ],
+      "source_url": "https://github.com/cheaper-inference/OmniRoute",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "cli/cli",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "cli/cli"
+      ],
+      "capability_groups": [
+        "developer_environment"
+      ],
+      "source_url": "https://github.com/cli/cli",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "cline/cline",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "cline/cline"
+      ],
+      "capability_groups": [
+        "agent_runtime"
+      ],
+      "source_url": "https://github.com/cline/cline",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "containers/bubblewrap",
+      "legacy_entry_ids": [
+        "source-009"
+      ],
+      "plan_references": [
+        "containers/bubblewrap"
+      ],
+      "capability_groups": [
+        "isolation"
+      ],
+      "source_url": "https://github.com/containers/bubblewrap",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "copier-org/copier",
+      "legacy_entry_ids": [
+        "source-030"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/copier-org/copier",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "coveragepy/coveragepy",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "nedbat/coveragepy"
+      ],
+      "capability_groups": [
+        "quality"
+      ],
+      "source_url": "https://github.com/coveragepy/coveragepy",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "dequelabs/axe-core",
+      "legacy_entry_ids": [
+        "source-039"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/dequelabs/axe-core",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "devcontainers/cli",
+      "legacy_entry_ids": [
+        "r29-02"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/devcontainers/cli",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "devcontainers/spec",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "devcontainers/spec"
+      ],
+      "capability_groups": [
+        "developer_environment"
+      ],
+      "source_url": "https://github.com/devcontainers/spec",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "devcontainers/templates",
+      "legacy_entry_ids": [
+        "r29-01"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/devcontainers/templates",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "fastapi/full-stack-fastapi-template",
+      "legacy_entry_ids": [
+        "r29-03"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/fastapi/full-stack-fastapi-template",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "firecracker-microvm/firecracker",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "firecracker-microvm/firecracker"
+      ],
+      "capability_groups": [
+        "isolation"
+      ],
+      "source_url": "https://github.com/firecracker-microvm/firecracker",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "ggml-org/llama.cpp",
+      "legacy_entry_ids": [
+        "source-005"
+      ],
+      "plan_references": [
+        "ggml-org/llama.cpp"
+      ],
+      "capability_groups": [
+        "local_model"
+      ],
+      "source_url": "https://github.com/ggml-org/llama.cpp",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "github/github-mcp-server",
+      "legacy_entry_ids": [
+        "source-010"
+      ],
+      "plan_references": [
+        "github/github-mcp-server"
+      ],
+      "capability_groups": [
+        "skills_mcp"
+      ],
+      "source_url": "https://github.com/github/github-mcp-server",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "github/spec-kit",
+      "legacy_entry_ids": [
+        "source-011",
+        "source-012",
+        "source-013"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/github/spec-kit",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "gitleaks/gitleaks",
+      "legacy_entry_ids": [
+        "source-016"
+      ],
+      "plan_references": [
+        "gitleaks/gitleaks"
+      ],
+      "capability_groups": [
+        "security"
+      ],
+      "source_url": "https://github.com/gitleaks/gitleaks",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "google-gemini/gemini-cli",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "google-gemini/gemini-cli"
+      ],
+      "capability_groups": [
+        "agent_runtime"
+      ],
+      "source_url": "https://github.com/google-gemini/gemini-cli",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "google/adk-python",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "google/adk-python"
+      ],
+      "capability_groups": [
+        "agent_runtime"
+      ],
+      "source_url": "https://github.com/google/adk-python",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "google/nsjail",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "google/nsjail"
+      ],
+      "capability_groups": [
+        "isolation"
+      ],
+      "source_url": "https://github.com/google/nsjail",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "google/osv-scanner",
+      "legacy_entry_ids": [
+        "source-019"
+      ],
+      "plan_references": [
+        "google/osv-scanner"
+      ],
+      "capability_groups": [
+        "security"
+      ],
+      "source_url": "https://github.com/google/osv-scanner",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "grafana/grafana",
+      "legacy_entry_ids": [
+        "source-047"
+      ],
+      "plan_references": [
+        "grafana/grafana"
+      ],
+      "capability_groups": [
+        "observability"
+      ],
+      "source_url": "https://github.com/grafana/grafana",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "grafana/k6",
+      "legacy_entry_ids": [
+        "source-040"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/grafana/k6",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "grafana/loki",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "grafana/loki"
+      ],
+      "capability_groups": [
+        "observability"
+      ],
+      "source_url": "https://github.com/grafana/loki",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "grafana/tempo",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "grafana/tempo"
+      ],
+      "capability_groups": [
+        "observability"
+      ],
+      "source_url": "https://github.com/grafana/tempo",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "gvisor/gvisor",
+      "legacy_entry_ids": [
+        "source-055"
+      ],
+      "plan_references": [
+        "google/gvisor"
+      ],
+      "capability_groups": [
+        "isolation"
+      ],
+      "source_url": "https://github.com/gvisor/gvisor",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "harbor-framework/harbor",
+      "legacy_entry_ids": [
+        "source-034"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/harbor-framework/harbor",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "hatchet-dev/hatchet",
+      "legacy_entry_ids": [
+        "source-044"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/hatchet-dev/hatchet",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "huggingface/huggingface_hub",
+      "legacy_entry_ids": [
+        "source-071"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/huggingface/huggingface_hub",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "huggingface/transformers",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "huggingface/transformers"
+      ],
+      "capability_groups": [
+        "local_model"
+      ],
+      "source_url": "https://github.com/huggingface/transformers",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "HypothesisWorks/hypothesis",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "HypothesisWorks/hypothesis"
+      ],
+      "capability_groups": [
+        "quality"
+      ],
+      "source_url": "https://github.com/HypothesisWorks/hypothesis",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "in-toto/in-toto",
+      "legacy_entry_ids": [
+        "r29-05"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/in-toto/in-toto",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "kata-containers/kata-containers",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "kata-containers/kata-containers"
+      ],
+      "capability_groups": [
+        "isolation"
+      ],
+      "source_url": "https://github.com/kata-containers/kata-containers",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "keycloak/keycloak",
+      "legacy_entry_ids": [
+        "r29-07"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/keycloak/keycloak",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "langchain-ai/langgraph",
+      "legacy_entry_ids": [
+        "source-025"
+      ],
+      "plan_references": [
+        "langchain-ai/langgraph"
+      ],
+      "capability_groups": [
+        "agent_runtime"
+      ],
+      "source_url": "https://github.com/langchain-ai/langgraph",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "langfuse/langfuse",
+      "legacy_entry_ids": [
+        "source-032"
+      ],
+      "plan_references": [
+        "langfuse/langfuse"
+      ],
+      "capability_groups": [
+        "observability"
+      ],
+      "source_url": "https://github.com/langfuse/langfuse",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "makeplane/plane",
+      "legacy_entry_ids": [
+        "source-057"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/makeplane/plane",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "microsoft/autogen",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "microsoft/autogen"
+      ],
+      "capability_groups": [
+        "agent_runtime"
+      ],
+      "source_url": "https://github.com/microsoft/autogen",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": true,
+      "decision": "hold_archived",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "microsoft/playwright",
+      "legacy_entry_ids": [
+        "source-021"
+      ],
+      "plan_references": [
+        "microsoft/playwright"
+      ],
+      "capability_groups": [
+        "quality"
+      ],
+      "source_url": "https://github.com/microsoft/playwright",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "microsoft/playwright-mcp",
+      "legacy_entry_ids": [
+        "source-029"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/microsoft/playwright-mcp",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "microsoft/pyright",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "microsoft/pyright"
+      ],
+      "capability_groups": [
+        "python_toolchain"
+      ],
+      "source_url": "https://github.com/microsoft/pyright",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "microsoft/vscode",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "microsoft/vscode"
+      ],
+      "capability_groups": [
+        "developer_environment"
+      ],
+      "source_url": "https://github.com/microsoft/vscode",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "microsoft/WSL",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "microsoft/WSL"
+      ],
+      "capability_groups": [
+        "developer_environment"
+      ],
+      "source_url": "https://github.com/microsoft/WSL",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "moby/buildkit",
+      "legacy_entry_ids": [
+        "source-064"
+      ],
+      "plan_references": [
+        "moby/buildkit"
+      ],
+      "capability_groups": [
+        "isolation"
+      ],
+      "source_url": "https://github.com/moby/buildkit",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "modelcontextprotocol/python-sdk",
+      "legacy_entry_ids": [
+        "source-066"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/modelcontextprotocol/python-sdk",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "modelcontextprotocol/servers",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "modelcontextprotocol/servers"
+      ],
+      "capability_groups": [
+        "skills_mcp"
+      ],
+      "source_url": "https://github.com/modelcontextprotocol/servers",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "nats-io/nats-server",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "nats-io/nats-server"
+      ],
+      "capability_groups": [
+        "orchestration"
+      ],
+      "source_url": "https://github.com/nats-io/nats-server",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "NousResearch/hermes-agent",
+      "legacy_entry_ids": [
+        "source-049"
+      ],
+      "plan_references": [
+        "NousResearch/hermes-agent"
+      ],
+      "capability_groups": [
+        "agent_runtime"
+      ],
+      "source_url": "https://github.com/NousResearch/hermes-agent",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "NousResearch/hermes-agent-self-evolution",
+      "legacy_entry_ids": [
+        "source-059"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/NousResearch/hermes-agent-self-evolution",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "NVIDIA/garak",
+      "legacy_entry_ids": [
+        "source-068"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/NVIDIA/garak",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "obra/superpowers",
+      "legacy_entry_ids": [
+        "source-014"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/obra/superpowers",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "ollama/ollama",
+      "legacy_entry_ids": [
+        "source-006"
+      ],
+      "plan_references": [
+        "ollama/ollama"
+      ],
+      "capability_groups": [
+        "local_model"
+      ],
+      "source_url": "https://github.com/ollama/ollama",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "ollama/ollama-python",
+      "legacy_entry_ids": [
+        "source-007"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/ollama/ollama-python",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "open-policy-agent/opa",
+      "legacy_entry_ids": [
+        "source-036"
+      ],
+      "plan_references": [
+        "open-policy-agent/opa"
+      ],
+      "capability_groups": [
+        "security"
+      ],
+      "source_url": "https://github.com/open-policy-agent/opa",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "open-telemetry/opentelemetry-collector",
+      "legacy_entry_ids": [
+        "source-033"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/open-telemetry/opentelemetry-collector",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "open-telemetry/opentelemetry-python",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "open-telemetry/opentelemetry-python"
+      ],
+      "capability_groups": [
+        "observability"
+      ],
+      "source_url": "https://github.com/open-telemetry/opentelemetry-python",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "openai/codex",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "openai/codex"
+      ],
+      "capability_groups": [
+        "agent_runtime"
+      ],
+      "source_url": "https://github.com/openai/codex",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "openbao/openbao",
+      "legacy_entry_ids": [
+        "source-048"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/openbao/openbao",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "opencontainers/runc",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "opencontainers/runc"
+      ],
+      "capability_groups": [
+        "isolation"
+      ],
+      "source_url": "https://github.com/opencontainers/runc",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "OpenHands/OpenHands",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "OpenHands/OpenHands"
+      ],
+      "capability_groups": [
+        "agent_runtime"
+      ],
+      "source_url": "https://github.com/OpenHands/OpenHands",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "OpenHands/software-agent-sdk",
+      "legacy_entry_ids": [
+        "source-001",
+        "source-002",
+        "source-003",
+        "source-004",
+        "source-022",
+        "source-023",
+        "source-024"
+      ],
+      "plan_references": [
+        "OpenHands/software-agent-sdk"
+      ],
+      "capability_groups": [
+        "agent_runtime"
+      ],
+      "source_url": "https://github.com/OpenHands/software-agent-sdk",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "opentofu/opentofu",
+      "legacy_entry_ids": [
+        "source-053"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/opentofu/opentofu",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "oraios/serena",
+      "legacy_entry_ids": [
+        "source-026"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/oraios/serena",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "oss-review-toolkit/ort",
+      "legacy_entry_ids": [
+        "source-037"
+      ],
+      "plan_references": [
+        "oss-review-toolkit/ort"
+      ],
+      "capability_groups": [
+        "security"
+      ],
+      "source_url": "https://github.com/oss-review-toolkit/ort",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "ossf/scorecard",
+      "legacy_entry_ids": [
+        "source-069"
+      ],
+      "plan_references": [
+        "ossf/scorecard"
+      ],
+      "capability_groups": [
+        "security"
+      ],
+      "source_url": "https://github.com/ossf/scorecard",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "pgmq/pgmq",
+      "legacy_entry_ids": [
+        "source-008"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/pgmq/pgmq",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "pgvector/pgvector",
+      "legacy_entry_ids": [
+        "source-031"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/pgvector/pgvector",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "podman-container-tools/podman",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "containers/podman"
+      ],
+      "capability_groups": [
+        "isolation"
+      ],
+      "source_url": "https://github.com/podman-container-tools/podman",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "podman-desktop/podman-desktop",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "podman-desktop/podman-desktop"
+      ],
+      "capability_groups": [
+        "isolation"
+      ],
+      "source_url": "https://github.com/podman-desktop/podman-desktop",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "pre-commit/pre-commit",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "pre-commit/pre-commit"
+      ],
+      "capability_groups": [
+        "python_toolchain"
+      ],
+      "source_url": "https://github.com/pre-commit/pre-commit",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "PrefectHQ/prefect",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "PrefectHQ/prefect"
+      ],
+      "capability_groups": [
+        "orchestration"
+      ],
+      "source_url": "https://github.com/PrefectHQ/prefect",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "prometheus/alertmanager",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "prometheus/alertmanager"
+      ],
+      "capability_groups": [
+        "observability"
+      ],
+      "source_url": "https://github.com/prometheus/alertmanager",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "prometheus/prometheus",
+      "legacy_entry_ids": [
+        "source-046"
+      ],
+      "plan_references": [
+        "prometheus/prometheus"
+      ],
+      "capability_groups": [
+        "observability"
+      ],
+      "source_url": "https://github.com/prometheus/prometheus",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "promptfoo/promptfoo",
+      "legacy_entry_ids": [
+        "source-035"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/promptfoo/promptfoo",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "pypa/build",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "pypa/build"
+      ],
+      "capability_groups": [
+        "python_toolchain"
+      ],
+      "source_url": "https://github.com/pypa/build",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "pypa/packaging",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "pypa/packaging"
+      ],
+      "capability_groups": [
+        "python_toolchain"
+      ],
+      "source_url": "https://github.com/pypa/packaging",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "pypa/pip",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "pypa/pip"
+      ],
+      "capability_groups": [
+        "python_toolchain"
+      ],
+      "source_url": "https://github.com/pypa/pip",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "pypa/pip-audit",
+      "legacy_entry_ids": [
+        "source-072"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/pypa/pip-audit",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "pypa/setuptools",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "pypa/setuptools"
+      ],
+      "capability_groups": [
+        "python_toolchain"
+      ],
+      "source_url": "https://github.com/pypa/setuptools",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "pypa/wheel",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "pypa/wheel"
+      ],
+      "capability_groups": [
+        "python_toolchain"
+      ],
+      "source_url": "https://github.com/pypa/wheel",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "pytest-dev/pytest",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "pytest-dev/pytest"
+      ],
+      "capability_groups": [
+        "quality"
+      ],
+      "source_url": "https://github.com/pytest-dev/pytest",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "python/cpython",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "python/cpython"
+      ],
+      "capability_groups": [
+        "python_toolchain"
+      ],
+      "source_url": "https://github.com/python/cpython",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "QwenLM/qwen-code",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "QwenLM/qwen-code"
+      ],
+      "capability_groups": [
+        "agent_runtime"
+      ],
+      "source_url": "https://github.com/QwenLM/qwen-code",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "QwenLM/Qwen3",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "QwenLM/Qwen3"
+      ],
+      "capability_groups": [
+        "local_model"
+      ],
+      "source_url": "https://github.com/QwenLM/Qwen3",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "renovatebot/renovate",
+      "legacy_entry_ids": [
+        "source-062"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/renovatebot/renovate",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "rhysd/actionlint",
+      "legacy_entry_ids": [
+        "source-061"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/rhysd/actionlint",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "rootless-containers/rootlesskit",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "rootless-containers/rootlesskit"
+      ],
+      "capability_groups": [
+        "isolation"
+      ],
+      "source_url": "https://github.com/rootless-containers/rootlesskit",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "schemathesis/schemathesis",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "schemathesis/schemathesis"
+      ],
+      "capability_groups": [
+        "quality"
+      ],
+      "source_url": "https://github.com/schemathesis/schemathesis",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "semgrep/semgrep",
+      "legacy_entry_ids": [
+        "source-017"
+      ],
+      "plan_references": [
+        "semgrep/semgrep"
+      ],
+      "capability_groups": [
+        "security"
+      ],
+      "source_url": "https://github.com/semgrep/semgrep",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "sgl-project/sglang",
+      "legacy_entry_ids": [
+        "source-052"
+      ],
+      "plan_references": [
+        "sgl-project/sglang"
+      ],
+      "capability_groups": [
+        "local_model"
+      ],
+      "source_url": "https://github.com/sgl-project/sglang",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "sigstore/cosign",
+      "legacy_entry_ids": [
+        "source-038"
+      ],
+      "plan_references": [
+        "sigstore/cosign"
+      ],
+      "capability_groups": [
+        "security"
+      ],
+      "source_url": "https://github.com/sigstore/cosign",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "sigstore/rekor",
+      "legacy_entry_ids": [
+        "r29-12"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/sigstore/rekor",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "slsa-framework/slsa-github-generator",
+      "legacy_entry_ids": [
+        "r29-06"
+      ],
+      "plan_references": [
+        "slsa-framework/slsa-github-generator"
+      ],
+      "capability_groups": [
+        "security"
+      ],
+      "source_url": "https://github.com/slsa-framework/slsa-github-generator",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "step-security/harden-runner",
+      "legacy_entry_ids": [
+        "r29-09"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/step-security/harden-runner",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "SWE-agent/SWE-agent",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "SWE-agent/SWE-agent"
+      ],
+      "capability_groups": [
+        "agent_runtime"
+      ],
+      "source_url": "https://github.com/SWE-agent/SWE-agent",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "SWE-bench/SWE-bench",
+      "legacy_entry_ids": [
+        "r29-04"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/SWE-bench/SWE-bench",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "tashfeenahmed/freellmapi",
+      "legacy_entry_ids": [
+        "source-043"
+      ],
+      "plan_references": [
+        "tashfeenahmed/freellmapi"
+      ],
+      "capability_groups": [
+        "gateway"
+      ],
+      "source_url": "https://github.com/tashfeenahmed/freellmapi",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "temporalio/temporal",
+      "legacy_entry_ids": [
+        "source-045"
+      ],
+      "plan_references": [
+        "temporalio/temporal"
+      ],
+      "capability_groups": [
+        "orchestration"
+      ],
+      "source_url": "https://github.com/temporalio/temporal",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "testcontainers/testcontainers-python",
+      "legacy_entry_ids": [
+        "source-065"
+      ],
+      "plan_references": [
+        "testcontainers/testcontainers-python"
+      ],
+      "capability_groups": [
+        "quality"
+      ],
+      "source_url": "https://github.com/testcontainers/testcontainers-python",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "tox-dev/tox",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "tox-dev/tox"
+      ],
+      "capability_groups": [
+        "quality"
+      ],
+      "source_url": "https://github.com/tox-dev/tox",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "tree-sitter/tree-sitter",
+      "legacy_entry_ids": [
+        "source-028"
+      ],
+      "plan_references": [],
+      "capability_groups": [],
+      "source_url": "https://github.com/tree-sitter/tree-sitter",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "valkey-io/valkey",
+      "legacy_entry_ids": [],
+      "plan_references": [
+        "valkey-io/valkey"
+      ],
+      "capability_groups": [
+        "orchestration"
+      ],
+      "source_url": "https://github.com/valkey-io/valkey",
+      "source_status": "public_repository_metadata_checked_2026-11-26",
+      "archived": false,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "vllm-project/vllm",
+      "legacy_entry_ids": [
+        "source-051"
+      ],
+      "plan_references": [
+        "vllm-project/vllm"
+      ],
+      "capability_groups": [
+        "local_model"
+      ],
+      "source_url": "https://github.com/vllm-project/vllm",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "zaproxy/zaproxy",
+      "legacy_entry_ids": [
+        "r29-11"
+      ],
+      "plan_references": [
+        "zaproxy/zaproxy"
+      ],
+      "capability_groups": [
+        "security"
+      ],
+      "source_url": "https://github.com/zaproxy/zaproxy",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    },
+    {
+      "repository": "zizmorcore/zizmor",
+      "legacy_entry_ids": [
+        "source-060"
+      ],
+      "plan_references": [
+        "zizmorcore/zizmor"
+      ],
+      "capability_groups": [
+        "security"
+      ],
+      "source_url": "https://github.com/zizmorcore/zizmor",
+      "source_status": "historical_link_audit_2026-11-23",
+      "archived": null,
+      "decision": "proposed_only",
+      "pinned_commit": null,
+      "license_review": "pending",
+      "security_review": "pending",
+      "integration_test": "not_run",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_catalog": false
+    }
+  ]
+}

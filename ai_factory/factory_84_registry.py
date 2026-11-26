@@ -8,6 +8,9 @@ ONLY, never of license approval or security/operational readiness.
 import argparse
 from collections import Counter, defaultdict
 import json
+import hashlib
+import os
+import stat
 from pathlib import Path
 import re
 import sys
@@ -19,6 +22,11 @@ ROOT = Path(__file__).resolve().parents[1]
 BASE = ROOT / "configs" / "factory_72_adopt_first.json"
 R29 = ROOT / "configs" / "factory_r29_only_requirements.json"
 AUDIT = ROOT / "configs" / "factory_84_source_availability_audit_2026-11-23.json"
+V1_1 = ROOT / "configs" / "factory_v1_1_repository_reconciliation.json"
+# Git blob identity is a repository consistency pin, not signature or trust approval.
+V1_1_GIT_BLOB = "80a6aeb9c9305db15463cea1f07e45051d9dea52"
+GATEWAY_REVIEW = ROOT / "configs" / "factory_v1_1_gateway_mcp_review.json"
+GATEWAY_REVIEW_BLOB = "e4012a6cd2575fa7d29b740831cc0f4804b12563"
 COUNTS = {"P0": 26, "P1": 39, "P2": 19}
 SOURCE_ID = re.compile(r"^(?:source-\d{3}|r29-\d{2})$")
 REQUIREMENT = re.compile(r"^ADD-(\d{2})$")
@@ -173,8 +181,92 @@ def select(items, *, priority=None, wave=None, requires=None, source_id=None, te
     ]
 
 
+def _read_pinned_catalog(path, expected_blob):
+    path = Path(path)
+    if ".." in path.parts or any(p.is_symlink() for p in (path, *path.parents)):
+        raise ValueError("untrusted v1.1 catalog path")
+    with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as stream:
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= 150_000:
+            raise ValueError("invalid v1.1 catalog")
+        raw = stream.read(150_001)
+    if len(raw) != info.st_size or len(raw) > 150_000:
+        raise ValueError("v1.1 catalog size mismatch")
+    blob = hashlib.sha1(b"blob " + str(len(raw)).encode("ascii") + b"\0" + raw,
+                        usedforsecurity=False).hexdigest()
+    if blob != expected_blob:
+        raise ValueError("v1.1 catalog blob mismatch")
+    return json.loads(raw)
+
+
+def load_v1_1() -> list[dict]:
+    """Read exact pinned supplemental discovery index; no admission or execution.
+
+    The checkout and its parent directories must be operator controlled.
+    Historical 84-source/47-requirement queries remain independent.
+    """
+    data = _read_pinned_catalog(V1_1, V1_1_GIT_BLOB)
+    rows = data["entries"]
+    if (len(rows) != 128 or len({r["repository"].casefold() for r in rows}) != 128
+            or sum(len(r["legacy_entry_ids"]) for r in rows) != 84
+            or sum(len(r["plan_references"]) for r in rows) != 89
+            or any(data.get(k) is not False for k in ("auto_install",
+                   "run_unreviewed_components", "paid_usage_enabled", "release_authorized"))
+            or any(r.get("approved") is not False or r.get("enabled") is not False
+                   or r.get("installed_by_this_catalog") is not False
+                   or r.get("pinned_commit") is not None
+                   or r.get("decision") not in ("proposed_only", "hold_archived")
+                   for r in rows)):
+        raise ValueError("v1.1 discovery scope drift")
+    return rows
+
+
+def load_gateway_review() -> list[dict]:
+    """Join pinned review metadata to discovery, never to execution authority."""
+    data = _read_pinned_catalog(GATEWAY_REVIEW, GATEWAY_REVIEW_BLOB)
+    catalog = {row["repository"].casefold(): row for row in load_v1_1()}
+    rows = data["entries"]
+    if (data.get("status") != "REVIEW_ONLY_UNAPPROVED"
+            or data.get("candidate_count") != 6 or len(rows) != 6
+            or data.get("first_trial_route") != {
+                "model": "openai/local-qwen", "base_url": "http://qwen3:11434/v1",
+                "fallback": False, "external_provider_allowed": False}):
+        raise ValueError("gateway review scope mismatch")
+    seen = set()
+    result = []
+    for row in rows:
+        key = row["repository"].casefold()
+        discovery = catalog.get(key)
+        if (key in seen or discovery is None or discovery["decision"] != "proposed_only"
+                or any(row.get(k) is not False for k in
+                       ("approved", "enabled", "installed", "source_to_artifact_verified"))
+                or row.get("security_review") != "pending"
+                or row.get("license_review") != "pending"
+                or row.get("integration_test") != "not_run"
+                or not re.fullmatch(r"[0-9a-f]{40}", row["commit"])):
+            raise ValueError("gateway candidate drift or admission attempt")
+        seen.add(key)
+        result.append(dict(row, discovery_decision=discovery["decision"]))
+    if Counter(r["role"] for r in result) != {
+            "agent_orchestration": 1, "model_gateway": 3, "mcp": 2}:
+        raise ValueError("gateway role inventory mismatch")
+    return result
+
+
+def select_v1_1(items, term=""):
+    """Search repository metadata only; return disabled candidates."""
+    if not isinstance(term, str) or len(term) > 200:
+        raise ValueError("invalid repository search")
+    term = term.casefold()
+    return [r for r in items if term in r["repository"].casefold()
+            or any(term in x.casefold() for x in r["plan_references"])]
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="CODEN 84-source factory registry — NO installation")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--v1-1", action="store_true", help="Query 128 proposed repositories")
+    modes.add_argument("--gateway-review", action="store_true", help="Query six review-only gateway and MCP candidates")
     parser.add_argument("--priority", choices=sorted(COUNTS))
     parser.add_argument("--wave", choices=sorted(WAVES))
     parser.add_argument("--requires", help="R29 factory requirement, e.g. ADD-13")
@@ -183,6 +275,33 @@ def main(argv=None):
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
     try:
+        if args.gateway_review:
+            if any((args.priority, args.wave, args.requires, args.source_id)):
+                raise ValueError("legacy filters do not apply to gateway review")
+            term = args.text or ""
+            if len(term) > 200:
+                raise ValueError("invalid search term")
+            selected = [row for row in load_gateway_review()
+                        if term.casefold() in row["repository"].casefold()
+                        or term.casefold() in row["role"].casefold()]
+            if args.json:
+                print(json.dumps(selected, indent=2, ensure_ascii=False))
+            else:
+                for row in selected:
+                    print(f"{row['repository']} — {row['role']} — REVIEW ONLY")
+                print(f"Matching candidates: {len(selected)}; approved: 0; enabled: 0; installed: 0")
+            return 0
+        if args.v1_1:
+            if any((args.priority, args.wave, args.requires, args.source_id)):
+                raise ValueError("legacy filters do not apply to v1.1 repositories")
+            selected = select_v1_1(load_v1_1(), args.text or "")
+            if args.json:
+                print(json.dumps(selected, indent=2, ensure_ascii=False))
+            else:
+                for row in selected:
+                    print(f"{row['repository']} — {row['decision']}")
+                print(f"Matching repositories: {len(selected)}; admitted: 0; installed: 0")
+            return 0
         all_rows = load()
         selected = select(
             all_rows, priority=args.priority, wave=args.wave,

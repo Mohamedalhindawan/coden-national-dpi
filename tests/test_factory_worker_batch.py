@@ -165,3 +165,90 @@ class WorkerBatchTests(unittest.TestCase):
         with patch.object(worker_supervisor, "run_once", side_effect=ValueError("synthetic")) as worker:
             self.assertEqual(self.run_batch()["status"], "worker_review_required")
             worker.assert_called_once()
+
+
+    def test_batch_budget_rejects_insufficient_time_before_dispatch(self):
+        self.add("one")
+        with patch.object(worker_supervisor, "run_once") as worker:
+            result = self.run_batch(max_batch_seconds=10)
+        worker.assert_not_called()
+        self.assertEqual(result["status"], "batch_time_budget_exhausted")
+        self.assertEqual(result["review_candidates"], 0)
+        self.assertEqual(self.q.read("one")["attempts"], 0)
+
+    def test_batch_budget_stops_second_dispatch_without_retry(self):
+        from ai_factory import checkpoint, worker_scheduler
+        self.add("one")
+        self.add("two")
+        now = [100.0]
+        def finish_first(**kwargs):
+            lease = self.q.claim("operator", task_id="one", lease_seconds=40)
+            checkpoint.record(self.journal, "one", event="checkpoint")
+            checkpoint.record(self.journal, "one", event="review_requested")
+            self.q.finish("one", lease["lease_token"], "awaiting_human_review")
+            now[0] += 35
+            return {"status": "awaiting_human_review", "execution_authorized": False,
+                    "automatic_retry_allowed": False}
+        with patch.object(worker_scheduler, "_monotonic", side_effect=lambda: now[0]), \
+                patch.object(worker_supervisor, "run_once", side_effect=finish_first) as worker:
+            result = self.run_batch(max_batch_seconds=60)
+        self.assertEqual(result["status"], "batch_time_budget_exhausted")
+        self.assertEqual(result["review_candidates"], 1)
+        worker.assert_called_once()
+        self.assertEqual(self.q.read("one")["attempts"], 1)
+        self.assertEqual(self.q.read("two")["attempts"], 0)
+        self.assertFalse(result["automatic_retry_allowed"])
+
+    def test_invalid_batch_time_budget_rejected(self):
+        with patch.object(worker_supervisor, "run_once") as worker:
+            for value in (0, True, -1, 3601, 1.5):
+                with self.subTest(value=value), self.assertRaises(ValueError):
+                    self.run_batch(max_batch_seconds=value)
+            worker.assert_not_called()
+
+
+    def test_scheduler_binds_fifo_task_to_monitored_worker(self):
+        from ai_factory import checkpoint
+        self.add("z_first")
+        self.add("a_second")
+        # Make FIFO ordering independent of timing resolution.
+        import sqlite3
+        with sqlite3.connect(self.db) as db:
+            db.execute("UPDATE tasks SET created_at=1 WHERE task_id='z_first'")
+            db.execute("UPDATE tasks SET created_at=2 WHERE task_id='a_second'")
+        def finish(**kwargs):
+            self.assertEqual(kwargs["task_id"], "z_first")
+            lease = self.q.claim("operator", task_id=kwargs["task_id"], lease_seconds=40)
+            checkpoint.record(self.journal, "z_first", event="checkpoint")
+            checkpoint.record(self.journal, "z_first", event="review_requested")
+            self.q.finish("z_first", lease["lease_token"], "awaiting_human_review")
+            return {"status": "awaiting_human_review", "execution_authorized": False,
+                    "automatic_retry_allowed": False}
+        with patch.object(worker_supervisor, "run_once", side_effect=finish) as worker:
+            result = self.run_batch(max_tasks=1)
+        self.assertEqual(result["review_candidates"], 1)
+        worker.assert_called_once()
+        self.assertEqual(self.q.read("a_second")["attempts"], 0)
+
+    def test_scheduler_does_not_count_different_task_as_selected_success(self):
+        from ai_factory import checkpoint
+        self.add("one")
+        self.add("two")
+        import sqlite3
+        with sqlite3.connect(self.db) as db:
+            db.execute("UPDATE tasks SET created_at=1 WHERE task_id='one'")
+            db.execute("UPDATE tasks SET created_at=2 WHERE task_id='two'")
+        def finish_wrong(**kwargs):
+            lease = self.q.claim("operator", task_id="two", lease_seconds=40)
+            checkpoint.record(self.journal, "two", event="checkpoint")
+            checkpoint.record(self.journal, "two", event="review_requested")
+            self.q.finish("two", lease["lease_token"], "awaiting_human_review")
+            return {"status": "awaiting_human_review", "execution_authorized": False,
+                    "automatic_retry_allowed": False}
+        with patch.object(worker_supervisor, "run_once", side_effect=finish_wrong) as worker:
+            result = self.run_batch(max_tasks=1)
+        self.assertEqual(result["status"], "worker_review_required")
+        self.assertEqual(result["review_candidates"], 0)
+        worker.assert_called_once()
+        self.assertEqual(self.q.read("one")["attempts"], 0)
+        self.assertFalse(result["automatic_retry_allowed"])

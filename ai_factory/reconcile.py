@@ -37,18 +37,24 @@ def _payload_matches(task_dir, task_id, expected):
     return len(data) <= MAX_TASK_FILE and hashlib.sha256(data).hexdigest() == expected
 
 
+def _untrusted_path(path):
+    absolute = Path(path).absolute()
+    return ".." in absolute.parts or any(p.is_symlink() for p in (absolute, *absolute.parents))
+
+
 def _queue_rows(db_path):
     path = Path(db_path)
-    if not path.is_file() or path.is_symlink() or path.parent.is_symlink():
+    if not path.is_file() or _untrusted_path(path):
         raise ValueError("existing regular non-symlink queue database required")
     # Connect read-only. No schema creation, chmod, leases, WAL checkpoint or mutations.
     uri = "file:" + quote(str(path.absolute()), safe="/") + "?mode=ro"
     try:
         with closing(sqlite3.connect(uri, uri=True, timeout=3)) as db:
             db.execute("PRAGMA query_only=ON")
+            db.execute("PRAGMA trusted_schema=OFF")
             rows = db.execute(
                 "SELECT task_id,branch,commit_sha,task_sha256,status "
-                "FROM tasks ORDER BY task_id LIMIT ?", (MAX_TASKS + 1,)
+                "FROM tasks ORDER BY created_at,task_id LIMIT ?", (MAX_TASKS + 1,)
             ).fetchall()
     except sqlite3.Error as exc:
         raise ValueError("unreadable queue database or schema") from exc
@@ -85,11 +91,11 @@ def _evaluate(queue_state, journal_state):
 def scan(queue_db, journal_dir, task_dir=None):
     """Return bounded, credential-free findings; never mutate queue or journal."""
     root = Path(journal_dir)
-    if root.is_symlink() or root.parent.is_symlink():
+    if _untrusted_path(root):
         raise ValueError("symlink journal root forbidden")
     if task_dir is not None:
         task_root = Path(task_dir)
-        if task_root.is_symlink() or task_root.parent.is_symlink() or not task_root.is_dir():
+        if _untrusted_path(task_root) or not task_root.is_dir():
             raise ValueError("trusted task directory required")
     queue_rows = _queue_rows(queue_db)
     entries = []
@@ -130,9 +136,16 @@ def scan(queue_db, journal_dir, task_dir=None):
     if root.exists():
         if not root.is_dir():
             raise ValueError("journal root must be directory")
-        files = sorted(p for p in root.iterdir() if p.name.endswith(".jsonl"))
-        if len(files) + len(entries) > MAX_TASKS * 2:
-            raise ValueError("journal audit exceeds limit")
+        files = []
+        # Bound enumeration itself, including unrelated files, before sorting.
+        for index, path in enumerate(root.iterdir(), start=1):
+            if index > MAX_TASKS * 4:
+                raise ValueError("journal directory enumeration exceeds limit")
+            if path.name.endswith(".jsonl"):
+                files.append(path)
+                if len(files) + len(entries) > MAX_TASKS * 2:
+                    raise ValueError("journal audit exceeds limit")
+        files.sort()
         for path in files:
             task_id = path.name[:-6]
             if task_id in known:
@@ -154,10 +167,14 @@ def scan(queue_db, journal_dir, task_dir=None):
                 "execution_authorized": False,
                 "safe_to_auto_retry": False,
             })
+    # Preserve queue FIFO ordering before the existing display sort.
+    queued_order = [item["task_id"] for item in entries
+                    if item["condition"] == "consistent_queued"]
     entries.sort(key=lambda item: item["task_id"])
     counts = dict(sorted(Counter(item["condition"] for item in entries).items()))
     return {
         "tasks": entries,
+        "queued_order": queued_order,
         "total": len(entries),
         "needs_attention": any(item["needs_attention"] for item in entries),
         "conditions": counts,

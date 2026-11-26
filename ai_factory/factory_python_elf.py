@@ -2,21 +2,82 @@
 import hashlib
 import io
 import re
+import os
+import selectors
+import signal
+import time
 import subprocess
 import tarfile
 import tempfile
 from pathlib import Path
 
 
+def _bounded_command(argv, *, stdout_limit, stderr_limit, timeout):
+    """Read both pipes concurrently with bounded buffers and a total deadline.
+
+    On error/cancellation kill the new process group and reap its leader.
+    The surrounding admission sandbox must still enforce cgroup-wide limits.
+    """
+    if (not 0 < stdout_limit <= 8 * 1024**2
+            or not 0 < stderr_limit <= 64 * 1024
+            or not 0 < timeout <= 30):
+        raise ValueError("invalid ELF command limits")
+    deadline = time.monotonic() + timeout
+    proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            start_new_session=True, close_fds=True,
+                            env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"})
+    try:
+        buffers = {proc.stdout: bytearray(), proc.stderr: bytearray()}
+        limits = {proc.stdout: stdout_limit, proc.stderr: stderr_limit}
+        with selectors.DefaultSelector() as selector:
+            for pipe in buffers:
+                selector.register(pipe, selectors.EVENT_READ)
+            while selector.get_map():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise ValueError("ELF inspection timeout")
+                events = selector.select(remaining)
+                if not events:
+                    raise ValueError("ELF inspection timeout")
+                for key, _ in events:
+                    pipe = key.fileobj
+                    buffer = buffers[pipe]
+                    # At most one sentinel byte past the permitted output.
+                    block = os.read(pipe.fileno(), min(65536, limits[pipe] - len(buffer) + 1))
+                    if not block:
+                        selector.unregister(pipe)
+                        continue
+                    if len(block) > limits[pipe] - len(buffer):
+                        raise ValueError("ELF inspection output limit")
+                    buffer.extend(block)
+        try:
+            rc = proc.wait(timeout=max(0, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired as exc:
+            raise ValueError("ELF inspection timeout") from exc
+        if rc or buffers[proc.stderr]:
+            raise ValueError("ELF inspection failed or emitted diagnostics")
+        return buffers[proc.stdout].decode("utf-8", errors="strict")
+    except BaseException:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired as exc:
+            raise ValueError("ELF inspection cleanup failed") from exc
+        raise
+    finally:
+        proc.stdout.close()
+        proc.stderr.close()
+
+
 def inspect_elf_file(path):
     """Collect bounded readelf metadata without loading the candidate."""
     def readelf(*flags, limit=512 * 1024):
-        result = subprocess.run(['/usr/bin/readelf', '-W', *flags, str(path)],
-                                capture_output=True, text=True, timeout=30,
-                                env={'PATH': '/usr/bin:/bin', 'LC_ALL': 'C'}, check=True)
-        if len(result.stdout) > limit:
-            raise ValueError('ELF evidence output limit')
-        return result.stdout
+        return _bounded_command(['/usr/bin/readelf', '-W', *flags, str(Path(path).absolute())],
+                                stdout_limit=limit, stderr_limit=64 * 1024, timeout=30)
 
     out = readelf('-h', '-d')
     return dict(machine=re.findall(r'^\s*Machine:\s*(.+)$', out, re.M),
