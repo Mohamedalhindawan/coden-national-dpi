@@ -1,0 +1,267 @@
+{
+  "schema_version": "1.0.0",
+  "status": "REVIEW_ONLY_UNAPPROVED",
+  "plan": "CODEN AI Factory Adopt-First Master Plan v1.1",
+  "as_of": "2026-11-26",
+  "baseline_commit": "60eb3356b7303e6b67194c51bcd470af105a66b6",
+  "scope": "Exact candidate source tags and root license texts; no package acquisition or code execution.",
+  "counts": {
+    "sources": 9,
+    "github_reported_verified_annotated_tags": 4,
+    "lightweight_tags": 4,
+    "retained_commit_without_tag_claim": 1,
+    "license_file_records": 11
+  },
+  "r2": {
+    "lock_sha256": "93447ba7c43d7c8bffe1bb66d99abad1eaffcbd0d11fe1ef5bb776c7155998a3",
+    "manifest_sha256": "35147ce68c413cae772c9afe3782e0f3e3e07c7e9e5ba12a8324b199c7fb98f2",
+    "import_contract_sha256": "c22cbd20bf72167164dbfbb04a5912f42dbe849c6738d30899e2841911099157",
+    "root_build_manifest_sha256": "f396d96fe5e8f3cf1f38c2c786f749929f4bc3cc40cd9470a590c43facb9d19b",
+    "external_records": 126,
+    "root_distributions": 4,
+    "status": "REPAIR_NOT_ADOPTED"
+  },
+  "entries": [
+    {
+      "repository": "python/cpython",
+      "version": "3.13.15",
+      "tag": "v3.13.15",
+      "tag_object": "9cb432a43babc597b349cabb704870e88a82a382",
+      "commit": "4061bc4c35f7c26f25264666d4ba083b93d2f6f9",
+      "role": "interpreter",
+      "tag_evidence": "github_reports_verified_valid_annotated_tag",
+      "source_license_indication": "PSF license and historical terms",
+      "license_files": [
+        {
+          "path": "LICENSE",
+          "git_blob": "14603b95c2e23b5a4cd6ff93f50348d1817f7638",
+          "url": "https://github.com/python/cpython/blob/4061bc4c35f7c26f25264666d4ba083b93d2f6f9/LICENSE"
+        }
+      ],
+      "source_to_artifact_verified": false,
+      "independent_legal_review": "pending",
+      "independent_security_review": "pending",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_record": false
+    },
+    {
+      "repository": "pypa/setuptools",
+      "version": "84.2.1",
+      "tag": "v84.2.1",
+      "tag_object": "0bd1a74f8056b50274167982b9f1357da150afbc",
+      "commit": "3895f9829fc0e51882981773a823a658eb1d1636",
+      "role": "root build tool",
+      "tag_evidence": "github_reports_verified_valid_annotated_tag",
+      "source_license_indication": "MIT",
+      "license_files": [
+        {
+          "path": "LICENSE",
+          "git_blob": "1bb5a44356f00884a71ceeefd24ded6caaba2418",
+          "url": "https://github.com/pypa/setuptools/blob/3895f9829fc0e51882981773a823a658eb1d1636/LICENSE"
+        }
+      ],
+      "source_to_artifact_verified": false,
+      "independent_legal_review": "pending",
+      "independent_security_review": "pending",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_record": false
+    },
+    {
+      "repository": "pypa/wheel",
+      "version": "0.46.3",
+      "tag": "0.46.3",
+      "tag_object": null,
+      "commit": "8b6fa740a7101edacb42b0f8e83a1b659ff61033",
+      "role": "root build tool",
+      "tag_evidence": "lightweight_tag_resolved_signature_not_established",
+      "source_license_indication": "MIT",
+      "license_files": [
+        {
+          "path": "LICENSE.txt",
+          "git_blob": "a31470f14c5978d5fcc3bc173b8399b6c9a6443f",
+          "url": "https://github.com/pypa/wheel/blob/8b6fa740a7101edacb42b0f8e83a1b659ff61033/LICENSE.txt"
+        }
+      ],
+      "source_to_artifact_verified": false,
+      "independent_legal_review": "pending",
+      "independent_security_review": "pending",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_record": false
+    },
+    {
+      "repository": "pypa/packaging",
+      "version": "26.3",
+      "tag": "26.3",
+      "tag_object": "93792a2d17cedb39f78ec6d306240e2cf33ff33e",
+      "commit": "929fd4b1410ac7ef61ef3f45b2f5d7e87711a9b5",
+      "role": "build and runtime dependency",
+      "tag_evidence": "github_reports_verified_valid_annotated_tag",
+      "source_license_indication": "Apache-2.0 OR BSD-2-Clause",
+      "license_files": [
+        {
+          "path": "LICENSE",
+          "git_blob": "6f62d44e4ef733c0e713afcd2371fed7f2b3de67",
+          "url": "https://github.com/pypa/packaging/blob/929fd4b1410ac7ef61ef3f45b2f5d7e87711a9b5/LICENSE"
+        },
+        {
+          "path": "LICENSE.APACHE",
+          "git_blob": "f433b1a53f5b830a205fd2df78e2b34974656c7b",
+          "url": "https://github.com/pypa/packaging/blob/929fd4b1410ac7ef61ef3f45b2f5d7e87711a9b5/LICENSE.APACHE"
+        },
+        {
+          "path": "LICENSE.BSD",
+          "git_blob": "42ce7b75c92fb01a3f6ed17eea363f756b7da582",
+          "url": "https://github.com/pypa/packaging/blob/929fd4b1410ac7ef61ef3f45b2f5d7e87711a9b5/LICENSE.BSD"
+        }
+      ],
+      "source_to_artifact_verified": false,
+      "independent_legal_review": "pending",
+      "independent_security_review": "pending",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_record": false
+    },
+    {
+      "repository": "pypa/pip",
+      "version": "26.2.1",
+      "tag": "26.2.1",
+      "tag_object": "4a0f8bbcfc8057154d16a88632ea43389116d992",
+      "commit": "634a6ec1a5d9dcc2433571cdb2f4c58a4bb29caf",
+      "role": "separate installer; excluded from exact target 130",
+      "tag_evidence": "github_reports_verified_valid_annotated_tag",
+      "source_license_indication": "MIT",
+      "license_files": [
+        {
+          "path": "LICENSE.txt",
+          "git_blob": "8e7b65eaf628360e6f32f4140fcdd7ec7c2b7077",
+          "url": "https://github.com/pypa/pip/blob/634a6ec1a5d9dcc2433571cdb2f4c58a4bb29caf/LICENSE.txt"
+        }
+      ],
+      "source_to_artifact_verified": false,
+      "independent_legal_review": "pending",
+      "independent_security_review": "pending",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_record": false
+    },
+    {
+      "repository": "pydantic/jiter",
+      "version": "0.16.0",
+      "tag": "v0.16.0",
+      "tag_object": null,
+      "commit": "785cf750016150bda7410e95525bd6ed398102c4",
+      "role": "R2 targeted wheel",
+      "tag_evidence": "lightweight_tag_resolved_signature_not_established",
+      "source_license_indication": "MIT",
+      "license_files": [
+        {
+          "path": "LICENSE",
+          "git_blob": "47de40dc06ba673d480a12ef728ce62fe43e3151",
+          "url": "https://github.com/pydantic/jiter/blob/785cf750016150bda7410e95525bd6ed398102c4/LICENSE"
+        }
+      ],
+      "source_to_artifact_verified": false,
+      "independent_legal_review": "pending",
+      "independent_security_review": "pending",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_record": false
+    },
+    {
+      "repository": "huggingface/tokenizers",
+      "version": "0.23.2",
+      "tag": "v0.23.2",
+      "tag_object": null,
+      "commit": "88a4498ad4ea1a9487b0a9b0ff881383fd5a06a3",
+      "role": "R2 targeted wheel",
+      "tag_evidence": "lightweight_tag_resolved_signature_not_established",
+      "source_license_indication": "Apache-2.0",
+      "license_files": [
+        {
+          "path": "LICENSE",
+          "git_blob": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64",
+          "url": "https://github.com/huggingface/tokenizers/blob/88a4498ad4ea1a9487b0a9b0ff881383fd5a06a3/LICENSE"
+        }
+      ],
+      "source_to_artifact_verified": false,
+      "independent_legal_review": "pending",
+      "independent_security_review": "pending",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_record": false
+    },
+    {
+      "repository": "PrefectHQ/fastmcp",
+      "version": "4.2.0",
+      "tag": "v4.2.0",
+      "tag_object": null,
+      "commit": "5e71792d8daf499325e3b747cc44cb04d4544119",
+      "role": "R2 fastmcp-slim targeted wheel",
+      "tag_evidence": "lightweight_tag_resolved_signature_not_established",
+      "source_license_indication": "Apache-2.0",
+      "license_files": [
+        {
+          "path": "LICENSE",
+          "git_blob": "f49a4e16e68b128803cc2dcea614603632b04eac",
+          "url": "https://github.com/PrefectHQ/fastmcp/blob/5e71792d8daf499325e3b747cc44cb04d4544119/LICENSE"
+        }
+      ],
+      "source_to_artifact_verified": false,
+      "independent_legal_review": "pending",
+      "independent_security_review": "pending",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_record": false
+    },
+    {
+      "repository": "OpenHands/software-agent-sdk",
+      "version": "1.63.1",
+      "tag": null,
+      "tag_object": null,
+      "commit": "077f3fad6d31cd852be5c87176e0a93c3b446126",
+      "role": "four patched root distributions; retained source commit",
+      "tag_evidence": "retained_exact_source_commit_no_tag_claim",
+      "source_license_indication": "MIT",
+      "license_files": [
+        {
+          "path": "LICENSE",
+          "git_blob": "b0bd86a6335a564bd3766666bebbf014fd6a8013",
+          "url": "https://github.com/OpenHands/software-agent-sdk/blob/077f3fad6d31cd852be5c87176e0a93c3b446126/LICENSE"
+        }
+      ],
+      "source_to_artifact_verified": false,
+      "independent_legal_review": "pending",
+      "independent_security_review": "pending",
+      "approved": false,
+      "enabled": false,
+      "installed_by_this_record": false
+    }
+  ],
+  "review_requests": [
+    "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/200#issuecomment-7170099536",
+    "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/200#issuecomment-7171559968",
+    "https://github.com/Mohamedalhindawan/coden-national-dpi/pull/200#issuecomment-7173687896"
+  ],
+  "required_decisions": [
+    "Independent scanner and exact static environment review against current blobs; no automatic transfer of old approvals.",
+    "Independent security and legal decision on exact R2 set, including jiter TUF/CT and compiled PyO3 membership; tokenizers and fastmcp-slim wheel notice gaps. Root source licenses do not resolve binary distribution obligations.",
+    "Exact OS/Python review; GNU EXPKEYSIG remains unresolved in retained evidence. No waiver.",
+    "Separate operator approval for exactly three-wheel static reacquisition; no install/import/native execution.",
+    "Separate root build, artifact admission, offline installation, import-only and actual runtime/agent approvals in order."
+  ],
+  "limitations": [
+    "GitHub API verified status is not an independent signature trust-chain validation; lightweight tags are not signed-tag evidence.",
+    "Root license files are not transitive SBOM, vendored source notice or artifact provenance.",
+    "No new runtime or package scans, source-to-binary reproducibility, license clearance or source code execution.",
+    "This is a targeted review ledger, not an expansion of the 128-repository discovery index."
+  ],
+  "acquisition_authorized": false,
+  "build_authorized": false,
+  "installation_authorized": false,
+  "import_authorized": false,
+  "agent_execution_authorized": false,
+  "release_authorized": false
+}
