@@ -97,9 +97,13 @@ def _read_export(path):
         elif item.name in ("app", "tests"):
             if not item.is_dir():
                 raise ValueError("expected source directory")
-            members = list(item.iterdir())
             expected = "logic.py" if item.name == "app" else "test_logic.py"
-            if len(members) != 1 or members[0].name != expected or members[0].is_symlink():
+            found = False
+            for member in item.iterdir():
+                if found or member.name != expected or member.is_symlink():
+                    raise ValueError("unexpected generated files")
+                found = True
+            if not found:
                 raise ValueError("unexpected generated files")
             present.add(f"{item.name}/{expected}")
         else:
@@ -194,7 +198,7 @@ def main(argv=None):
     try:
         task = json.loads(project.read_text(args.task, 32768))
         result = review(task, args.candidate_dir, args.output_root)
-    except (OSError, ValueError, TypeError, RuntimeError):
+    except (OSError, ValueError, TypeError, RuntimeError, SyntaxError, RecursionError):
         result = _result("blocked")
     if "directory" in result:
         result["directory"] = str(result["directory"])
