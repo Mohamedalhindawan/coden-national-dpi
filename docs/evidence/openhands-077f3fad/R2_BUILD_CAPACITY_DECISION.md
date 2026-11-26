@@ -60,3 +60,23 @@ GitHub recursive tree for OpenHands/software-agent-sdk commit 077f3fad6d31cd852b
 | Entire tracked tree | — | 2297 | 28593051 | 33579008 |
 
 Illustrative additive sensitivity, assuming source allocations coexist with peak and are incremental to unchanged reserve: four roots leave 99183366 B, one whole tracked tree leaves 73202438 B, two copies leave 39623430 B. The full tree includes the four roots; do not sum both as separate copies. Tracked bytes do not bound checkout, .git, patched sources, generated files, build isolation/install duplication, filesystem directory metadata, outputs, cache or inode consumption; reserve adequacy remains unproven. No-reclaim with reserve exceeds ceiling even without sources. No increased scratch request or automatic reclaim policy. No independent review, source-to-binary proof or runtime admission; R2 REPAIR_NOT_ADOPTED, GNU EXPKEYSIG unresolved. Build/install/import/real Qwen/agent still blocked, release_authorized=false.
+
+
+## 2026-11-27 — Split build/runtime staging refinement
+REVIEW ONLY; #162 OPEN. Original root-wheel-build-manifest SHA256 f396d96fe5e8f3cf1f38c2c786f749929f4bc3cc40cd9470a590c43facb9d19b explicitly separates build environment from runtime. Reopened historical inventories 14974383159 (c13917dbb24822108ffd36981e4a0e624e50a61a60d8cc43e62fcf00bc3285e8) and 14974862025 (c0a12f46ed63508dc164f78d58429435fe56cffdf0efcfe485f551bb59eeda93), local hashes and CRC PASS. Exactly three declared build-tool identities match inventory and manifest name/version/wheel hash/size. Retained inventory counts below, not target bytes acquisition.
+| Input | Compressed B | Expanded B | Members |
+|---|---:|---:|---:|
+| setuptools 84.2.1 | 876263 | 3002768 | 348 |
+| wheel 0.46.3 | 30557 | 87810 | 19 |
+| packaging 26.3 | 129956 | 499179 | 29 |
+| Python 3.13.15 | 118484282 | 386276509 | 4525 |
+| Build-only input set | 119521058 | 389866266 | 4921 |
+Full upstream tree at pinned 077f3fad6d31cd852be5c87176e0a93c3b446126 is nontruncated; all four root pyproject files use setuptools.build_meta, static name/version/dependencies and package discovery; no setup.py/setup.cfg/MANIFEST.in at root of any of the four packages. This supports examining an offline no-dependency build; does not prove backend hooks, dynamic requirements or successful build. Separate installer pip remains subject to vendor/legal review.
+No-reclaim page-rounded model (compressed round up; expanded payload plus 4095*members), with 128MiB reserve and one whole tracked source tree of 33579008 rounded B:
+| Stage | Input count | No-reclaim model B | Remaining after reserve/tree under 960MiB B |
+|---|---:|---:|---:|
+| Build-only | 4 | 529543137 | 309293087 |
+| Runtime-only before root wheels | 127 | 974927650 | -136091426 |
+| Combined historical inventory | 132 | 989725946 | -150889722 |
+Build-only staged payload model is 46.5% smaller vs combined, not measured speed or actual peak. Proposal: preserve original immutable inputs outside candidate reach, independently admit OS/Python and build-only exact tools first, run existing one-attempt non-agent build in separate offline boundary with no dependency resolution/no network; validate and attest four outputs, then tear down. Separately admitted runtime installation still requires 126 external wheels + four new roots, verified installation/RECORD and reclaim/order/capacity proof. Never silently drop runtime dependencies, widen resources, bypass package semantics, or use source patch/lock substitution. If backend requests undeclared dependencies or output/capacity deviates, abort; no automatic retry. Real build and OS trials 0/1 consumed each, conditional approvals unchanged, independent reviews zero; release_authorized=false.
+Prototype45911242889 and intake45911242878 success at baseline 5f8b889f43e4fde1c28b31bf578db2ff26c9d7ba; specialized jobs skipped. Tokenizers producer run33735388484 metadata rechecked: artifacts9885597962/9885528827 not expired, expiry2026-12-02T08:48:51Z. Prior exact acquisition gate remains; do not silently fetch/run candidate. Independent reviewer still required, collaborator-list endpoint unavailable via connector.
