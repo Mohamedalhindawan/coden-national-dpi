@@ -210,7 +210,11 @@ def work_modeb_fixture_once(queue, checkout_root, *, worker_id, fixture_adapter,
     try:
         task = _verified_modeb_task(checkout_root, lease)
         verified = True
-    except (OSError, ValueError, subprocess.SubprocessError):
+        # Matching Git and queue hashes are necessary, not authority to run
+        # arbitrary intent. Reuse the existing exact task admission check
+        # before entering the potentially side-effecting adapter path.
+        openhands_sdk_operator.prepare_modeb_request(task)
+    except (OSError, ValueError, TypeError, RecursionError, subprocess.SubprocessError):
         result = None
     else:
         try:
