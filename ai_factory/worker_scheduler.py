@@ -9,6 +9,7 @@ No automatic replay, retry, lease repair, paid provider or production action.
 import fcntl
 import os
 import stat
+from time import monotonic as _monotonic
 
 from . import checkpoint, reconcile, worker_supervisor
 
@@ -16,8 +17,14 @@ MAX_BATCH_TASKS = 10
 
 
 def run_batch(*, queue_db, journal, task_dir, output_root, worker_id,
-              max_tasks=1, timeout_seconds=60, lease_seconds=120):
-    """Run at most max_tasks one-shot workers, stopping on uncertain evidence."""
+              max_tasks=1, timeout_seconds=60, lease_seconds=120,
+              max_batch_seconds=None):
+    """Run at most max_tasks one-shot workers, stopping on uncertain evidence.
+
+    Optional batch budget is a launch deadline, not an OS-enforced wall-clock
+    cap. Reconciliation, cleanup and an already-running worker may overrun it.
+    Never start another worker without its full timeout plus grace remaining.
+    """
     checkpoint._id(worker_id)
     if type(max_tasks) is not int or not 1 <= max_tasks <= MAX_BATCH_TASKS:
         raise ValueError("batch limit must be 1 to 10")
@@ -27,6 +34,11 @@ def run_batch(*, queue_db, journal, task_dir, output_root, worker_id,
         timeout_seconds + worker_supervisor.MIN_GRACE_SECONDS <= lease_seconds <= 3600
     ):
         raise ValueError("invalid lease duration")
+    if max_batch_seconds is not None and (
+        type(max_batch_seconds) is not int or not 1 <= max_batch_seconds <= 3600
+    ):
+        raise ValueError("invalid batch time budget")
+    deadline = None if max_batch_seconds is None else _monotonic() + max_batch_seconds
     db = worker_supervisor._db(queue_db)
     journals = worker_supervisor._dir(journal, label="journal")
     tasks = worker_supervisor._dir(task_dir, label="task")
@@ -59,6 +71,10 @@ def run_batch(*, queue_db, journal, task_dir, output_root, worker_id,
                       if x["condition"] == "consistent_queued"}
             if not queued:
                 return receipt("idle" if count == 0 else "queue_drained")
+            if deadline is not None and (
+                deadline - _monotonic() < timeout_seconds + worker_supervisor.MIN_GRACE_SECONDS
+            ):
+                return receipt("batch_time_budget_exhausted")
             try:
                 result = worker_supervisor.run_once(
                     queue_db=db, journal=journals, task_dir=tasks, output_root=outputs,
