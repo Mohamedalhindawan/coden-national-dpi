@@ -140,18 +140,36 @@ def stage_reviewed(task_kind: str, workspace, expected_sha256: str) -> dict:
     if digest != expected_sha256:
         raise ValueError("reviewed skill digest mismatch")
     root = Path(workspace).absolute()
-    if (any(p.is_symlink() or (p / ".git").exists() for p in (root, *root.parents))
+    if (".." in root.parts
+            or any(p.is_symlink() or (p / ".git").exists() for p in (root, *root.parents))
             or not root.is_dir() or root.stat().st_uid != os.getuid()
             or root.stat().st_mode & 0o077 or any(root.iterdir())):
         raise ValueError("empty private operator workspace outside a Git tree required")
     parent = root
-    for component in (".agents", "skills", item["recommended_skill"]):
-        parent = parent / component
-        parent.mkdir(mode=0o700, exist_ok=False)
-    target = parent / "SKILL.md"
-    with target.open("xb") as stream:
-        stream.write(raw)
-    target.chmod(0o600)
+    created = []
+    target = None
+    try:
+        for component in (".agents", "skills", item["recommended_skill"]):
+            parent = parent / component
+            parent.mkdir(mode=0o700, exist_ok=False)
+            created.append(parent)
+        target = parent / "SKILL.md"
+        with target.open("xb") as stream:
+            if stream.write(raw) != len(raw):
+                raise OSError("incomplete skill staging write")
+        target.chmod(0o600)
+    except BaseException:
+        # Under the required exclusive operator-owned workspace assumption,
+        # roll back only our known leaf and newly created empty directories.
+        # Never recursively delete or erase unrelated entries.
+        try:
+            if target is not None:
+                target.unlink(missing_ok=True)
+            for directory in reversed(created):
+                directory.rmdir()
+        except OSError as exc:
+            raise OSError("skill staging cleanup unverified; operator review required") from exc
+        raise
     return {
         "task_kind": task_kind,
         "skill_path": str(target.relative_to(root)),
