@@ -84,3 +84,27 @@ class QueueAlertTests(unittest.TestCase):
         self.assertNotIn("private_cancel_task", json.dumps(result))
         self.assertNotIn(lease["lease_token"], json.dumps(result))
         self.assertEqual(before, self.db.read_bytes())
+
+
+    def test_equal_count_snapshot_drift_emits_explicit_alert(self):
+        from unittest.mock import patch
+        from ai_factory import reconcile
+        self.add("private_original")
+        real_scan = reconcile.scan
+        def changed(*args, **kwargs):
+            report = real_scan(*args, **kwargs)
+            report["tasks"][0]["task_id"] = "private_replacement"
+            return report
+        before = self.db.read_bytes()
+        with patch.object(reconcile, "scan", side_effect=changed):
+            result = self.check()
+        self.assertIn({"code": "snapshot_inconsistent", "severity": "warning", "count": 1},
+                      result["alerts"])
+        self.assertTrue(result["needs_attention"])
+        self.assertFalse(result["automatic_retry_allowed"])
+        self.assertNotIn("private_", json.dumps(result))
+        self.assertEqual(before, self.db.read_bytes())
+
+    def test_stable_snapshot_does_not_emit_drift_alert(self):
+        self.add("one")
+        self.assertNotIn("snapshot_inconsistent", [a["code"] for a in self.check()["alerts"]])
