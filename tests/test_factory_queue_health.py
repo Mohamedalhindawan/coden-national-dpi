@@ -69,3 +69,26 @@ class QueueHealthTests(unittest.TestCase):
         for now in (True, -1, float("nan"), float("inf")):
             with self.assertRaises(ValueError):
                 self.health(now)
+
+
+    def test_health_detects_queue_change_between_read_only_snapshots(self):
+        from unittest.mock import patch
+        from ai_factory import reconcile
+        self.add("one")
+        real_scan = reconcile.scan
+        def scan_after_claim(*args, **kwargs):
+            self.q.claim("operator", now=1000, lease_seconds=30)
+            return real_scan(*args, **kwargs)
+        with patch.object(reconcile, "scan", side_effect=scan_after_claim):
+            result = self.health()
+        self.assertFalse(result["snapshot_counts_consistent"])
+        self.assertTrue(result["needs_attention"])
+        self.assertFalse(result["automatic_retry_allowed"])
+        self.assertEqual(result["conditions"], {"claim_without_start_evidence": 1})
+
+    def test_health_stable_counts_are_not_atomicity_or_runtime_proof(self):
+        self.add("one")
+        result = self.health()
+        self.assertTrue(result["snapshot_counts_consistent"])
+        self.assertFalse(result["snapshot_atomic"])
+        self.assertFalse(result["execution_authorized"])
