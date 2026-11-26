@@ -616,6 +616,29 @@ _R2_HISTORICAL_WHEELS = (
 )
 
 
+# Retained artifact 14981902769 (native inventory), 14953700367 (upgraded
+# source/wheel evidence), 14952151177 (fastmcp-slim metadata).
+# Exact per-archive counts and four member hashes are historical comparisons,
+# not independent provenance or a complete member inventory.
+_R2_HISTORICAL_COUNTS = {
+    "jiter": (343320, 885473, 9),
+    "tokenizers": (3386843, 11701061, 32),
+    "fastmcp-slim": (994236, 3507586, 288),
+}
+_R2_HISTORICAL_MEMBERS = {
+    "jiter": {
+        "jiter-0.16.0.dist-info/METADATA": (5212, "b1bcf7374eb4f4195f890ab610b6de54ae8766456df7ddf757f95d255097ef2e"),
+        "jiter-0.16.0.dist-info/licenses/LICENSE": (1091, "7c7134b9f7b978c03fca875517cf398db91f19bbb8109b6685e742aa3f57468e"),
+    },
+    "tokenizers": {
+        "tokenizers-0.23.2.dist-info/METADATA": (9830, "d2d200c0d0c48895b2c3b02cdd8c06c26dea8f9be38ef193e9b4dd5a566c89be"),
+    },
+    "fastmcp-slim": {
+        "fastmcp_slim-4.2.0.dist-info/METADATA": (11160, "df6b0719b4582d41663c1ef35cdc7f655dc809d16f144a4cea0589e7bc8ba3c1"),
+    },
+}
+
+
 def compare_r2_historical_receipt(receipt):
     """Compare selected fields of a static receipt against retained evidence.
 
@@ -662,6 +685,7 @@ def compare_r2_historical_receipt(receipt):
         require(compressed <= 4724399 and expanded <= 16094120)
         files = wheel.get("files")
         require(type(files) is dict and 0 < len(files) <= 329 - members)
+        require((c, e, len(files)) == _R2_HISTORICAL_COUNTS[name])
         members += len(files)
         file_bytes = 0
         actual_native = {}
@@ -677,6 +701,10 @@ def compare_r2_historical_receipt(receipt):
                 require(row["record_hash_verified"] is True)
                 actual_native[path] = (size, sha)
         require(file_bytes == e and actual_native == native)
+        for path, (size, sha) in _R2_HISTORICAL_MEMBERS[name].items():
+            row = files.get(path)
+            require(type(row) is dict and row["bytes"] == size and row["sha256"] == sha
+                    and row["record_hash_verified"] is True and row["elf_magic"] is False)
     require(seen == set(expected) and compressed == 4724399 and expanded == 16094120 and members == 329)
     return {"status": "HISTORICAL_RECEIPT_MATCH_UNAPPROVED", "matched_wheels": 3,
             "regular_files": members, "receipt_origin_verified": False,
