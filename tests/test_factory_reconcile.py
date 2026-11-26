@@ -121,5 +121,27 @@ class ReconcileTests(unittest.TestCase):
         self.assertTrue(result["needs_attention"])
 
 
+    def test_reject_intermediate_symlinks_in_diagnostic_paths(self):
+        self.add()
+        alias = self.root / "alias"
+        alias.symlink_to(self.root, target_is_directory=True)
+        for db, journal, tasks in (
+            (alias / "owner" / "queue.sqlite3", self.journals, None),
+            (self.db, alias / "owner" / "journals", None),
+            (self.db, self.journals, alias / "owner" / "tasks"),
+        ):
+            with self.subTest(db=db, journal=journal, tasks=tasks):
+                with self.assertRaises(ValueError):
+                    reconcile.scan(db, journal, tasks)
+
+    def test_directory_scan_limits_nonjournal_entries(self):
+        self.add()
+        for index in range(10):
+            (self.journals / f"unrelated-{index}.txt").touch()
+        with patch.object(reconcile, "MAX_TASKS", 2):
+            with self.assertRaises(ValueError):
+                self.snapshot()
+
+
 if __name__ == "__main__":
     unittest.main()
