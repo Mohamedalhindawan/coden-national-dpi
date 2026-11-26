@@ -346,6 +346,28 @@ class LeasedModeBFixtureTests(unittest.TestCase):
         self.path.symlink_to(copy)
         self.assert_blocked_before_dispatch()
 
+    def test_committed_unapproved_task_is_blocked_before_dispatch(self):
+        task = json.loads(self.raw)
+        task["description"] = "Unapproved replacement intent"
+        raw = json.dumps(task).encode()
+        self.path.write_bytes(raw)
+        self.git("add", "--", str(self.task_path))
+        self.git("-c", "user.name=Fixture", "-c", "user.email=test@example.invalid",
+                 "-c", "commit.gpgsign=false", "commit", "-m", "changed intent")
+        self.enqueue(commit=self.git("rev-parse", "HEAD"), raw=raw)
+        self.assert_blocked_before_dispatch()
+        self.adapter.close.assert_not_called()
+
+    def test_committed_deeply_nested_json_is_blocked_before_dispatch(self):
+        raw = b"[" * 10000 + b"0" + b"]" * 10000
+        self.path.write_bytes(raw)
+        self.git("add", "--", str(self.task_path))
+        self.git("-c", "user.name=Fixture", "-c", "user.email=test@example.invalid",
+                 "-c", "commit.gpgsign=false", "commit", "-m", "nested JSON")
+        self.enqueue(commit=self.git("rev-parse", "HEAD"), raw=raw)
+        self.assert_blocked_before_dispatch()
+        self.adapter.close.assert_not_called()
+
     def test_cancel_during_fixture_quarantines_without_replay(self):
         self.enqueue()
         def cancel_then_reply(request):
