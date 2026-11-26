@@ -47,6 +47,12 @@ def snapshot(queue_db, journal_dir, task_dir, *, now=None):
         elif deadline is not None:
             raise ValueError("unexpected deadline outside running state")
     report = reconcile.scan(path, journal_dir, task_dir)
+    # The two reads are not atomic. Detect status-count drift instead of
+    # reporting a deceptively coherent snapshot when an intervening claim
+    # or completion changes the queue. Equal counts cannot prove no changes.
+    reconciled = Counter(row["queue_status"] for row in report["tasks"]
+                         if row["queue_status"] is not None)
+    counts_consistent = counts == reconciled
     return {
         "queue_depth": counts["queued"],
         "leased": counts["leased"],
@@ -58,7 +64,9 @@ def snapshot(queue_db, journal_dir, task_dir, *, now=None):
         "cancelled": counts["cancelled"],
         "cancel_requested": counts["cancel_requested"],
         "conditions": report["conditions"],
-        "needs_attention": bool(expired or report["needs_attention"] or
+        "snapshot_counts_consistent": counts_consistent,
+        "snapshot_atomic": False,
+        "needs_attention": bool(not counts_consistent or expired or report["needs_attention"] or
                                 counts["needs_review"] or counts["blocked"] or counts["failed"] or
                                 counts["cancel_requested"]),
         "worker_availability": "unverified",
