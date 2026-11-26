@@ -240,5 +240,42 @@ class OpenHandsMultiFileReviewTests(unittest.TestCase):
         self.assertFalse(result["release_authorized"])
 
 
+    def test_unexpected_export_member_stops_enumeration_immediately(self):
+        app = self.source / "app"
+        extra = app / "extra.py"
+        extra.write_text("# unexpected")
+        original = Path.iterdir
+        def bounded_iteration(path):
+            if path == app:
+                yield app / "logic.py"
+                yield extra
+                raise AssertionError("must reject after second source entry")
+            yield from original(path)
+        with patch.object(Path, "iterdir", bounded_iteration), \
+             patch.object(project, "lint") as lint, \
+             patch.object(project, "verify") as verify:
+            with self.assertRaises(ValueError):
+                self.assess()
+        lint.assert_not_called()
+        verify.assert_not_called()
+        self.assertEqual(list(self.outputs.iterdir()), [])
+
+    def test_cli_invalid_agent_test_syntax_returns_blocked_receipt(self):
+        (self.source / "tests" / "test_logic.py").write_text("def broken(:\n")
+        task = self.root / "task.json"
+        task.write_text(json.dumps(self.task))
+        result = subprocess.run([
+            sys.executable, "-m", "ai_factory.openhands_multifile_review",
+            "--task", str(task), "--candidate-dir", str(self.source),
+            "--output-root", str(self.outputs), "--evaluate-isolated",
+        ], capture_output=True, text=True, timeout=8)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stderr, "")
+        receipt = json.loads(result.stdout)
+        self.assertEqual(receipt["status"], "blocked")
+        self.assertFalse(receipt["release_authorized"])
+        self.assertEqual(list(self.outputs.iterdir()), [])
+
+
 if __name__ == "__main__":
     unittest.main()
