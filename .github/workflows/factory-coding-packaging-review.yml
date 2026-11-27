@@ -3426,3 +3426,231 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+  synthetic-interactive-aggregate-boundary:
+    # Trusted shell/PTY fixture only. Not an OpenHands or model session.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == 'a306640a0e10d1cf1ea1f2f91f3185b906d3116a' && github.event.pull_request.number == 210 && github.head_ref == 'parallel/fasttrack-integrated-20261127' && github.base_ref == 'parallel/chatgpt-r2-recovery-20261127' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    permissions: {}
+    steps:
+      - name: Test controlling terminal, shared scratch exhaustion and detached child cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          unit="coden-pty-fixture-$GITHUB_RUN_ID.service"
+          pts=""; scratch=""
+          cleanup() {
+            rc=$?
+            trap - EXIT
+            sudo systemctl stop "$unit" >/dev/null 2>&1 || true
+            state="$(sudo systemctl show "$unit" -p ActiveState --value 2>/dev/null || true)"
+            case "$state" in inactive|failed) ;; *) rc=1;; esac
+            printf 'SERVICE_%s\n' "$state" > "$ev/cleanup.txt"
+            cg="/sys/fs/cgroup/system.slice/$unit"
+            if [[ -d "$cg" ]]; then
+              if grep -qx 'populated 0' "$cg/cgroup.events"; then echo CGROUP_EMPTY >> "$ev/cleanup.txt"; else rc=1; fi
+            else
+              echo CGROUP_REMOVED >> "$ev/cleanup.txt"
+            fi
+            for dir in "$pts" "$scratch"; do
+              [[ -n "$dir" ]] || continue
+              if mountpoint -q "$dir"; then sudo umount "$dir" || { rc=1; continue; }; fi
+              sudo rmdir "$dir" || { rc=1; continue; }
+              echo MOUNT_UNMOUNTED_AND_REMOVED >> "$ev/cleanup.txt"
+            done
+            exit "$rc"
+          }
+          trap cleanup EXIT
+          uid="$(id -u nobody)"; gid="$(id -g nobody)"
+          hostnet="$(readlink /proc/self/ns/net)"
+          hostipc="$(readlink /proc/self/ns/ipc)"
+          hostdev="$(stat -c %d /dev/pts)"
+          pts="$(sudo mktemp -d /opt/coden-pty.XXXXXXXX)"
+          scratch="$(sudo mktemp -d /opt/coden-pty-scratch.XXXXXXXX)"
+          sudo mount -t devpts -o "newinstance,max=8,ptmxmode=0666,mode=0620,gid=$gid,nosuid,noexec" devpts "$pts"
+          sudo mount -t tmpfs -o "size=960m,nr_inodes=61440,nosuid,nodev,noexec,mode=0700,uid=$uid,gid=$gid" tmpfs "$scratch"
+          sudo mkdir "$scratch/home" "$scratch/tmp"
+          sudo chown "$uid:$gid" "$scratch/home" "$scratch/tmp"
+          sudo chmod 0700 "$scratch/home" "$scratch/tmp"
+          ptsdev="$(stat -c %d "$pts")"
+          test "$ptsdev" != "$hostdev"
+          script="$(cat <<'PY'
+          import errno,json,os,pty,resource,select,socket,subprocess,sys,time
+          from pathlib import Path
+          scratch,hostnet,hostipc,hostdev,ptsdev=sys.argv[1:]
+          assert os.getuid()!=0 and os.readlink("/proc/self/ns/net")!=hostnet
+          assert os.readlink("/proc/self/ns/ipc")!=hostipc
+          assert sorted(p.name for p in Path("/sys/class/net").iterdir())==["lo"]
+          assert os.stat("/dev/pts").st_dev==int(ptsdev)!=int(hostdev)
+          status=dict(x.split(":",1) for x in Path("/proc/self/status").read_text().splitlines() if ":" in x)
+          assert int(status["CapEff"],16)==0 and status["NoNewPrivs"].strip()=="1"
+          cg=next(x.split(":",2)[2] for x in Path("/proc/self/cgroup").read_text().splitlines() if x.startswith("0::"))
+          c=Path("/sys/fs/cgroup")/cg.lstrip("/")
+          cpu=(c/"cpu.max").read_text().split()
+          assert int(cpu[0])==2*int(cpu[1])
+          assert (c/"memory.max").read_text().strip()=="4294967296"
+          assert (c/"memory.swap.max").read_text().strip()=="0"
+          assert (c/"pids.max").read_text().strip()=="128"
+          assert resource.getrlimit(resource.RLIMIT_NOFILE)==(64,64)
+          v=os.statvfs(scratch)
+          assert v.f_frsize*v.f_blocks==1006632960 and v.f_files==61440
+          assert all(os.stat(p).st_dev==os.stat(scratch).st_dev for p in ("/tmp","/var/tmp",scratch+"/home"))
+          for family in (socket.AF_INET,socket.AF_INET6):
+              try: s=socket.socket(family,socket.SOCK_STREAM)
+              except OSError as e: assert e.errno in (errno.EAFNOSUPPORT,errno.EPERM,errno.EACCES)
+              else: s.close();raise AssertionError("IP socket available")
+          pairs=[]
+          try:
+              for _ in range(8):
+                  a,b=pty.openpty()
+                  pairs.append((a,b))
+                  assert os.fstat(b).st_dev==int(ptsdev)
+              assert len([p for p in Path("/dev/pts").iterdir() if p.name.isdecimal()])==8
+              # Python pty.openpty masks the original kernel errno on fallback.
+              # Direct ptmx allocation captures the actual kernel denial.
+              try: extra=os.open("/dev/pts/ptmx",os.O_RDWR|os.O_NOCTTY|os.O_CLOEXEC)
+              except OSError as e:
+                  assert e.errno==errno.ENOSPC,e
+                  ninth_errno=e.errno
+              else:
+                  os.close(extra)
+                  raise AssertionError("ninth PTY allowed")
+              a,b=pairs.pop()
+              os.close(a);os.close(b)
+              a,b=pty.openpty();pairs.append((a,b))
+              child=subprocess.Popen(["/bin/sh","-c","printf CODEN_PTY_FIXTURE_OK"],stdin=b,stdout=b,stderr=b,start_new_session=True,close_fds=True)
+              try:
+                  assert select.select([a],[],[],3)[0]
+                  assert b"CODEN_PTY_FIXTURE_OK" in os.read(a,1024)
+                  assert child.wait(timeout=3)==0
+              finally:
+                  if child.poll() is None: child.kill();child.wait(timeout=3)
+          finally:
+              for a,b in pairs: os.close(a);os.close(b)
+          assert not any(p.name.isdecimal() for p in Path("/dev/pts").iterdir())
+          # Real controlling terminal and bidirectional line exchange, not
+          # merely a child whose stdout happens to be wired to a PTY.
+          pid,master=pty.fork()
+          if pid==0:
+              try:
+                  assert all(os.isatty(fd) for fd in (0,1,2))
+                  assert os.tcgetpgrp(0)==os.getpgrp() and os.getsid(0)==os.getpid()
+                  os.write(1,b"TTY_READY\n")
+                  assert os.read(0,128)==b"CODEN_INPUT\n"
+                  os.write(1,b"TTY_EXCHANGE_OK\n")
+                  os._exit(0)
+              except BaseException:
+                  os._exit(1)
+          def receive(marker):
+              data=b""
+              deadline=time.monotonic()+4
+              while marker not in data and len(data)<4096:
+                  left=deadline-time.monotonic()
+                  assert left>0 and select.select([master],[],[],left)[0]
+                  data+=os.read(master,4096-len(data))
+              assert marker in data
+          reaped=False
+          try:
+              receive(b"TTY_READY")
+              assert os.write(master,b"CODEN_INPUT\n")==12
+              receive(b"TTY_EXCHANGE_OK")
+              deadline=time.monotonic()+4
+              while True:
+                  got,status_child=os.waitpid(pid,os.WNOHANG)
+                  if got:
+                      reaped=True
+                      assert os.waitstatus_to_exitcode(status_child)==0
+                      break
+                  assert time.monotonic()<deadline
+                  time.sleep(.02)
+          finally:
+              if not reaped:
+                  os.kill(pid,9)
+                  os.waitpid(pid,0)
+              os.close(master)
+          assert not any(p.name.isdecimal() for p in Path("/dev/pts").iterdir())
+          # HOME and both temp aliases share the same physical tmpfs budget.
+          a_path=Path(scratch)/"home"/"payload"
+          b_path=Path("/tmp")/"extra"
+          with a_path.open("xb") as a, b_path.open("xb",buffering=0) as b:
+              st=os.statvfs(scratch)
+              allocated=st.f_frsize*st.f_bavail
+              assert 0<allocated<=1006632960
+              os.posix_fallocate(a.fileno(),0,allocated)
+              assert os.statvfs("/var/tmp").f_bavail==0
+              try: b.write(b"x")
+              except OSError as e: assert e.errno==errno.ENOSPC
+              else: raise AssertionError("shared byte limit bypassed")
+          a_path.unlink();b_path.unlink()
+          assert os.statvfs(scratch).f_bavail>0
+          # Exhaust exact inode quota with bounded empty-file fixtures.
+          # Check the other alias cannot allocate, then reclaim one inode.
+          fd=os.open("/tmp",os.O_RDONLY|os.O_DIRECTORY)
+          count=0
+          limit=os.statvfs(scratch).f_favail
+          assert 0<limit<=61440
+          try:
+              for index in range(limit):
+                  leaf=f"inode-{index}"
+                  try: new=os.open(leaf,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600,dir_fd=fd)
+                  except OSError as e:
+                      assert e.errno==errno.ENOSPC
+                      break
+                  os.close(new);count+=1
+              assert os.statvfs(scratch).f_favail==0
+              recovered=Path(scratch)/"home"/"recovered"
+              try: recovered.touch(exist_ok=False)
+              except OSError as e: assert e.errno==errno.ENOSPC
+              else: raise AssertionError("shared inode limit bypassed")
+              assert count>0
+              count-=1
+              os.unlink(f"inode-{count}",dir_fd=fd)
+              recovered.touch(exist_ok=False)
+              assert os.statvfs("/var/tmp").f_favail==0
+              recovered.unlink()
+          finally:
+              for index in range(count): os.unlink(f"inode-{index}",dir_fd=fd)
+              os.close(fd)
+          assert os.statvfs(scratch).f_favail==limit
+          # A trusted detached descendant must still be killed by the
+          # service's control-group cleanup when the main fixture exits.
+          r,w=os.pipe()
+          detached=os.fork()
+          if detached==0:
+              os.close(r)
+              os.setsid()
+              for x in (0,1,2): os.close(x)
+              os.write(w,b"1")
+              os.close(w)
+              time.sleep(120)
+              os._exit(0)
+          os.close(w)
+          assert select.select([r],[],[],3)[0] and os.read(r,1)==b"1"
+          os.close(r)
+          assert os.getsid(detached)==detached
+          print(json.dumps(dict(status="SYNTHETIC_INTERACTIVE_AGGREGATE_PASS",private_devpts=True,pty_limit=8,ninth_denied=True,ninth_errno=ninth_errno,reallocation_verified=True,child_output_verified=True,controlling_terminal_verified=True,bidirectional_exchange_verified=True,shared_byte_enospc=True,allocated_scratch_bytes=allocated,shared_inode_enospc=True,inodes_allocated=limit,inodes_reclaimed=True,detached_child_created=True,pty_fds_closed=True,scratch_bytes=1006632960,scratch_inodes=61440,network_denied=True,cgroup_caps_verified=True,aggregate_auxiliary_resources_proven=False,real_agent_executed=False,runtime_authorized=False,release_authorized=False),sort_keys=True))
+          PY
+          )"
+          timeout --kill-after=5s 80s sudo systemd-run --unit="$unit" --wait --pipe --quiet \
+            -p "User=$uid" -p "Group=$gid" -p CPUQuota=200% -p MemoryMax=4294967296 -p MemorySwapMax=0 -p TasksMax=128 \
+            -p RuntimeMaxSec=65 -p KillMode=control-group -p NoNewPrivileges=yes \
+            -p CapabilityBoundingSet= -p AmbientCapabilities= -p PrivateNetwork=yes -p PrivateIPC=yes \
+            -p PrivateDevices=yes -p ProtectHome=tmpfs -p ProtectSystem=strict \
+            -p 'TemporaryFileSystem=/run:ro' -p 'TemporaryFileSystem=/dev/shm:ro' \
+            -p "BindPaths=$pts:/dev/pts $scratch/tmp:/tmp $scratch/tmp:/var/tmp" \
+            -p "ReadWritePaths=$scratch /tmp /var/tmp /dev/pts" \
+            -p RestrictAddressFamilies=AF_UNIX -p RestrictSUIDSGID=yes \
+            -p LimitCORE=0 -p LimitMEMLOCK=0 -p LimitNOFILE=64 -p LimitMSGQUEUE=65536 \
+            /usr/bin/env -i PATH=/usr/bin:/bin "HOME=$scratch/home" TMPDIR=/tmp LC_ALL=C /usr/bin/python3 -I -B -c "$script" "$scratch" "$hostnet" "$hostipc" "$hostdev" "$ptsdev" > "$ev/review.json"
+          jq -e '.status=="SYNTHETIC_INTERACTIVE_AGGREGATE_PASS" and .ninth_denied==true and .release_authorized==false' "$ev/review.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: synthetic-interactive-aggregate-review
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
