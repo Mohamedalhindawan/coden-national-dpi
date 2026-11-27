@@ -3307,7 +3307,7 @@ jobs:
 
   synthetic-interactive-pty-boundary:
     # Trusted shell/PTY fixture only. Not an OpenHands or model session.
-    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '836120888b1947a5d3f8cfd466fd99d3e370c8e2' && github.event.pull_request.number == 210 && github.head_ref == 'parallel/fasttrack-integrated-20261127' && github.base_ref == 'parallel/chatgpt-r2-recovery-20261127' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == 'fe6c2e2a913957d8958be121d94759ab4c19b32d' && github.event.pull_request.number == 210 && github.head_ref == 'parallel/fasttrack-integrated-20261127' && github.base_ref == 'parallel/chatgpt-r2-recovery-20261127' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
     runs-on: ubuntu-24.04
     timeout-minutes: 4
     permissions: {}
@@ -3381,10 +3381,15 @@ jobs:
                   a,b=pty.openpty()
                   pairs.append((a,b))
                   assert os.fstat(b).st_dev==int(ptsdev)
-              try: extra=pty.openpty()
-              except OSError as e: assert e.errno in (errno.ENOSPC,errno.EIO,errno.ENOENT)
+              assert len([p for p in Path("/dev/pts").iterdir() if p.name.isdecimal()])==8
+              # Python pty.openpty masks the original kernel errno on fallback.
+              # Direct ptmx allocation captures the actual kernel denial.
+              try: extra=os.open("/dev/pts/ptmx",os.O_RDWR|os.O_NOCTTY|os.O_CLOEXEC)
+              except OSError as e:
+                  assert e.errno==errno.ENOSPC,e
+                  ninth_errno=e.errno
               else:
-                  for fd in extra: os.close(fd)
+                  os.close(extra)
                   raise AssertionError("ninth PTY allowed")
               a,b=pairs.pop()
               os.close(a);os.close(b)
@@ -3399,7 +3404,7 @@ jobs:
           finally:
               for a,b in pairs: os.close(a);os.close(b)
           assert not any(p.name.isdecimal() for p in Path("/dev/pts").iterdir())
-          print(json.dumps(dict(status="SYNTHETIC_PRIVATE_PTY_LIMIT_PASS",private_devpts=True,pty_limit=8,ninth_denied=True,reallocation_verified=True,child_output_verified=True,pty_fds_closed=True,scratch_bytes=1006632960,scratch_inodes=61440,network_denied=True,cgroup_caps_verified=True,aggregate_auxiliary_resources_proven=False,real_agent_executed=False,runtime_authorized=False,release_authorized=False),sort_keys=True))
+          print(json.dumps(dict(status="SYNTHETIC_PRIVATE_PTY_LIMIT_PASS",private_devpts=True,pty_limit=8,ninth_denied=True,ninth_errno=ninth_errno,reallocation_verified=True,child_output_verified=True,pty_fds_closed=True,scratch_bytes=1006632960,scratch_inodes=61440,network_denied=True,cgroup_caps_verified=True,aggregate_auxiliary_resources_proven=False,real_agent_executed=False,runtime_authorized=False,release_authorized=False),sort_keys=True))
           PY
           )"
           timeout --kill-after=5s 45s sudo systemd-run --unit="$unit" --wait --pipe --quiet \
