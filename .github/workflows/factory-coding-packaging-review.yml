@@ -2613,3 +2613,1123 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+  split-staging-synthetic-boundary:
+    # One-shot generated data only; no candidate wheels, interpreter, model or build.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '696e0fe08c7299fc6583be73a0260cc6b6ef2396' && github.event.pull_request.number == 210 && github.head_ref == 'parallel/fasttrack-integrated-20261127' && github.base_ref == 'parallel/chatgpt-r2-recovery-20261127' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Prove separate bounded read-only input and shared writable staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          unit="coden-split-staging-$GITHUB_RUN_ID.service"
+          store=""; scratch=""
+          cleanup() {
+            status=$?
+            trap - EXIT
+            sudo systemctl stop "$unit" >/dev/null 2>&1 || true
+            state="$(sudo systemctl show "$unit" -p ActiveState --value 2>/dev/null || true)"
+            case "$state" in inactive|failed) ;; *) status=1;; esac
+            printf 'SERVICE_%s\n' "$state" > "$ev/cleanup.txt"
+            for dir in "$scratch" "$store"; do
+              [[ -n "$dir" ]] || continue
+              if mountpoint -q "$dir"; then
+                sudo umount "$dir" || { status=1; continue; }
+              fi
+              sudo rmdir "$dir" || { status=1; continue; }
+              echo MOUNT_UNMOUNTED_AND_REMOVED >> "$ev/cleanup.txt"
+            done
+            exit "$status"
+          }
+          trap cleanup EXIT
+          uid="$(id -u nobody)"; gid="$(id -g nobody)"
+          host_ns="$(readlink /proc/self/ns/net)"
+          store="$(sudo mktemp -d /opt/coden-split-input.XXXXXXXX)"
+          scratch="$(sudo mktemp -d /opt/coden-split-scratch.XXXXXXXX)"
+          sudo mount -t tmpfs -o "size=512m,nr_inodes=8192,nosuid,nodev,noexec,mode=0755,uid=$(id -u),gid=$(id -g)" tmpfs "$store"
+          sudo mount -t tmpfs -o "size=960m,nr_inodes=61440,nosuid,nodev,noexec,mode=0700,uid=$uid,gid=$gid" tmpfs "$scratch"
+          sudo mkdir "$scratch/home" "$scratch/tmp"
+          sudo chown "$uid:$gid" "$scratch/home" "$scratch/tmp"
+          sudo chmod 0700 "$scratch/home" "$scratch/tmp"
+          # Dense opaque bytes matching the rounded retained input estimate.
+          head -c 221937664 /dev/zero > "$store/input.bin"
+          chmod 0444 "$store/input.bin"
+          sha256sum "$store/input.bin" | awk '{print $1}' > "$ev/input-before.sha256"
+          sudo mount -o remount,ro,nosuid,nodev,noexec "$store"
+          script="$(cat <<'PY'
+          import errno,hashlib,json,os,socket,sys
+          from pathlib import Path
+          root,scratch,host=Path(sys.argv[1]),Path(sys.argv[2]),sys.argv[3]
+          a,b=os.statvfs(root),os.statvfs(scratch)
+          assert a.f_frsize*a.f_blocks==536870912 and a.f_flag&os.ST_RDONLY
+          assert b.f_frsize*b.f_blocks==1006632960 and b.f_files==61440
+          assert os.stat(root).st_dev!=os.stat(scratch).st_dev
+          assert all(os.stat(p).st_dev==os.stat(scratch).st_dev for p in (scratch/"home",scratch/"tmp",Path("/tmp"),Path("/var/tmp")))
+          assert os.getuid()!=0 and set(os.getgroups())<={os.getgid()}
+          st=dict(x.split(":",1) for x in Path("/proc/self/status").read_text().splitlines() if ":" in x)
+          assert int(st["CapEff"],16)==0 and st["NoNewPrivs"].strip()=="1"
+          assert os.readlink("/proc/self/ns/net")!=host and sorted(n for _,n in socket.if_nameindex())==["lo"]
+          assert not any(os.path.lexists(x) for x in ("/run/docker.sock","/var/run/docker.sock","/run/podman/podman.sock"))
+          cg=next(x.split(":",2)[2] for x in Path("/proc/self/cgroup").read_text().splitlines() if x.startswith("0::"))
+          p=Path("/sys/fs/cgroup")/cg.lstrip("/")
+          cpu=(p/"cpu.max").read_text().split()
+          assert int(cpu[0])==2*int(cpu[1]) and (p/"memory.max").read_text().strip()=="4294967296" and (p/"pids.max").read_text().strip()=="128" and (p/"memory.swap.max").read_text().strip()=="0"
+          for path,mode in ((root/"input.bin","ab"),(root/"new.bin","xb")):
+              try:
+                  with path.open(mode) as f: f.write(b"x")
+              except OSError as exc: assert exc.errno in (errno.EROFS,errno.EACCES,errno.EPERM)
+              else: raise AssertionError("read-only input modified")
+          with (root/"input.bin").open("rb") as f: digest=hashlib.file_digest(f,"sha256").hexdigest()
+          # Model conservative writable payload + allowance + reserve, not actual installer.
+          def allocate(path,size):
+              block=b"\0"*(1024*1024)
+              with path.open("xb") as f:
+                  while size:
+                      chunk=min(size,len(block))
+                      f.write(block[:chunk]); size-=chunk
+          allocate(scratch/"home"/"fixture.bin",444472209)
+          allocate(Path("/tmp")/"fixture.bin",444472209)
+          used=os.statvfs(scratch)
+          assert used.f_frsize*(used.f_blocks-used.f_bfree)>=888944418
+          # Force an allocation one page beyond available capacity; bounded by the tmpfs.
+          try:
+              allocate(Path("/var/tmp")/"overflow.bin",used.f_frsize*(used.f_bavail+1))
+          except OSError as exc: assert exc.errno==errno.ENOSPC
+          else: raise AssertionError("writable quota exceeded")
+          print(json.dumps(dict(status="SYNTHETIC_SPLIT_STAGING_PASS",readonly_input_bytes=221937664,input_capacity_bytes=536870912,input_sha256=digest,writable_payload_bytes=888944418,writable_capacity_bytes=1006632960,observed_writable_used_bytes=used.f_frsize*(used.f_blocks-used.f_bfree),write_denials=2,overflow_errno=errno.ENOSPC,actual_installation=False,actual_peak_build_capacity_proven=False,aggregate_auxiliary_resources_proven=False,build_authorized=False,release_authorized=False),sort_keys=True))
+          PY
+          )"
+          timeout --kill-after=5s 90s sudo systemd-run --unit="$unit" --wait --pipe --quiet \
+            -p "User=$uid" -p "Group=$gid" -p CPUQuota=200% -p MemoryMax=4294967296 -p MemorySwapMax=0 -p TasksMax=128 \
+            -p RuntimeMaxSec=90 -p KillMode=control-group -p NoNewPrivileges=yes \
+            -p CapabilityBoundingSet= -p AmbientCapabilities= -p PrivateNetwork=yes \
+            -p PrivateDevices=yes -p ProtectHome=tmpfs -p ProtectSystem=strict \
+            -p 'TemporaryFileSystem=/run:ro' -p 'TemporaryFileSystem=/dev/shm:ro' \
+            -p "BindPaths=$scratch/tmp:/tmp $scratch/tmp:/var/tmp" -p "ReadWritePaths=$scratch /tmp /var/tmp" \
+            -p RestrictSUIDSGID=yes \
+            /usr/bin/env -i PATH=/usr/bin:/bin "HOME=$scratch/home" TMPDIR=/tmp LC_ALL=C /usr/bin/python3 -I -B -c "$script" "$store" "$scratch" "$host_ns" > "$ev/review.json"
+          sha256sum "$store/input.bin" | awk '{print $1}' > "$ev/input-after.sha256"
+          cmp "$ev/input-before.sha256" "$ev/input-after.sha256"
+          jq -e --arg h "$(cat "$ev/input-before.sha256")" '.status=="SYNTHETIC_SPLIT_STAGING_PASS" and .input_sha256==$h and .release_authorized==false' "$ev/review.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: synthetic-split-staging-receipts
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  synthetic-build-auxiliary-boundary:
+    # Trusted fixture only, not an OS update, source build, or agent execution.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '68277a4ba52a047e816feec6b6dab9bc0dd43ba8' && github.event.pull_request.number == 210 && github.head_ref == 'parallel/fasttrack-integrated-20261127' && github.base_ref == 'parallel/chatgpt-r2-recovery-20261127' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Exercise auxiliary resource denials in non-agent build fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          unit="coden-build-aux-$GITHUB_RUN_ID.service"
+          cleanup() {
+            rc=$?
+            trap - EXIT
+            sudo systemctl stop "$unit" >/dev/null 2>&1 || true
+            state="$(sudo systemctl show "$unit" -p ActiveState --value 2>/dev/null || true)"
+            case "$state" in inactive|failed) ;; *) rc=1;; esac
+            printf 'SERVICE_%s\n' "$state" > evidence/cleanup.txt
+            exit "$rc"
+          }
+          trap cleanup EXIT
+          hostipc="$(readlink /proc/self/ns/ipc)"
+          hostnet="$(readlink /proc/self/ns/net)"
+          script="$(cat <<'PY'
+          import ctypes,errno,json,os,resource,socket,sys
+          from pathlib import Path
+          assert os.getuid()!=0
+          assert os.readlink("/proc/self/ns/ipc")!=sys.argv[1]
+          assert os.readlink("/proc/self/ns/net")!=sys.argv[2]
+          assert sorted(p.name for p in Path("/sys/class/net").iterdir())==["lo"]
+          assert len(Path("/proc/self/net/route").read_text().splitlines())==1
+          status=dict(line.split(":",1) for line in Path("/proc/self/status").read_text().splitlines() if ":" in line)
+          assert int(status["CapEff"],16)==0 and status["NoNewPrivs"].strip()=="1"
+          for name,expected in (("RLIMIT_CORE",0),("RLIMIT_MEMLOCK",0),("RLIMIT_NOFILE",256),("RLIMIT_MSGQUEUE",65536)):
+              assert resource.getrlimit(getattr(resource,name))==(expected,expected)
+          denials=[]
+          for family in (socket.AF_INET,socket.AF_INET6):
+              try:
+                  s=socket.socket(family,socket.SOCK_STREAM)
+              except OSError as exc:
+                  assert exc.errno in (errno.EAFNOSUPPORT,errno.EPERM,errno.EACCES)
+                  denials.append("network-family-"+str(family))
+              else:
+                  s.close(); raise AssertionError("unexpected IP socket")
+          libc=ctypes.CDLL(None,use_errno=True)
+          for name,args,remove in (("shmget",(0,4096,0o600),"shmctl"),("msgget",(0,0o600),"msgctl"),("semget",(0,1,0o600),"semctl")):
+              ctypes.set_errno(0)
+              result=getattr(libc,name)(*args)
+              if result>=0:
+                  if name=="semget": getattr(libc,remove)(result,0,0)
+                  else: getattr(libc,remove)(result,0,None)
+                  raise AssertionError("unexpected System V IPC allocation")
+              assert ctypes.get_errno() in (errno.EPERM,errno.EACCES,errno.ENOSYS)
+              denials.append(name)
+          for path in ("/dev/shm/coden-aux-fixture","/run/coden-aux-fixture"):
+              try: fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+              except OSError as exc:
+                  assert exc.errno in (errno.EROFS,errno.EACCES,errno.EPERM)
+                  denials.append(path)
+              else:
+                  os.close(fd); os.unlink(path); raise AssertionError("auxiliary write allowed")
+          assert not any(os.path.lexists(p) for p in ("/run/docker.sock","/var/run/docker.sock","/run/podman/podman.sock"))
+          cg=next(x.split(":",2)[2] for x in Path("/proc/self/cgroup").read_text().splitlines() if x.startswith("0::"))
+          p=Path("/sys/fs/cgroup")/cg.lstrip("/")
+          cpu=(p/"cpu.max").read_text().split()
+          assert int(cpu[0])==2*int(cpu[1]) and (p/"memory.max").read_text().strip()=="4294967296" and (p/"pids.max").read_text().strip()=="128" and (p/"memory.swap.max").read_text().strip()=="0"
+          print(json.dumps(dict(status="SYNTHETIC_AUXILIARY_DENIALS_PASS",denials=denials,private_ipc=True,private_network=True,rlimits_checked=4,actual_build=False,actual_os_update=False,pty_accounting_proven=False,aggregate_auxiliary_resources_proven=False,build_authorized=False,release_authorized=False),sort_keys=True))
+          PY
+          )"
+          timeout --kill-after=5s 40s sudo systemd-run --unit="$unit" --wait --pipe --quiet \
+            -p User=nobody -p Group=nogroup -p CPUQuota=200% -p MemoryMax=4294967296 -p MemorySwapMax=0 -p TasksMax=128 \
+            -p RuntimeMaxSec=30 -p KillMode=control-group -p NoNewPrivileges=yes \
+            -p CapabilityBoundingSet= -p AmbientCapabilities= -p PrivateNetwork=yes -p PrivateIPC=yes -p PrivateDevices=yes \
+            -p ProtectHome=tmpfs -p ProtectSystem=strict -p 'TemporaryFileSystem=/run:ro' -p 'TemporaryFileSystem=/dev/shm:ro' \
+            -p 'SystemCallFilter=~@ipc' -p SystemCallErrorNumber=EPERM -p RestrictAddressFamilies=AF_UNIX \
+            -p LimitCORE=0 -p LimitMEMLOCK=0 -p LimitNOFILE=256 -p LimitMSGQUEUE=65536 -p RestrictSUIDSGID=yes \
+            /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/python3 -I -B -c "$script" "$hostipc" "$hostnet" > evidence/review.json
+          jq -e '.status=="SYNTHETIC_AUXILIARY_DENIALS_PASS" and (.denials|length)==7 and .release_authorized==false' evidence/review.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: synthetic-build-auxiliary-receipts
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  integrated-synthetic-build-boundary:
+    # One-shot generated data only; no candidate wheels, interpreter, model or build.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '428c271d8f018f641f40bc4964a1bbe9b408f377' && github.event.pull_request.number == 210 && github.head_ref == 'parallel/fasttrack-integrated-20261127' && github.base_ref == 'parallel/chatgpt-r2-recovery-20261127' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Prove combined staging and auxiliary limits on trusted opaque bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          unit="coden-combined-$GITHUB_RUN_ID.service"
+          store=""; scratch=""
+          cleanup() {
+            status=$?
+            trap - EXIT
+            sudo systemctl stop "$unit" >/dev/null 2>&1 || true
+            state="$(sudo systemctl show "$unit" -p ActiveState --value 2>/dev/null || true)"
+            case "$state" in inactive|failed) ;; *) status=1;; esac
+            printf 'SERVICE_%s\n' "$state" > "$ev/cleanup.txt"
+            for dir in "$scratch" "$store"; do
+              [[ -n "$dir" ]] || continue
+              if mountpoint -q "$dir"; then
+                sudo umount "$dir" || { status=1; continue; }
+              fi
+              sudo rmdir "$dir" || { status=1; continue; }
+              echo MOUNT_UNMOUNTED_AND_REMOVED >> "$ev/cleanup.txt"
+            done
+            exit "$status"
+          }
+          trap cleanup EXIT
+          uid="$(id -u nobody)"; gid="$(id -g nobody)"
+          host_ns="$(readlink /proc/self/ns/net)"
+          host_ipc="$(readlink /proc/self/ns/ipc)"
+          store="$(sudo mktemp -d /opt/coden-split-input.XXXXXXXX)"
+          scratch="$(sudo mktemp -d /opt/coden-split-scratch.XXXXXXXX)"
+          sudo mount -t tmpfs -o "size=512m,nr_inodes=8192,nosuid,nodev,noexec,mode=0755,uid=$(id -u),gid=$(id -g)" tmpfs "$store"
+          sudo mount -t tmpfs -o "size=960m,nr_inodes=61440,nosuid,nodev,noexec,mode=0700,uid=$uid,gid=$gid" tmpfs "$scratch"
+          sudo mkdir "$scratch/home" "$scratch/tmp"
+          sudo chown "$uid:$gid" "$scratch/home" "$scratch/tmp"
+          sudo chmod 0700 "$scratch/home" "$scratch/tmp"
+          # Dense opaque bytes matching the rounded retained input estimate.
+          head -c 221937664 /dev/zero > "$store/input.bin"
+          chmod 0444 "$store/input.bin"
+          sha256sum "$store/input.bin" | awk '{print $1}' > "$ev/input-before.sha256"
+          sudo mount -o remount,ro,nosuid,nodev,noexec "$store"
+          script="$(cat <<'PY'
+          import ctypes,errno,hashlib,json,os,resource,socket,sys
+          from pathlib import Path
+          root,scratch,host=Path(sys.argv[1]),Path(sys.argv[2]),sys.argv[3]
+          a,b=os.statvfs(root),os.statvfs(scratch)
+          assert a.f_frsize*a.f_blocks==536870912 and a.f_flag&os.ST_RDONLY
+          assert b.f_frsize*b.f_blocks==1006632960 and b.f_files==61440
+          assert os.stat(root).st_dev!=os.stat(scratch).st_dev
+          assert all(os.stat(p).st_dev==os.stat(scratch).st_dev for p in (scratch/"home",scratch/"tmp",Path("/tmp"),Path("/var/tmp")))
+          assert os.getuid()!=0 and set(os.getgroups())<={os.getgid()}
+          st=dict(x.split(":",1) for x in Path("/proc/self/status").read_text().splitlines() if ":" in x)
+          assert int(st["CapEff"],16)==0 and st["NoNewPrivs"].strip()=="1"
+          assert os.readlink("/proc/self/ns/net")!=host
+          assert os.readlink("/proc/self/ns/ipc")!=sys.argv[4]
+          assert sorted(p.name for p in Path("/sys/class/net").iterdir())==["lo"]
+          assert len(Path("/proc/self/net/route").read_text().splitlines())==1
+          for name,expected in (("RLIMIT_CORE",0),("RLIMIT_MEMLOCK",0),("RLIMIT_NOFILE",256),("RLIMIT_MSGQUEUE",65536)):
+              assert resource.getrlimit(getattr(resource,name))==(expected,expected)
+          denials=[]
+          for family in (socket.AF_INET,socket.AF_INET6):
+              try:
+                  s=socket.socket(family,socket.SOCK_STREAM)
+              except OSError as exc:
+                  assert exc.errno in (errno.EAFNOSUPPORT,errno.EPERM,errno.EACCES)
+                  denials.append("network-family-"+str(family))
+              else:
+                  s.close(); raise AssertionError("unexpected IP socket")
+          libc=ctypes.CDLL(None,use_errno=True)
+          for name,args,remove in (("shmget",(0,4096,0o600),"shmctl"),("msgget",(0,0o600),"msgctl"),("semget",(0,1,0o600),"semctl")):
+              ctypes.set_errno(0)
+              result=getattr(libc,name)(*args)
+              if result>=0:
+                  if name=="semget": getattr(libc,remove)(result,0,0)
+                  else: getattr(libc,remove)(result,0,None)
+                  raise AssertionError("unexpected System V IPC allocation")
+              assert ctypes.get_errno() in (errno.EPERM,errno.EACCES,errno.ENOSYS)
+              denials.append(name)
+          for path in ("/dev/shm/coden-aux-fixture","/run/coden-aux-fixture"):
+              try: fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+              except OSError as exc:
+                  assert exc.errno in (errno.EROFS,errno.EACCES,errno.EPERM)
+                  denials.append(path)
+              else:
+                  os.close(fd); os.unlink(path); raise AssertionError("auxiliary write allowed")
+          assert not any(os.path.lexists(x) for x in ("/run/docker.sock","/var/run/docker.sock","/run/podman/podman.sock"))
+          cg=next(x.split(":",2)[2] for x in Path("/proc/self/cgroup").read_text().splitlines() if x.startswith("0::"))
+          p=Path("/sys/fs/cgroup")/cg.lstrip("/")
+          cpu=(p/"cpu.max").read_text().split()
+          assert int(cpu[0])==2*int(cpu[1]) and (p/"memory.max").read_text().strip()=="4294967296" and (p/"pids.max").read_text().strip()=="128" and (p/"memory.swap.max").read_text().strip()=="0"
+          for path,mode in ((root/"input.bin","ab"),(root/"new.bin","xb")):
+              try:
+                  with path.open(mode) as f: f.write(b"x")
+              except OSError as exc: assert exc.errno in (errno.EROFS,errno.EACCES,errno.EPERM)
+              else: raise AssertionError("read-only input modified")
+          with (root/"input.bin").open("rb") as f: digest=hashlib.file_digest(f,"sha256").hexdigest()
+          # Model conservative writable payload + allowance + reserve, not actual installer.
+          def allocate(path,size):
+              block=b"\0"*(1024*1024)
+              with path.open("xb") as f:
+                  while size:
+                      chunk=min(size,len(block))
+                      f.write(block[:chunk]); size-=chunk
+          allocate(scratch/"home"/"fixture.bin",444472209)
+          allocate(Path("/tmp")/"fixture.bin",444472209)
+          used=os.statvfs(scratch)
+          assert used.f_frsize*(used.f_blocks-used.f_bfree)>=888944418
+          # Force an allocation one page beyond available capacity; bounded by the tmpfs.
+          try:
+              allocate(Path("/var/tmp")/"overflow.bin",used.f_frsize*(used.f_bavail+1))
+          except OSError as exc: assert exc.errno==errno.ENOSPC
+          else: raise AssertionError("writable quota exceeded")
+          print(json.dumps(dict(status="SYNTHETIC_COMBINED_BOUNDARY_PASS",auxiliary_denials=denials,rlimits_checked=4,private_ipc=True,pty_accounting_proven=False,readonly_input_bytes=221937664,input_capacity_bytes=536870912,input_sha256=digest,writable_payload_bytes=888944418,writable_capacity_bytes=1006632960,observed_writable_used_bytes=used.f_frsize*(used.f_blocks-used.f_bfree),write_denials=2,overflow_errno=errno.ENOSPC,actual_installation=False,actual_peak_build_capacity_proven=False,aggregate_auxiliary_resources_proven=False,build_authorized=False,release_authorized=False),sort_keys=True))
+          PY
+          )"
+          timeout --kill-after=5s 90s sudo systemd-run --unit="$unit" --wait --pipe --quiet \
+            -p "User=$uid" -p "Group=$gid" -p CPUQuota=200% -p MemoryMax=4294967296 -p MemorySwapMax=0 -p TasksMax=128 \
+            -p RuntimeMaxSec=90 -p KillMode=control-group -p NoNewPrivileges=yes \
+            -p CapabilityBoundingSet= -p AmbientCapabilities= -p PrivateNetwork=yes \
+            -p PrivateDevices=yes -p PrivateIPC=yes -p ProtectHome=tmpfs -p ProtectSystem=strict \
+            -p 'TemporaryFileSystem=/run:ro' -p 'TemporaryFileSystem=/dev/shm:ro' \
+            -p "BindPaths=$scratch/tmp:/tmp $scratch/tmp:/var/tmp" -p "ReadWritePaths=$scratch /tmp /var/tmp" \
+            -p RestrictSUIDSGID=yes -p RestrictAddressFamilies=AF_UNIX \
+            -p 'SystemCallFilter=~@ipc' -p SystemCallErrorNumber=EPERM \
+            -p LimitCORE=0 -p LimitMEMLOCK=0 -p LimitNOFILE=256 -p LimitMSGQUEUE=65536 \
+            /usr/bin/env -i PATH=/usr/bin:/bin "HOME=$scratch/home" TMPDIR=/tmp LC_ALL=C /usr/bin/python3 -I -B -c "$script" "$store" "$scratch" "$host_ns" "$host_ipc" > "$ev/review.json"
+          sha256sum "$store/input.bin" | awk '{print $1}' > "$ev/input-after.sha256"
+          cmp "$ev/input-before.sha256" "$ev/input-after.sha256"
+          jq -e --arg h "$(cat "$ev/input-before.sha256")" '.status=="SYNTHETIC_COMBINED_BOUNDARY_PASS" and (.auxiliary_denials|length)==7 and .input_sha256==$h and .release_authorized==false' "$ev/review.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: synthetic-combined-build-boundary-receipts
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  executable-scratch-synthetic-build-boundary:
+    # One-shot generated data only; no candidate wheels, interpreter, model or build.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == 'a4f49925d92c936763b38d606a9f177f59d6986d' && github.event.pull_request.number == 210 && github.head_ref == 'parallel/fasttrack-integrated-20261127' && github.base_ref == 'parallel/chatgpt-r2-recovery-20261127' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Prove executable scratch and noninteractive build boundary with trusted fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          unit="coden-exec-scratch-$GITHUB_RUN_ID.service"
+          store=""; scratch=""
+          cleanup() {
+            status=$?
+            trap - EXIT
+            sudo systemctl stop "$unit" >/dev/null 2>&1 || true
+            state="$(sudo systemctl show "$unit" -p ActiveState --value 2>/dev/null || true)"
+            case "$state" in inactive|failed) ;; *) status=1;; esac
+            printf 'SERVICE_%s\n' "$state" > "$ev/cleanup.txt"
+            for dir in "$scratch" "$store"; do
+              [[ -n "$dir" ]] || continue
+              if mountpoint -q "$dir"; then
+                sudo umount "$dir" || { status=1; continue; }
+              fi
+              sudo rmdir "$dir" || { status=1; continue; }
+              echo MOUNT_UNMOUNTED_AND_REMOVED >> "$ev/cleanup.txt"
+            done
+            exit "$status"
+          }
+          trap cleanup EXIT
+          uid="$(id -u nobody)"; gid="$(id -g nobody)"
+          host_ns="$(readlink /proc/self/ns/net)"
+          host_ipc="$(readlink /proc/self/ns/ipc)"
+          store="$(sudo mktemp -d /opt/coden-split-input.XXXXXXXX)"
+          scratch="$(sudo mktemp -d /opt/coden-split-scratch.XXXXXXXX)"
+          sudo mount -t tmpfs -o "size=512m,nr_inodes=8192,nosuid,nodev,noexec,mode=0755,uid=$(id -u),gid=$(id -g)" tmpfs "$store"
+          sudo mount -t tmpfs -o "size=960m,nr_inodes=61440,nosuid,nodev,exec,mode=0700,uid=$uid,gid=$gid" tmpfs "$scratch"
+          sudo mkdir "$scratch/home" "$scratch/tmp"
+          sudo chown "$uid:$gid" "$scratch/home" "$scratch/tmp"
+          sudo chmod 0700 "$scratch/home" "$scratch/tmp"
+          # Dense opaque bytes matching the rounded retained input estimate.
+          head -c 221937664 /dev/zero > "$store/input.bin"
+          chmod 0444 "$store/input.bin"
+          printf '#!/bin/sh\nprintf "CODEN_FIXTURE_OK\\n"\n' > "$store/probe.sh"
+          chmod 0555 "$store/probe.sh"
+          sha256sum "$store/input.bin" | awk '{print $1}' > "$ev/input-before.sha256"
+          sudo mount -o remount,ro,nosuid,nodev,noexec "$store"
+          script="$(cat <<'PY'
+          import ctypes,errno,hashlib,json,os,resource,socket,subprocess,sys
+          from pathlib import Path
+          root,scratch,host=Path(sys.argv[1]),Path(sys.argv[2]),sys.argv[3]
+          a,b=os.statvfs(root),os.statvfs(scratch)
+          assert a.f_frsize*a.f_blocks==536870912 and a.f_flag&os.ST_RDONLY
+          assert b.f_frsize*b.f_blocks==1006632960 and b.f_files==61440
+          assert a.f_flag&os.ST_NOEXEC and not b.f_flag&os.ST_NOEXEC
+          assert os.stat(root).st_dev!=os.stat(scratch).st_dev
+          assert all(os.stat(p).st_dev==os.stat(scratch).st_dev for p in (scratch/"home",scratch/"tmp",Path("/tmp"),Path("/var/tmp")))
+          assert os.getuid()!=0 and set(os.getgroups())<={os.getgid()}
+          st=dict(x.split(":",1) for x in Path("/proc/self/status").read_text().splitlines() if ":" in x)
+          assert int(st["CapEff"],16)==0 and st["NoNewPrivs"].strip()=="1"
+          assert os.readlink("/proc/self/ns/net")!=host
+          assert os.readlink("/proc/self/ns/ipc")!=sys.argv[4]
+          assert sorted(p.name for p in Path("/sys/class/net").iterdir())==["lo"]
+          assert len(Path("/proc/self/net/route").read_text().splitlines())==1
+          for name,expected in (("RLIMIT_CORE",0),("RLIMIT_MEMLOCK",0),("RLIMIT_NOFILE",256),("RLIMIT_MSGQUEUE",65536)):
+              assert resource.getrlimit(getattr(resource,name))==(expected,expected)
+          denials=[]
+          for family in (socket.AF_INET,socket.AF_INET6):
+              try:
+                  s=socket.socket(family,socket.SOCK_STREAM)
+              except OSError as exc:
+                  assert exc.errno in (errno.EAFNOSUPPORT,errno.EPERM,errno.EACCES)
+                  denials.append("network-family-"+str(family))
+              else:
+                  s.close(); raise AssertionError("unexpected IP socket")
+          libc=ctypes.CDLL(None,use_errno=True)
+          for name,args,remove in (("shmget",(0,4096,0o600),"shmctl"),("msgget",(0,0o600),"msgctl"),("semget",(0,1,0o600),"semctl")):
+              ctypes.set_errno(0)
+              result=getattr(libc,name)(*args)
+              if result>=0:
+                  if name=="semget": getattr(libc,remove)(result,0,0)
+                  else: getattr(libc,remove)(result,0,None)
+                  raise AssertionError("unexpected System V IPC allocation")
+              assert ctypes.get_errno() in (errno.EPERM,errno.EACCES,errno.ENOSYS)
+              denials.append(name)
+          for path in ("/dev/shm/coden-aux-fixture","/run/coden-aux-fixture"):
+              try: fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+              except OSError as exc:
+                  assert exc.errno in (errno.EROFS,errno.EACCES,errno.EPERM)
+                  denials.append(path)
+              else:
+                  os.close(fd); os.unlink(path); raise AssertionError("auxiliary write allowed")
+          assert not any(os.path.lexists(x) for x in ("/run/docker.sock","/var/run/docker.sock","/run/podman/podman.sock"))
+          cg=next(x.split(":",2)[2] for x in Path("/proc/self/cgroup").read_text().splitlines() if x.startswith("0::"))
+          p=Path("/sys/fs/cgroup")/cg.lstrip("/")
+          cpu=(p/"cpu.max").read_text().split()
+          assert int(cpu[0])==2*int(cpu[1]) and (p/"memory.max").read_text().strip()=="4294967296" and (p/"pids.max").read_text().strip()=="128" and (p/"memory.swap.max").read_text().strip()=="0"
+          # Noninteractive build only: block PTY allocation; no interactive agent tools.
+          for path in ("/dev/ptmx","/dev/pts/ptmx"):
+              try: fd=os.open(path,os.O_RDWR|os.O_NOCTTY|os.O_NONBLOCK)
+              except OSError as exc:
+                  assert exc.errno in (errno.ENOENT,errno.EACCES,errno.EPERM,errno.ENODEV)
+              else:
+                  os.close(fd); raise AssertionError("PTY allocation unexpectedly allowed")
+          try: subprocess.run([str(root/"probe.sh")],check=True,capture_output=True,timeout=3)
+          except PermissionError as exc:
+              assert exc.errno==errno.EACCES and exc.filename==str(root/"probe.sh"),exc
+          else: raise AssertionError("execution from immutable staging allowed")
+          # Explicitly exercise anonymous subprocess pipes; other IPC stays blocked.
+          readfd,writefd=os.pipe()
+          try:
+              assert os.write(writefd,b"ok")==2 and os.read(readfd,2)==b"ok"
+          finally:
+              os.close(readfd); os.close(writefd)
+          executable=scratch/"home"/"probe.sh"
+          executable.write_bytes((root/"probe.sh").read_bytes())
+          executable.chmod(0o700)
+          child=subprocess.run([str(executable)],check=True,capture_output=True,timeout=3)
+          assert child.stdout==b"CODEN_FIXTURE_OK\n"
+          for path,mode in ((root/"input.bin","ab"),(root/"new.bin","xb")):
+              try:
+                  with path.open(mode) as f: f.write(b"x")
+              except OSError as exc: assert exc.errno in (errno.EROFS,errno.EACCES,errno.EPERM)
+              else: raise AssertionError("read-only input modified")
+          with (root/"input.bin").open("rb") as f: digest=hashlib.file_digest(f,"sha256").hexdigest()
+          # Model conservative writable payload + allowance + reserve, not actual installer.
+          def allocate(path,size):
+              block=b"\0"*(1024*1024)
+              with path.open("xb") as f:
+                  while size:
+                      chunk=min(size,len(block))
+                      f.write(block[:chunk]); size-=chunk
+          allocate(scratch/"home"/"fixture.bin",444472209)
+          allocate(Path("/tmp")/"fixture.bin",444472209)
+          used=os.statvfs(scratch)
+          assert used.f_frsize*(used.f_blocks-used.f_bfree)>=888944418
+          # Force an allocation one page beyond available capacity; bounded by the tmpfs.
+          try:
+              allocate(Path("/var/tmp")/"overflow.bin",used.f_frsize*(used.f_bavail+1))
+          except OSError as exc: assert exc.errno==errno.ENOSPC
+          else: raise AssertionError("writable quota exceeded")
+          print(json.dumps(dict(status="SYNTHETIC_EXECUTABLE_SCRATCH_PASS",auxiliary_denials=denials,rlimits_checked=4,private_ipc=True,pty_allocations_denied=2,immutable_direct_exec_denied=True,scratch_fixture_exec_verified=True,anonymous_pipe_verified=True,pty_accounting_proven=False,readonly_input_bytes=221937664,input_capacity_bytes=536870912,input_sha256=digest,writable_payload_bytes=888944418,writable_capacity_bytes=1006632960,observed_writable_used_bytes=used.f_frsize*(used.f_blocks-used.f_bfree),write_denials=2,overflow_errno=errno.ENOSPC,actual_installation=False,actual_peak_build_capacity_proven=False,aggregate_auxiliary_resources_proven=False,build_authorized=False,release_authorized=False),sort_keys=True))
+          PY
+          )"
+          # Fail closed if the runner's IPC group has another member not listed below.
+          python3 - <<'CHECK'
+          import subprocess
+          group={line.strip() for line in subprocess.check_output(["systemd-analyze","syscall-filter","@ipc"],text=True).splitlines() if line.strip() and not line.strip().startswith(("#","@"))}
+          denied=set("ipc memfd_create mq_getsetattr mq_notify mq_open mq_timedreceive mq_timedreceive_time64 mq_timedsend mq_timedsend_time64 mq_unlink msgctl msgget msgrcv msgsnd process_madvise process_vm_readv process_vm_writev semctl semget semop semtimedop semtimedop_time64 shmat shmctl shmdt shmget".split())
+          assert group and group-{"pipe","pipe2"}<=denied,sorted(group-denied-{"pipe","pipe2"})
+          CHECK
+          timeout --kill-after=5s 90s sudo systemd-run --unit="$unit" --wait --pipe --quiet \
+            -p "User=$uid" -p "Group=$gid" -p CPUQuota=200% -p MemoryMax=4294967296 -p MemorySwapMax=0 -p TasksMax=128 \
+            -p RuntimeMaxSec=90 -p KillMode=control-group -p NoNewPrivileges=yes \
+            -p CapabilityBoundingSet= -p AmbientCapabilities= -p PrivateNetwork=yes \
+            -p PrivateDevices=yes -p PrivateIPC=yes -p ProtectHome=tmpfs -p ProtectSystem=strict \
+            -p 'TemporaryFileSystem=/run:ro' -p 'TemporaryFileSystem=/dev/shm:ro' \
+            -p "BindPaths=$scratch/tmp:/tmp $scratch/tmp:/var/tmp" -p "ReadWritePaths=$scratch /tmp /var/tmp" \
+            -p RestrictSUIDSGID=yes -p RestrictAddressFamilies=AF_UNIX \
+            -p "InaccessiblePaths=/dev/pts" \
+            -p 'SystemCallFilter=~ipc memfd_create mq_getsetattr mq_notify mq_open mq_timedreceive mq_timedreceive_time64 mq_timedsend mq_timedsend_time64 mq_unlink msgctl msgget msgrcv msgsnd process_madvise process_vm_readv process_vm_writev semctl semget semop semtimedop semtimedop_time64 shmat shmctl shmdt shmget' -p SystemCallErrorNumber=EPERM \
+            -p LimitCORE=0 -p LimitMEMLOCK=0 -p LimitNOFILE=256 -p LimitMSGQUEUE=65536 \
+            /usr/bin/env -i PATH=/usr/bin:/bin "HOME=$scratch/home" TMPDIR=/tmp LC_ALL=C /usr/bin/python3 -I -B -c "$script" "$store" "$scratch" "$host_ns" "$host_ipc" > "$ev/review.json"
+          sha256sum "$store/input.bin" | awk '{print $1}' > "$ev/input-after.sha256"
+          cmp "$ev/input-before.sha256" "$ev/input-after.sha256"
+          jq -e --arg h "$(cat "$ev/input-before.sha256")" '.status=="SYNTHETIC_EXECUTABLE_SCRATCH_PASS" and (.auxiliary_denials|length)==7 and .input_sha256==$h and .release_authorized==false' "$ev/review.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: synthetic-executable-scratch-receipts
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  r2-full-source-index-verification:
+    # Static Git object/index verification only. No upstream checkout, imports,
+    # hooks, build backend, interpreter, wheel acquisition or agent execution.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '5c171bccf0a347594151016eb77559acd86b0d79' && github.event.pull_request.number == 210 && github.head_ref == 'parallel/fasttrack-integrated-20261127' && github.base_ref == 'parallel/chatgpt-r2-recovery-20261127' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 5c171bccf0a347594151016eb77559acd86b0d79
+          persist-credentials: false
+      - name: Verify pinned source and both patch trees using Git index only
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          original="$PWD/docs/evidence/openhands-077f3fad/RETAINED_R2_SOURCE_PATCH.patch"
+          amendment="$PWD/docs/evidence/openhands-077f3fad/PROPOSED_R2_NOTICE_AMENDMENT.patch"
+          echo "0609700a143b3fc8b0439f7ff2c74b75aa41c220fa9ba4294db35bac54b8f70f  $original" | sha256sum -c -
+          echo "9cc84596a0c04e261aaf30b0b59c3a5ae3c2e26854ac158fbdee512cddb7a655  $amendment" | sha256sum -c -
+          work="$(mktemp -d "$RUNNER_TEMP/coden-index.XXXXXXXX")"
+          cleanup() {
+            rc=$?
+            trap - EXIT
+            rm -rf -- "$work"
+            if test -e "$work"; then rc=1; else echo WORK_DIRECTORY_REMOVED > "$ev/cleanup.txt"; fi
+            exit "$rc"
+          }
+          trap cleanup EXIT
+          export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0 GIT_CONFIG_COUNT=0
+          git init -q --template= "$work"
+          cd "$work"
+          git -c core.hooksPath=/dev/null -c fetch.fsckObjects=true -c protocol.file.allow=never -c protocol.ext.allow=never fetch --depth=1 --no-tags --no-recurse-submodules https://github.com/OpenHands/software-agent-sdk.git 077f3fad6d31cd852be5c87176e0a93c3b446126
+          test "$(git rev-parse FETCH_HEAD)" = 077f3fad6d31cd852be5c87176e0a93c3b446126
+          base="$(git rev-parse FETCH_HEAD^{tree})"
+          test "$base" = 012b6a2fccff37b3df9416d746eee26037219049
+          git read-tree "$base"
+          test "$(git write-tree)" = "$base"
+          test "$(git ls-files | wc -l)" -eq 2297
+          git apply --cached --check "$original"
+          git apply --cached "$original"
+          r2="$(git write-tree)"
+          test "$r2" = 5a974f15a38a6f972c5cc021b45980f14a0fdbc3
+          git diff-tree --no-commit-id -r --name-status "$base" "$r2" > "$ev/r2-changes.txt"
+          test "$(wc -l < "$ev/r2-changes.txt")" -eq 7
+          git apply --cached --check "$amendment"
+          git apply --cached "$amendment"
+          combined="$(git write-tree)"
+          test "$combined" = 02271a017d25ff4c3f3dc31adaf772fde176c46f
+          test "$(git ls-files | wc -l)" -eq 2301
+          git diff-tree --no-commit-id -r --name-status "$r2" "$combined" > "$ev/notice-changes.txt"
+          test "$(wc -l < "$ev/notice-changes.txt")" -eq 8
+          for root in openhands-sdk openhands-tools openhands-workspace openhands-agent-server; do
+            test "$(git rev-parse "$combined:$root/LICENSE")" = b0bd86a6335a564bd3766666bebbf014fd6a8013
+          done
+          git apply --cached --reverse --check "$amendment"
+          git apply --cached --reverse "$amendment"
+          test "$(git write-tree)" = "$r2"
+          git apply --cached --reverse --check "$original"
+          git apply --cached --reverse "$original"
+          test "$(git write-tree)" = "$base"
+          # No upstream files checked out; only trusted Git parsed source objects.
+          test "$(find . -mindepth 1 -maxdepth 1 ! -name .git | wc -l)" -eq 0
+          jq -n --arg upstream "$(git rev-parse FETCH_HEAD)" --arg base "$base" --arg r2 "$r2" --arg combined "$combined" --arg runner_sha "$GITHUB_SHA" '{status:"R2_FULL_SOURCE_INDEX_VERIFIED_REVIEW_ONLY",upstream_commit:$upstream,original_tree:$base,r2_tree:$r2,proposed_combined_tree:$combined,original_files:2297,proposed_files:2301,r2_changes:7,notice_changes:8,reverse_verified:true,source_checkout_performed:false,source_code_executed:false,amendment_adopted:false,build_authorized:false,release_authorized:false,runner_sha:$runner_sha}' > "$ev/review.json"
+          cd "$ev"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-full-source-index-review
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  r2-retain-original-source:
+    # Static public source objects only, never build, checkout, or execute them.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == 'fda4875f541ca044c09e0ed1c2550c98cf44d541' && github.event.pull_request.number == 210 && github.head_ref == 'parallel/fasttrack-integrated-20261127' && github.base_ref == 'parallel/chatgpt-r2-recovery-20261127' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Retain exact original source tree as data for independent review
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          work="$(mktemp -d "$RUNNER_TEMP/coden-source.XXXXXXXX")"
+          cleanup() {
+            rc=$?
+            trap - EXIT
+            rm -rf -- "$work"
+            if test -e "$work"; then rc=1; else echo WORK_DIRECTORY_REMOVED > "$ev/cleanup.txt"; fi
+            exit "$rc"
+          }
+          trap cleanup EXIT
+          export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_COUNT=0 GIT_TERMINAL_PROMPT=0
+          git init -q --template= "$work"
+          cd "$work"
+          git -c core.hooksPath=/dev/null -c fetch.fsckObjects=true -c protocol.file.allow=never -c protocol.ext.allow=never fetch --depth=1 --no-tags --no-recurse-submodules https://github.com/OpenHands/software-agent-sdk.git 077f3fad6d31cd852be5c87176e0a93c3b446126
+          test "$(git rev-parse FETCH_HEAD)" = 077f3fad6d31cd852be5c87176e0a93c3b446126
+          test "$(git rev-parse FETCH_HEAD^{tree})" = 012b6a2fccff37b3df9416d746eee26037219049
+          python3 -I -B - "$ev" <<'PY'
+          import gzip, hashlib, io, json, os, subprocess, sys, tarfile
+          from pathlib import Path, PurePosixPath
+          out=Path(sys.argv[1])
+          tree="012b6a2fccff37b3df9416d746eee26037219049"
+          raw=subprocess.check_output(["git","ls-tree","-r","-z",tree])
+          rows={}
+          for item in raw.rstrip(b"\0").split(b"\0"):
+              meta,path=item.split(b"\t",1)
+              mode,kind,digest=meta.decode("ascii").split()
+              name=path.decode("utf-8")
+              assert kind=="blob" and mode in ("100644","100755")
+              assert name and not name.startswith("/") and "\\" not in name
+              assert all(p not in ("",".","..",".git") for p in name.split("/"))
+              assert not any(ord(c)<32 or ord(c)==127 for c in name)
+              assert name not in rows
+              rows[name]=(mode,digest)
+          assert len(rows)==2297
+          assert len({n.casefold() for n in rows})==len(rows)
+          archive=out/"openhands-source-077f3fad-REVIEW_ONLY.tar.gz"
+          total=0
+          def blobhash(data):
+              return hashlib.sha1(b"blob "+str(len(data)).encode()+b"\0"+data).hexdigest()
+          with subprocess.Popen(["git","cat-file","--batch"],stdin=subprocess.PIPE,stdout=subprocess.PIPE) as proc:
+              with archive.open("xb") as f, gzip.GzipFile(filename="",mode="wb",fileobj=f,mtime=0,compresslevel=6) as gz, tarfile.open(fileobj=gz,mode="w|",format=tarfile.PAX_FORMAT) as tar:
+                  for name,(mode,digest) in sorted(rows.items()):
+                      proc.stdin.write((digest+"\n").encode());proc.stdin.flush()
+                      oid,kind,size=proc.stdout.readline().decode("ascii").split()
+                      size=int(size)
+                      assert oid==digest and kind=="blob" and 0<=size<=16*1024**2
+                      total+=size
+                      assert total<=64*1024**2
+                      data=proc.stdout.read(size)
+                      assert len(data)==size and proc.stdout.read(1)==b"\n" and blobhash(data)==digest
+                      entry=tarfile.TarInfo("source/"+name)
+                      entry.size=size;entry.mode=0o755 if mode=="100755" else 0o644
+                      entry.uid=entry.gid=entry.mtime=0
+                      tar.addfile(entry,io.BytesIO(data))
+              proc.stdin.close()
+              assert proc.wait(timeout=10)==0
+          assert total==28593051
+          seen=set()
+          with tarfile.open(archive,"r:gz") as tar:
+              for m in tar:
+                  assert m.isfile() and m.name.startswith("source/")
+                  name=m.name.removeprefix("source/")
+                  assert name in rows and name not in seen
+                  mode,digest=rows[name]
+                  assert m.mode==(0o755 if mode=="100755" else 0o644)
+                  assert blobhash(tar.extractfile(m).read())==digest
+                  seen.add(name)
+          assert seen==set(rows)
+          with archive.open("rb") as f: digest=hashlib.file_digest(f,"sha256").hexdigest()
+          receipt=dict(status="ORIGINAL_SOURCE_BYTES_RETAINED_REVIEW_ONLY",upstream_commit="077f3fad6d31cd852be5c87176e0a93c3b446126",source_tree=tree,files=len(rows),raw_blob_bytes=total,archive_bytes=archive.stat().st_size,archive_sha256=digest,all_archive_members_match_git_blobs=True,source_checkout_performed=False,source_code_executed=False,patch_applied=False,license_approved=False,build_authorized=False,release_authorized=False)
+          (out/"review.json").write_text(json.dumps(receipt,indent=2,sort_keys=True)+"\n")
+          PY
+          test "$(find . -mindepth 1 -maxdepth 1 ! -name .git | wc -l)" -eq 0
+          cd "$ev"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-original-source-review-only
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  synthetic-interactive-pty-boundary:
+    # Trusted shell/PTY fixture only. Not an OpenHands or model session.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == 'fe6c2e2a913957d8958be121d94759ab4c19b32d' && github.event.pull_request.number == 210 && github.head_ref == 'parallel/fasttrack-integrated-20261127' && github.base_ref == 'parallel/chatgpt-r2-recovery-20261127' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    permissions: {}
+    steps:
+      - name: Test bounded private devpts and interactive child cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          unit="coden-pty-fixture-$GITHUB_RUN_ID.service"
+          pts=""; scratch=""
+          cleanup() {
+            rc=$?
+            trap - EXIT
+            sudo systemctl stop "$unit" >/dev/null 2>&1 || true
+            state="$(sudo systemctl show "$unit" -p ActiveState --value 2>/dev/null || true)"
+            case "$state" in inactive|failed) ;; *) rc=1;; esac
+            printf 'SERVICE_%s\n' "$state" > "$ev/cleanup.txt"
+            for dir in "$pts" "$scratch"; do
+              [[ -n "$dir" ]] || continue
+              if mountpoint -q "$dir"; then sudo umount "$dir" || { rc=1; continue; }; fi
+              sudo rmdir "$dir" || { rc=1; continue; }
+              echo MOUNT_UNMOUNTED_AND_REMOVED >> "$ev/cleanup.txt"
+            done
+            exit "$rc"
+          }
+          trap cleanup EXIT
+          uid="$(id -u nobody)"; gid="$(id -g nobody)"
+          hostnet="$(readlink /proc/self/ns/net)"
+          hostipc="$(readlink /proc/self/ns/ipc)"
+          hostdev="$(stat -c %d /dev/pts)"
+          pts="$(sudo mktemp -d /opt/coden-pty.XXXXXXXX)"
+          scratch="$(sudo mktemp -d /opt/coden-pty-scratch.XXXXXXXX)"
+          sudo mount -t devpts -o "newinstance,max=8,ptmxmode=0666,mode=0620,gid=$gid,nosuid,noexec" devpts "$pts"
+          sudo mount -t tmpfs -o "size=960m,nr_inodes=61440,nosuid,nodev,noexec,mode=0700,uid=$uid,gid=$gid" tmpfs "$scratch"
+          sudo mkdir "$scratch/home" "$scratch/tmp"
+          sudo chown "$uid:$gid" "$scratch/home" "$scratch/tmp"
+          sudo chmod 0700 "$scratch/home" "$scratch/tmp"
+          ptsdev="$(stat -c %d "$pts")"
+          test "$ptsdev" != "$hostdev"
+          script="$(cat <<'PY'
+          import errno,json,os,pty,resource,select,socket,subprocess,sys,time
+          from pathlib import Path
+          scratch,hostnet,hostipc,hostdev,ptsdev=sys.argv[1:]
+          assert os.getuid()!=0 and os.readlink("/proc/self/ns/net")!=hostnet
+          assert os.readlink("/proc/self/ns/ipc")!=hostipc
+          assert sorted(p.name for p in Path("/sys/class/net").iterdir())==["lo"]
+          assert os.stat("/dev/pts").st_dev==int(ptsdev)!=int(hostdev)
+          status=dict(x.split(":",1) for x in Path("/proc/self/status").read_text().splitlines() if ":" in x)
+          assert int(status["CapEff"],16)==0 and status["NoNewPrivs"].strip()=="1"
+          cg=next(x.split(":",2)[2] for x in Path("/proc/self/cgroup").read_text().splitlines() if x.startswith("0::"))
+          c=Path("/sys/fs/cgroup")/cg.lstrip("/")
+          cpu=(c/"cpu.max").read_text().split()
+          assert int(cpu[0])==2*int(cpu[1])
+          assert (c/"memory.max").read_text().strip()=="4294967296"
+          assert (c/"memory.swap.max").read_text().strip()=="0"
+          assert (c/"pids.max").read_text().strip()=="128"
+          assert resource.getrlimit(resource.RLIMIT_NOFILE)==(64,64)
+          v=os.statvfs(scratch)
+          assert v.f_frsize*v.f_blocks==1006632960 and v.f_files==61440
+          assert all(os.stat(p).st_dev==os.stat(scratch).st_dev for p in ("/tmp","/var/tmp",scratch+"/home"))
+          for family in (socket.AF_INET,socket.AF_INET6):
+              try: s=socket.socket(family,socket.SOCK_STREAM)
+              except OSError as e: assert e.errno in (errno.EAFNOSUPPORT,errno.EPERM,errno.EACCES)
+              else: s.close();raise AssertionError("IP socket available")
+          pairs=[]
+          try:
+              for _ in range(8):
+                  a,b=pty.openpty()
+                  pairs.append((a,b))
+                  assert os.fstat(b).st_dev==int(ptsdev)
+              assert len([p for p in Path("/dev/pts").iterdir() if p.name.isdecimal()])==8
+              # Python pty.openpty masks the original kernel errno on fallback.
+              # Direct ptmx allocation captures the actual kernel denial.
+              try: extra=os.open("/dev/pts/ptmx",os.O_RDWR|os.O_NOCTTY|os.O_CLOEXEC)
+              except OSError as e:
+                  assert e.errno==errno.ENOSPC,e
+                  ninth_errno=e.errno
+              else:
+                  os.close(extra)
+                  raise AssertionError("ninth PTY allowed")
+              a,b=pairs.pop()
+              os.close(a);os.close(b)
+              a,b=pty.openpty();pairs.append((a,b))
+              child=subprocess.Popen(["/bin/sh","-c","printf CODEN_PTY_FIXTURE_OK"],stdin=b,stdout=b,stderr=b,start_new_session=True,close_fds=True)
+              try:
+                  assert select.select([a],[],[],3)[0]
+                  assert b"CODEN_PTY_FIXTURE_OK" in os.read(a,1024)
+                  assert child.wait(timeout=3)==0
+              finally:
+                  if child.poll() is None: child.kill();child.wait(timeout=3)
+          finally:
+              for a,b in pairs: os.close(a);os.close(b)
+          assert not any(p.name.isdecimal() for p in Path("/dev/pts").iterdir())
+          print(json.dumps(dict(status="SYNTHETIC_PRIVATE_PTY_LIMIT_PASS",private_devpts=True,pty_limit=8,ninth_denied=True,ninth_errno=ninth_errno,reallocation_verified=True,child_output_verified=True,pty_fds_closed=True,scratch_bytes=1006632960,scratch_inodes=61440,network_denied=True,cgroup_caps_verified=True,aggregate_auxiliary_resources_proven=False,real_agent_executed=False,runtime_authorized=False,release_authorized=False),sort_keys=True))
+          PY
+          )"
+          timeout --kill-after=5s 45s sudo systemd-run --unit="$unit" --wait --pipe --quiet \
+            -p "User=$uid" -p "Group=$gid" -p CPUQuota=200% -p MemoryMax=4294967296 -p MemorySwapMax=0 -p TasksMax=128 \
+            -p RuntimeMaxSec=35 -p KillMode=control-group -p NoNewPrivileges=yes \
+            -p CapabilityBoundingSet= -p AmbientCapabilities= -p PrivateNetwork=yes -p PrivateIPC=yes \
+            -p PrivateDevices=yes -p ProtectHome=tmpfs -p ProtectSystem=strict \
+            -p 'TemporaryFileSystem=/run:ro' -p 'TemporaryFileSystem=/dev/shm:ro' \
+            -p "BindPaths=$pts:/dev/pts $scratch/tmp:/tmp $scratch/tmp:/var/tmp" \
+            -p "ReadWritePaths=$scratch /tmp /var/tmp /dev/pts" \
+            -p RestrictAddressFamilies=AF_UNIX -p RestrictSUIDSGID=yes \
+            -p LimitCORE=0 -p LimitMEMLOCK=0 -p LimitNOFILE=64 -p LimitMSGQUEUE=65536 \
+            /usr/bin/env -i PATH=/usr/bin:/bin "HOME=$scratch/home" TMPDIR=/tmp LC_ALL=C /usr/bin/python3 -I -B -c "$script" "$scratch" "$hostnet" "$hostipc" "$hostdev" "$ptsdev" > "$ev/review.json"
+          jq -e '.status=="SYNTHETIC_PRIVATE_PTY_LIMIT_PASS" and .ninth_denied==true and .release_authorized==false' "$ev/review.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: synthetic-private-pty-limit-review
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  synthetic-interactive-aggregate-boundary:
+    # Trusted shell/PTY fixture only. Not an OpenHands or model session.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == 'a306640a0e10d1cf1ea1f2f91f3185b906d3116a' && github.event.pull_request.number == 210 && github.head_ref == 'parallel/fasttrack-integrated-20261127' && github.base_ref == 'parallel/chatgpt-r2-recovery-20261127' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    permissions: {}
+    steps:
+      - name: Test controlling terminal, shared scratch exhaustion and detached child cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          unit="coden-pty-fixture-$GITHUB_RUN_ID.service"
+          pts=""; scratch=""
+          cleanup() {
+            rc=$?
+            trap - EXIT
+            sudo systemctl stop "$unit" >/dev/null 2>&1 || true
+            state="$(sudo systemctl show "$unit" -p ActiveState --value 2>/dev/null || true)"
+            case "$state" in inactive|failed) ;; *) rc=1;; esac
+            printf 'SERVICE_%s\n' "$state" > "$ev/cleanup.txt"
+            cg="/sys/fs/cgroup/system.slice/$unit"
+            if [[ -d "$cg" ]]; then
+              if grep -qx 'populated 0' "$cg/cgroup.events"; then echo CGROUP_EMPTY >> "$ev/cleanup.txt"; else rc=1; fi
+            else
+              echo CGROUP_REMOVED >> "$ev/cleanup.txt"
+            fi
+            for dir in "$pts" "$scratch"; do
+              [[ -n "$dir" ]] || continue
+              if mountpoint -q "$dir"; then sudo umount "$dir" || { rc=1; continue; }; fi
+              sudo rmdir "$dir" || { rc=1; continue; }
+              echo MOUNT_UNMOUNTED_AND_REMOVED >> "$ev/cleanup.txt"
+            done
+            exit "$rc"
+          }
+          trap cleanup EXIT
+          uid="$(id -u nobody)"; gid="$(id -g nobody)"
+          hostnet="$(readlink /proc/self/ns/net)"
+          hostipc="$(readlink /proc/self/ns/ipc)"
+          hostdev="$(stat -c %d /dev/pts)"
+          pts="$(sudo mktemp -d /opt/coden-pty.XXXXXXXX)"
+          scratch="$(sudo mktemp -d /opt/coden-pty-scratch.XXXXXXXX)"
+          sudo mount -t devpts -o "newinstance,max=8,ptmxmode=0666,mode=0620,gid=$gid,nosuid,noexec" devpts "$pts"
+          sudo mount -t tmpfs -o "size=960m,nr_inodes=61440,nosuid,nodev,noexec,mode=0700,uid=$uid,gid=$gid" tmpfs "$scratch"
+          sudo mkdir "$scratch/home" "$scratch/tmp"
+          sudo chown "$uid:$gid" "$scratch/home" "$scratch/tmp"
+          sudo chmod 0700 "$scratch/home" "$scratch/tmp"
+          ptsdev="$(stat -c %d "$pts")"
+          test "$ptsdev" != "$hostdev"
+          script="$(cat <<'PY'
+          import errno,json,os,pty,resource,select,socket,subprocess,sys,time
+          from pathlib import Path
+          scratch,hostnet,hostipc,hostdev,ptsdev=sys.argv[1:]
+          assert os.getuid()!=0 and os.readlink("/proc/self/ns/net")!=hostnet
+          assert os.readlink("/proc/self/ns/ipc")!=hostipc
+          assert sorted(p.name for p in Path("/sys/class/net").iterdir())==["lo"]
+          assert os.stat("/dev/pts").st_dev==int(ptsdev)!=int(hostdev)
+          status=dict(x.split(":",1) for x in Path("/proc/self/status").read_text().splitlines() if ":" in x)
+          assert int(status["CapEff"],16)==0 and status["NoNewPrivs"].strip()=="1"
+          cg=next(x.split(":",2)[2] for x in Path("/proc/self/cgroup").read_text().splitlines() if x.startswith("0::"))
+          c=Path("/sys/fs/cgroup")/cg.lstrip("/")
+          cpu=(c/"cpu.max").read_text().split()
+          assert int(cpu[0])==2*int(cpu[1])
+          assert (c/"memory.max").read_text().strip()=="4294967296"
+          assert (c/"memory.swap.max").read_text().strip()=="0"
+          assert (c/"pids.max").read_text().strip()=="128"
+          assert resource.getrlimit(resource.RLIMIT_NOFILE)==(64,64)
+          v=os.statvfs(scratch)
+          assert v.f_frsize*v.f_blocks==1006632960 and v.f_files==61440
+          assert all(os.stat(p).st_dev==os.stat(scratch).st_dev for p in ("/tmp","/var/tmp",scratch+"/home"))
+          for family in (socket.AF_INET,socket.AF_INET6):
+              try: s=socket.socket(family,socket.SOCK_STREAM)
+              except OSError as e: assert e.errno in (errno.EAFNOSUPPORT,errno.EPERM,errno.EACCES)
+              else: s.close();raise AssertionError("IP socket available")
+          pairs=[]
+          try:
+              for _ in range(8):
+                  a,b=pty.openpty()
+                  pairs.append((a,b))
+                  assert os.fstat(b).st_dev==int(ptsdev)
+              assert len([p for p in Path("/dev/pts").iterdir() if p.name.isdecimal()])==8
+              # Python pty.openpty masks the original kernel errno on fallback.
+              # Direct ptmx allocation captures the actual kernel denial.
+              try: extra=os.open("/dev/pts/ptmx",os.O_RDWR|os.O_NOCTTY|os.O_CLOEXEC)
+              except OSError as e:
+                  assert e.errno==errno.ENOSPC,e
+                  ninth_errno=e.errno
+              else:
+                  os.close(extra)
+                  raise AssertionError("ninth PTY allowed")
+              a,b=pairs.pop()
+              os.close(a);os.close(b)
+              a,b=pty.openpty();pairs.append((a,b))
+              child=subprocess.Popen(["/bin/sh","-c","printf CODEN_PTY_FIXTURE_OK"],stdin=b,stdout=b,stderr=b,start_new_session=True,close_fds=True)
+              try:
+                  assert select.select([a],[],[],3)[0]
+                  assert b"CODEN_PTY_FIXTURE_OK" in os.read(a,1024)
+                  assert child.wait(timeout=3)==0
+              finally:
+                  if child.poll() is None: child.kill();child.wait(timeout=3)
+          finally:
+              for a,b in pairs: os.close(a);os.close(b)
+          assert not any(p.name.isdecimal() for p in Path("/dev/pts").iterdir())
+          # Real controlling terminal and bidirectional line exchange, not
+          # merely a child whose stdout happens to be wired to a PTY.
+          pid,master=pty.fork()
+          if pid==0:
+              try:
+                  assert all(os.isatty(fd) for fd in (0,1,2))
+                  assert os.tcgetpgrp(0)==os.getpgrp() and os.getsid(0)==os.getpid()
+                  os.write(1,b"TTY_READY\n")
+                  assert os.read(0,128)==b"CODEN_INPUT\n"
+                  os.write(1,b"TTY_EXCHANGE_OK\n")
+                  os._exit(0)
+              except BaseException:
+                  os._exit(1)
+          def receive(marker):
+              data=b""
+              deadline=time.monotonic()+4
+              while marker not in data and len(data)<4096:
+                  left=deadline-time.monotonic()
+                  assert left>0 and select.select([master],[],[],left)[0]
+                  data+=os.read(master,4096-len(data))
+              assert marker in data
+          reaped=False
+          try:
+              receive(b"TTY_READY")
+              assert os.write(master,b"CODEN_INPUT\n")==12
+              receive(b"TTY_EXCHANGE_OK")
+              deadline=time.monotonic()+4
+              while True:
+                  got,status_child=os.waitpid(pid,os.WNOHANG)
+                  if got:
+                      reaped=True
+                      assert os.waitstatus_to_exitcode(status_child)==0
+                      break
+                  assert time.monotonic()<deadline
+                  time.sleep(.02)
+          finally:
+              if not reaped:
+                  os.kill(pid,9)
+                  os.waitpid(pid,0)
+              os.close(master)
+          assert not any(p.name.isdecimal() for p in Path("/dev/pts").iterdir())
+          # HOME and both temp aliases share the same physical tmpfs budget.
+          a_path=Path(scratch)/"home"/"payload"
+          b_path=Path("/tmp")/"extra"
+          with a_path.open("xb") as a, b_path.open("xb",buffering=0) as b:
+              st=os.statvfs(scratch)
+              allocated=st.f_frsize*st.f_bavail
+              assert 0<allocated<=1006632960
+              os.posix_fallocate(a.fileno(),0,allocated)
+              assert os.statvfs("/var/tmp").f_bavail==0
+              try: b.write(b"x")
+              except OSError as e: assert e.errno==errno.ENOSPC
+              else: raise AssertionError("shared byte limit bypassed")
+          a_path.unlink();b_path.unlink()
+          assert os.statvfs(scratch).f_bavail>0
+          # Exhaust exact inode quota with bounded empty-file fixtures.
+          # Check the other alias cannot allocate, then reclaim one inode.
+          fd=os.open("/tmp",os.O_RDONLY|os.O_DIRECTORY)
+          count=0
+          limit=os.statvfs(scratch).f_favail
+          assert 0<limit<=61440
+          try:
+              for index in range(limit):
+                  leaf=f"inode-{index}"
+                  try: new=os.open(leaf,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600,dir_fd=fd)
+                  except OSError as e:
+                      assert e.errno==errno.ENOSPC
+                      break
+                  os.close(new);count+=1
+              assert os.statvfs(scratch).f_favail==0
+              recovered=Path(scratch)/"home"/"recovered"
+              try: recovered.touch(exist_ok=False)
+              except OSError as e: assert e.errno==errno.ENOSPC
+              else: raise AssertionError("shared inode limit bypassed")
+              assert count>0
+              count-=1
+              os.unlink(f"inode-{count}",dir_fd=fd)
+              recovered.touch(exist_ok=False)
+              assert os.statvfs("/var/tmp").f_favail==0
+              recovered.unlink()
+          finally:
+              for index in range(count): os.unlink(f"inode-{index}",dir_fd=fd)
+              os.close(fd)
+          assert os.statvfs(scratch).f_favail==limit
+          # A trusted detached descendant must still be killed by the
+          # service's control-group cleanup when the main fixture exits.
+          r,w=os.pipe()
+          detached=os.fork()
+          if detached==0:
+              os.close(r)
+              os.setsid()
+              for x in (0,1,2): os.close(x)
+              os.write(w,b"1")
+              os.close(w)
+              time.sleep(120)
+              os._exit(0)
+          os.close(w)
+          assert select.select([r],[],[],3)[0] and os.read(r,1)==b"1"
+          os.close(r)
+          assert os.getsid(detached)==detached
+          print(json.dumps(dict(status="SYNTHETIC_INTERACTIVE_AGGREGATE_PASS",private_devpts=True,pty_limit=8,ninth_denied=True,ninth_errno=ninth_errno,reallocation_verified=True,child_output_verified=True,controlling_terminal_verified=True,bidirectional_exchange_verified=True,shared_byte_enospc=True,allocated_scratch_bytes=allocated,shared_inode_enospc=True,inodes_allocated=limit,inodes_reclaimed=True,detached_child_created=True,pty_fds_closed=True,scratch_bytes=1006632960,scratch_inodes=61440,network_denied=True,cgroup_caps_verified=True,aggregate_auxiliary_resources_proven=False,real_agent_executed=False,runtime_authorized=False,release_authorized=False),sort_keys=True))
+          PY
+          )"
+          timeout --kill-after=5s 80s sudo systemd-run --unit="$unit" --wait --pipe --quiet \
+            -p "User=$uid" -p "Group=$gid" -p CPUQuota=200% -p MemoryMax=4294967296 -p MemorySwapMax=0 -p TasksMax=128 \
+            -p RuntimeMaxSec=65 -p KillMode=control-group -p NoNewPrivileges=yes \
+            -p CapabilityBoundingSet= -p AmbientCapabilities= -p PrivateNetwork=yes -p PrivateIPC=yes \
+            -p PrivateDevices=yes -p ProtectHome=tmpfs -p ProtectSystem=strict \
+            -p 'TemporaryFileSystem=/run:ro' -p 'TemporaryFileSystem=/dev/shm:ro' \
+            -p "BindPaths=$pts:/dev/pts $scratch/tmp:/tmp $scratch/tmp:/var/tmp" \
+            -p "ReadWritePaths=$scratch /tmp /var/tmp /dev/pts" \
+            -p RestrictAddressFamilies=AF_UNIX -p RestrictSUIDSGID=yes \
+            -p LimitCORE=0 -p LimitMEMLOCK=0 -p LimitNOFILE=64 -p LimitMSGQUEUE=65536 \
+            /usr/bin/env -i PATH=/usr/bin:/bin "HOME=$scratch/home" TMPDIR=/tmp LC_ALL=C /usr/bin/python3 -I -B -c "$script" "$scratch" "$hostnet" "$hostipc" "$hostdev" "$ptsdev" > "$ev/review.json"
+          jq -e '.status=="SYNTHETIC_INTERACTIVE_AGGREGATE_PASS" and .ninth_denied==true and .release_authorized==false' "$ev/review.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: synthetic-interactive-aggregate-review
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+
+  r2-retain-four-build-inputs-quarantine:
+    # Operator requested provision of these four exact files for review.
+    # Static byte retention only: no extraction, execution, installation,
+    # independent admission, source build, or use of candidate tools.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == 'd7a5e8dfba560796415a0e03fcc7db5fe24e9405' && github.event.pull_request.number == 210 && github.head_ref == 'parallel/fasttrack-integrated-20261127' && github.base_ref == 'parallel/chatgpt-r2-recovery-20261127' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    permissions: {}
+    steps:
+      - name: Retain four exact public publisher artifacts as unadmitted bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 quarantine
+          python3 -I -B - <<'PY'
+          import concurrent.futures, hashlib, json, os, pathlib, urllib.request, urllib.parse
+          pins = [
+            ("cpython-3.13.15+20260814-x86_64-unknown-linux-gnu-install_only.tar.gz",118484282,"45816a2653b47a6cc48d8ada4ea1185758a4c2db389d012b31e0205e5ccb548b","https://github.com/astral-sh/python-build-standalone/releases/download/20260814/cpython-3.13.15%2B20260814-x86_64-unknown-linux-gnu-install_only.tar.gz"),
+            ("setuptools-84.2.1-py3-none-any.whl",876263,"ca140b45d5325a9478f880e351484f62fef15f336462e449ca0c03c873d589c2","https://files.pythonhosted.org/packages/ef/55/6dc6d6bb953bdfc52519a0059592c52b6e3b8ad51cf8256dffceb55b0610/setuptools-84.2.1-py3-none-any.whl"),
+            ("wheel-0.46.3-py3-none-any.whl",30557,"4b399d56c9d9338230118d705d9737a2a468ccca63d5e813e2a4fc7815d8bc4d","https://files.pythonhosted.org/packages/87/22/b76d483683216dde3d67cba61fb2444be8d5be289bf628c13fc0fd90e5f9/wheel-0.46.3-py3-none-any.whl"),
+            ("packaging-26.3-py3-none-any.whl",129956,"d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c","https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl")]
+          root=pathlib.Path("quarantine")
+          class RestrictedRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,req,fp,code,msg,headers,newurl):
+                  old=urllib.parse.urlsplit(req.full_url)
+                  new=urllib.parse.urlsplit(newurl)
+                  if old.netloc!="github.com" or new.scheme!="https" or new.netloc not in ("release-assets.githubusercontent.com","objects.githubusercontent.com") or new.fragment:
+                      raise ValueError("unapproved artifact redirect")
+                  return super().redirect_request(req,fp,code,msg,headers,newurl)
+          def collect(pin):
+              name,size,digest,url=pin
+              part=root/(name+".part")
+              target=root/name
+              count=0
+              hashobj=hashlib.sha256()
+              try:
+                  opener=urllib.request.build_opener(RestrictedRedirect(), urllib.request.ProxyHandler({}))
+                  with opener.open(urllib.request.Request(url,headers={"User-Agent":"CODEN-static-byte-review","Accept-Encoding":"identity"}),timeout=30) as response, part.open("xb") as out:
+                      assert response.status==200
+                      assert response.headers.get("Content-Encoding","identity")=="identity"
+                      if response.headers.get("Content-Length") is not None:
+                          assert int(response.headers["Content-Length"])==size
+                      while True:
+                          block=response.read(min(1024*1024,size-count+1))
+                          if not block: break
+                          count+=len(block)
+                          if count>size: raise ValueError("artifact exceeds pinned size")
+                          hashobj.update(block)
+                          out.write(block)
+                      out.flush()
+                      os.fsync(out.fileno())
+                  if count!=size or hashobj.hexdigest()!=digest:
+                      raise ValueError("artifact identity mismatch")
+                  with part.open("rb") as check:
+                      assert hashlib.file_digest(check,"sha256").hexdigest()==digest
+                  part.rename(target)
+                  return {"filename":name,"bytes":count,"sha256":digest,"status":"QUARANTINED_HASH_MATCH"}
+              except Exception as e:
+                  part.unlink(missing_ok=True)
+                  return {"filename":name,"status":"BLOCKED","error_type":type(e).__name__}
+          with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+              rows=list(executor.map(collect,pins))
+          matched=[r for r in rows if r["status"]=="QUARANTINED_HASH_MATCH"]
+          report={"status":"FOUR_INPUTS_QUARANTINED_REVIEW_ONLY" if len(matched)==4 else "PARTIAL_QUARANTINE_BLOCKED","records":rows,"matched":len(matched),"expected":4,"matched_bytes":sum(r["bytes"] for r in matched),"static_retention_only":True,"independent_review":False,"artifact_admitted":False,"extracted":False,"executed":False,"installation_authorized":False,"build_authorized":False,"release_authorized":False}
+          (root/"review.json").write_text(json.dumps(report,indent=2,sort_keys=True)+"\n")
+          print(json.dumps(report,sort_keys=True))
+          assert len(matched)==4
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-four-inputs-QUARANTINE-NOT-ADMITTED
+          path: quarantine/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7

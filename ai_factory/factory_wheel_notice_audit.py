@@ -376,7 +376,7 @@ def _member_blocks(reader, e, span, budget):
         raise ValueError("wheel member size or CRC mismatch")
 
 
-def _inspect_record(raw, digest, budget, *, native_session=None):
+def _inspect_record(raw, digest, budget, *, native_session=None, root_contract=None, root_review=False):
     budget._admit(len(raw))
     reader = _MeteredArchive(raw,budget)
     read_before = budget.archive_read_bytes
@@ -458,6 +458,18 @@ def _inspect_record(raw, digest, budget, *, native_session=None):
         if actual != expected:
             raise ValueError("METADATA RECORD hash mismatch")
         distribution = _distribution_identity(metadata_bytes, prefix)
+        root_requirement_count = (_review_root_metadata(metadata_bytes, distribution["name"], root_contract)
+                                  if root_contract is not None else None)
+        generated = {}
+        if root_review:
+            # Capture only small generated metadata members during the
+            # existing metered RECORD pass, never a second decompression.
+            for suffix in ("WHEEL", "entry_points.txt"):
+                member = prefix + suffix
+                if member in files:
+                    if files[member].file_size > 64 * 1024:
+                        raise ValueError("root generated metadata size limit")
+                    generated[member] = bytearray()
         receipt = {}
         for e in entries:
             name = e.filename
@@ -475,6 +487,8 @@ def _inspect_record(raw, digest, budget, *, native_session=None):
             native = None
             try:
                 for block in blocks:
+                    if name in generated:
+                        generated[name].extend(block)
                     sha.update(block)
                     if verifier is not sha:
                         verifier.update(block)
@@ -506,7 +520,9 @@ def _inspect_record(raw, digest, budget, *, native_session=None):
                     row["native"] = native
                 budget._retain_evidence(name,row)
                 receipt[name] = row
-    return {"record_verified": True, "wheel_sha256": digest,
+    console_scripts = (_review_root_generated_metadata(metadata_bytes, distribution["name"], prefix, generated)
+                       if root_review else None)
+    result = {"record_verified": True, "wheel_sha256": digest,
             "distribution": distribution, "compressed_bytes": len(raw),
             "expanded_bytes": budget.expanded_bytes - before, "files": receipt,
             "archive_read_bytes": budget.archive_read_bytes-read_before,
@@ -516,20 +532,28 @@ def _inspect_record(raw, digest, budget, *, native_session=None):
             "evidence_bytes": budget.evidence_bytes-evidence_before,
             "legacy_signature_files": sorted(signatures & set(files)),
             "legacy_signatures_verified": False, "release_authorized": False}
+    if root_requirement_count is not None:
+        result["metadata_requirement_count"] = root_requirement_count
+    if console_scripts is not None:
+        result["root_generated_metadata_verified"] = True
+        result["console_script_count"] = console_scripts
+    return result
 
 
-def inspect_wheel(raw, digest, *, budget=None):
+def inspect_wheel(raw, digest, *, budget=None, _root_contract=None, _root_review=False):
     """Use explicit shared budget for strict RECORD evidence; never install.
 
     No-budget callers retain the historical notice-only interface. Those
     receipts cannot satisfy the new R2 admission gate.
     """
     if budget is None:
+        if _root_contract is not None or _root_review:
+            raise ValueError("root metadata review requires strict budget")
         return _inspect_legacy_notices(raw, digest)
     if type(budget) is not WheelBudget or type(raw) is not bytes:
         raise ValueError("strict wheel audit requires bytes and WheelBudget")
     try:
-        return _inspect_record(raw, digest, budget)
+        return _inspect_record(raw, digest, budget, root_contract=_root_contract, root_review=_root_review)
     except BaseException as exc:
         budget._failed = True
         if isinstance(exc, (zipfile.BadZipFile, zlib.error, csv.Error, UnicodeError, struct.error)):
@@ -752,27 +776,232 @@ def inspect_r2_static_batch(candidates, *, scratch):
     return {"receipt": receipt, "comparison": comparison}
 
 
+# Exact upstream source notice at 077f3fad6d31cd852be5c87176e0a93c3b446126.
+# Git blob b0bd86a6335a564bd3766666bebbf014fd6a8013, 1079 bytes.
+ROOT_NOTICE_SHA256 = "14a9b631c658eee682c6c2973525fbdf808c3457176bc47513052c559cc5ce86"
+_ROOT_OUTPUTS = frozenset(("openhands-sdk", "openhands-tools",
+                           "openhands-workspace", "openhands-agent-server"))
+
+
+# Exact R2 lock, not a caller-selected dependency policy.
+ROOT_METADATA_LOCK_SHA256 = "93447ba7c43d7c8bffe1bb66d99abad1eaffcbd0d11fe1ef5bb776c7155998a3"
+
+
+def _root_requirement_key(value):
+    """Canonicalize only the restricted requirement grammar present in R2.
+
+    Reject arbitrary URLs, compound markers, and other spellings outside
+    the reviewed subset rather than guessing PEP 508 equivalence.
+    """
+    if type(value) is not str or len(value) > 1024 or not value.isascii():
+        raise ValueError("unsupported root requirement")
+    value = re.sub(r"\r?\n[ \t]+", " ", value)
+    requirement, sep, marker = value.partition(";")
+    match = re.fullmatch(
+        r"[ \t]*([A-Za-z0-9][A-Za-z0-9._-]*)(?:[ \t]*\[([A-Za-z0-9._,\- \t]+)\])?[ \t]*([^;\r\n]*)",
+        requirement)
+    if not match:
+        raise ValueError("unsupported root requirement")
+    name, extras, specifiers = match.groups()
+    normalize = lambda v: re.sub(r"[-_.]+", "-", v).lower()
+    extra_keys = []
+    if extras:
+        for item in extras.split(","):
+            item = item.strip(" \t")
+            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", item):
+                raise ValueError("invalid requirement extra")
+            extra_keys.append(normalize(item))
+    spec_keys = []
+    specifiers = specifiers.strip(" \t")
+    if specifiers:
+        for spec in specifiers.split(","):
+            part = re.fullmatch(r"[ \t]*(>=|<=|==|!=|~=|>|<)[ \t]*([0-9][A-Za-z0-9.*!+_-]*)[ \t]*", spec)
+            if not part:
+                raise ValueError("unsupported root version constraint")
+            spec_keys.append(part[1] + part[2])
+    marker_extra = ""
+    if sep:
+        part = re.fullmatch(r"""[ \t]*extra[ \t]*==[ \t]*(['"])([A-Za-z0-9][A-Za-z0-9._-]*)\1[ \t]*""", marker)
+        if not part:
+            raise ValueError("unsupported root requirement marker")
+        marker_extra = normalize(part[2])
+    if len(set(extra_keys)) != len(extra_keys) or len(set(spec_keys)) != len(spec_keys):
+        raise ValueError("duplicate requirement component")
+    return normalize(name), tuple(sorted(extra_keys)), tuple(sorted(spec_keys)), marker_extra
+
+
+def _root_metadata_contract(lock_bytes):
+    if (type(lock_bytes) is not bytes or len(lock_bytes) > 4 * 1024**2
+            or hashlib.sha256(lock_bytes).hexdigest() != ROOT_METADATA_LOCK_SHA256):
+        raise ValueError("root metadata lock digest mismatch")
+    data = tomllib.loads(lock_bytes.decode("utf-8"))
+    contract = {}
+    for pkg in data["package"]:
+        name = pkg["name"]
+        if name not in _ROOT_OUTPUTS:
+            continue
+        if name in contract or pkg["version"] != "1.63.1":
+            raise ValueError("unexpected root in lock")
+        metadata = pkg["metadata"]
+        expected = []
+        for row in metadata["requires-dist"]:
+            if set(row) - {"name", "extras", "specifier", "marker", "editable"}:
+                raise ValueError("unsupported lock requirement")
+            if "editable" in row and (row["editable"] != row["name"] or row["name"] not in _ROOT_OUTPUTS):
+                raise ValueError("unexpected editable reference")
+            requirement = row["name"]
+            if row.get("extras"):
+                requirement += "[" + ",".join(row["extras"]) + "]"
+            requirement += row.get("specifier", "")
+            if "marker" in row:
+                requirement += "; " + row["marker"]
+            expected.append(_root_requirement_key(requirement))
+        extras = metadata["provides-extras"]
+        if len(set(expected)) != len(expected) or len(set(extras)) != len(extras):
+            raise ValueError("duplicate root lock metadata")
+        contract[name] = (tuple(sorted(expected)), tuple(sorted(extras)))
+    if set(contract) != _ROOT_OUTPUTS:
+        raise ValueError("incomplete root metadata lock")
+    return contract
+
+
+def _review_root_metadata(raw, name, contract):
+    if name not in contract:
+        raise ValueError("unexpected root metadata identity")
+    parsed = BytesHeaderParser().parsebytes(raw)
+    requirements = [_root_requirement_key(v) for v in parsed.get_all("Requires-Dist", [])]
+    extras = parsed.get_all("Provides-Extra", [])
+    if (parsed.defects or len(set(requirements)) != len(requirements)
+            or len(set(extras)) != len(extras)
+            or (tuple(sorted(requirements)), tuple(sorted(extras))) != contract[name]):
+        raise ValueError("root metadata requirements or extras mismatch")
+    return len(requirements)
+
+
+def _review_root_generated_metadata(metadata, name, prefix, generated):
+    """Strict proposed output profile, not a general wheel metadata validator."""
+    meta = BytesHeaderParser().parsebytes(metadata)
+    if (meta.defects or meta.get_all("Metadata-Version", []) != ["2.4"]
+            or meta.get_all("Requires-Python", []) != [">=3.12"]
+            or meta.get_all("License-Expression", []) != ["MIT"]
+            or meta.get_all("License-File", []) != ["LICENSE"]
+            or meta.get_all("License", [])):
+        raise ValueError("unexpected root generated METADATA")
+    wheel = BytesHeaderParser().parsebytes(bytes(generated[prefix + "WHEEL"]))
+    if (wheel.defects or wheel.get_payload().strip()
+            or wheel.get_all("Wheel-Version", []) != ["1.0"]
+            or wheel.get_all("Root-Is-Purelib", []) != ["true"]
+            or wheel.get_all("Tag", []) != ["py3-none-any"]
+            or wheel.get_all("Build", [])):
+        raise ValueError("unexpected root WHEEL metadata")
+    entry = generated.get(prefix + "entry_points.txt")
+    if name == "openhands-agent-server":
+        # Narrow setuptools output grammar; refuse extra groups/options,
+        # duplicate entry points, interpolation and alternate targets.
+        if entry is None or not re.fullmatch(
+                rb"\[console_scripts\]\r?\nagent-server[ \t]*=[ \t]*openhands\.agent_server\.__main__:main\r?\n(?:\r?\n)?",
+                bytes(entry)):
+            raise ValueError("unexpected root server entry point")
+        return 1
+    if entry is not None:
+        raise ValueError("unexpected root entry points")
+    return 0
+
+
+def inspect_root_wheel_outputs(candidates, *, lock_bytes=None):
+    """Review exactly four generated roots without installing or executing them.
+
+    Reuse the strict shared archive budget (8 MiB compressed, 128 MiB
+    expanded and logical I/O, 16 MiB evidence). A larger valid output or
+    different notice layout requires separate review, not a fallback.
+    Caller supplies already-collected bytes; hashes are measured candidate
+    identities, not independently authorized build outputs. This does not
+    establish source equivalence, resolved dependency closure, native absence
+    beyond the ELF/extension checks, or legal/security approval. Supplying
+    the exact pinned lock bytes additionally compares METADATA declarations.
+    """
+    if type(candidates) not in (list, tuple) or len(candidates) != len(_ROOT_OUTPUTS):
+        raise ValueError("exact four root wheel outputs required")
+    contract = _root_metadata_contract(lock_bytes) if lock_bytes is not None else None
+    budget = WheelBudget()
+    receipts = {}
+    digests = set()
+    for pair in candidates:
+        if type(pair) not in (tuple, list) or len(pair) != 2:
+            raise ValueError("invalid root wheel output")
+        raw, digest = pair
+        if (type(raw) is not bytes or type(digest) is not str
+                or not re.fullmatch(r"[0-9a-f]{64}", digest)
+                or digest in digests):
+            raise ValueError("invalid or duplicate root output digest")
+        receipt = inspect_wheel(raw, digest, budget=budget, _root_contract=contract, _root_review=True)
+        name = receipt["distribution"]["name"]
+        version = receipt["distribution"]["version"]
+        if name not in _ROOT_OUTPUTS or name in receipts or version != "1.63.1":
+            raise ValueError("unexpected root output distribution")
+        files = receipt["files"]
+        prefix = name.replace("-", "_") + "-" + version + ".dist-info/"
+        # The four exact upstream package discovery patterns are disjoint
+        # PEP 420 namespace subtrees. Refuse .data relocation, shared
+        # namespace files, foreign metadata and ambiguous installation paths.
+        # The strict scanner already rejects per-wheel aliases and file
+        # ancestor collisions. This is NOT a pip install simulation or a
+        # collision check against the 126 external wheels or generated scripts.
+        package_prefix = "openhands/" + name.removeprefix("openhands-").replace("-", "_") + "/"
+        if (not any(path.startswith(package_prefix) for path in files)
+                or any(not path.startswith((prefix, package_prefix)) for path in files)):
+            raise ValueError("unexpected root installation path")
+        notice = files.get(prefix + "licenses/LICENSE")
+        if (notice is None or notice["sha256"] != ROOT_NOTICE_SHA256
+                or notice["record_hash_verified"] is not True):
+            raise ValueError("missing or mismatched root source license notice")
+        if receipt["legacy_signature_files"] or any(
+                row["elf_magic"] or re.search(r"\.(?:so(?:\.[0-9]+)*|pyd|dll|dylib)$", path, re.I)
+                for path, row in files.items()):
+            raise ValueError("unexpected native member or legacy signature")
+        digests.add(digest)
+        receipts[name] = receipt
+    if set(receipts) != _ROOT_OUTPUTS:
+        raise ValueError("incomplete root output set")
+    return {"status": "ROOT_WHEEL_OUTPUT_REVIEW_ONLY", "root_count": 4,
+            "wheels": [receipts[name] for name in sorted(receipts)],
+            "compressed_bytes": budget.compressed_bytes,
+            "expanded_bytes": budget.expanded_bytes,
+            "logical_io_bytes": budget.logical_io_bytes,
+            "evidence_bytes": budget.evidence_bytes,
+            "record_verified": True, "source_notice_match": True,
+            "root_install_paths_disjoint": True,
+            "root_generated_metadata_verified": True,
+            "console_script_count": sum(r["console_script_count"] for r in receipts.values()),
+            "external_install_paths_verified": False,
+            "source_to_wheel_verified": False,
+            "metadata_dependencies_verified": contract is not None,
+            "metadata_requirement_count": sum(r.get("metadata_requirement_count", 0) for r in receipts.values()),
+            "license_approved": False,
+            "security_approved": False, "build_authorized": False,
+            "installation_authorized": False, "import_authorized": False,
+            "release_authorized": False}
+
+
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
         raise ValueError('redirect denied')
 
 
 def main():
-    archive = Path('docs/evidence/openhands-077f3fad/fixed-source-provenance.zip')
-    with zipfile.ZipFile(archive) as z:
-        raw = z.read('resolved.lock')
-    if hashlib.sha256(raw).hexdigest() != LOCK_SHA:
-        raise ValueError('lock digest mismatch')
-    results = []
-    output = Path('wheel-review.json')
-    for name, version, digest, url in select_candidates(tomllib.loads(raw.decode()), TARGETS):
-        with build_opener(NoRedirect()).open(url, timeout=30) as response:
-            wheel = response.read(CAP + 1)
-        evidence = inspect_wheel(wheel, digest)
-        results.append(dict(name=name, version=version, wheel_sha256=digest, source=url, evidence=evidence))
-    output.write_text(json.dumps(dict(status='awaiting_human_review', selected_installed_wheels_verified=False, license_admission_approved=False, release_authorized=False, candidates=results), indent=2) + '\n')
-    print(f'Collected {len(results)} hash-verified candidate wheel evidence records; review required.')
+    """Fail closed: the historical network collection is not R2 admission.
+
+    Retained historical workflows are evidence at their original commits.
+    The current candidate must never acquire packages implicitly. The strict
+    inspect_r2_static_batch API remains available for a separately admitted
+    caller supplying exact, already-acquired bytes inside an approved boundary.
+    """
+    print(json.dumps({"status": "BLOCKED", "reason": "separate_r2_acquisition_required",
+                      "package_acquisition_authorized": False,
+                      "installation_authorized": False, "release_authorized": False},
+                     sort_keys=True))
+    return 1
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())

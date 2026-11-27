@@ -1,0 +1,153 @@
+diff --git a/openhands-agent-server/openhands/agent_server/agent-server.spec b/openhands-agent-server/openhands/agent_server/agent-server.spec
+index 9cb330d..db92aa7 100644
+--- a/openhands-agent-server/openhands/agent_server/agent-server.spec
++++ b/openhands-agent-server/openhands/agent_server/agent-server.spec
+@@ -150,7 +150,6 @@ a = Analysis(
+         # OpenHands Tools templates
+ 
+         # OpenHands Tools browser recording JS files
+-        *collect_data_files("openhands.tools.browser_use", includes=["js/*.js"]),
+ 
+         # Built-in subagent definitions consumed by register_builtins_agents()
+         # at agent-server startup. Without these, the registry stays empty in
+@@ -172,7 +171,7 @@ a = Analysis(
+     hiddenimports=[
+         # Pull all OpenHands modules from the namespace (PEP 420 safe once pathex is correct)
+         *collect_submodules("openhands.sdk"),
+-        *collect_submodules("openhands.tools"),
++        *collect_submodules("openhands.tools", filter=lambda name: not any(name == prefix or name.startswith(prefix + ".") for prefix in ('openhands.tools.browser_use', 'openhands.tools.tom_consult', 'openhands.tools.utils.timeout'))),
+         *collect_submodules("openhands.workspace"),
+         *collect_submodules("openhands.agent_server"),
+ 
+@@ -201,6 +200,15 @@ a = Analysis(
+     hooksconfig={},
+     runtime_hooks=[],
+     excludes=[
++        'openhands.tools.browser_use',
++        'openhands.tools.tom_consult',
++        'openhands.tools.utils.timeout',
++        'browser_use',
++        'browser_use_sdk',
++        'func_timeout',
++        'lmnr',
++        'lmnr_claude_code_proxy',
++        'tom_swe',
+         # Trim size
+         "tkinter",
+         "matplotlib",
+diff --git a/openhands-agent-server/openhands/agent_server/config.py b/openhands-agent-server/openhands/agent_server/config.py
+index a5cddce..5ed3466 100644
+--- a/openhands-agent-server/openhands/agent_server/config.py
++++ b/openhands-agent-server/openhands/agent_server/config.py
+@@ -424,7 +424,7 @@ class Config(BaseModel):
+         ),
+     )
+     enable_browser: bool = Field(
+-        default=True,
++        default=False,
+         description=(
+             "Whether conversations may get the browser tool set. When false, "
+             "launches leave it out even where chromium is available."
+@@ -533,6 +533,13 @@ class Config(BaseModel):
+     model_config: ClassVar[ConfigDict] = {"frozen": True}
+     _secret_key_was_blank: bool = PrivateAttr(default=False)
+ 
++    @field_validator("enable_browser")
++    @classmethod
++    def reject_coding_browser(cls, value: bool) -> bool:
++        if value:
++            raise ValueError("Browser is unavailable in the CODEN coding profile")
++        return value
++
+     @field_validator("session_api_keys")
+     @classmethod
+     def _drop_empty_session_api_keys(cls, value: list[str]) -> list[str]:
+diff --git a/openhands-agent-server/openhands/agent_server/tool_router.py b/openhands-agent-server/openhands/agent_server/tool_router.py
+index c79975f..5a28e3d 100644
+--- a/openhands-agent-server/openhands/agent_server/tool_router.py
++++ b/openhands-agent-server/openhands/agent_server/tool_router.py
+@@ -42,9 +42,9 @@ from openhands.tools.preset.planning import register_planning_tools
+ 
+ 
+ tool_router = APIRouter(prefix="/tools", tags=["Tools"])
+-register_default_tools(enable_browser=True)
+-register_builtins_agents(enable_browser=True)
+-register_gemini_tools(enable_browser=True)
++register_default_tools(enable_browser=False)
++register_builtins_agents(enable_browser=False)
++register_gemini_tools(enable_browser=False)
+ register_planning_tools()
+ 
+ 
+diff --git a/openhands-sdk/openhands/sdk/observability/laminar.py b/openhands-sdk/openhands/sdk/observability/laminar.py
+index d167cc3..b229132 100644
+--- a/openhands-sdk/openhands/sdk/observability/laminar.py
++++ b/openhands-sdk/openhands/sdk/observability/laminar.py
+@@ -352,21 +352,9 @@ def record_tool_result(
+ 
+ 
+ def should_enable_observability() -> bool:
+-    global _observability_enabled
+-    if _observability_enabled:
+-        return True
+-    if any(get_env(key) for key in _OBSERVABILITY_ENV_KEYS):
+-        _observability_enabled = True
+-        return True
+-    # Only probe Laminar.is_initialized() if the user has already imported
+-    # lmnr themselves — otherwise importing it here defeats the purpose of
+-    # lazy loading.
+-    if "lmnr" in sys.modules:
+-        from lmnr import Laminar
+-
+-        if Laminar.is_initialized():
+-            _observability_enabled = True
+-            return True
++    # Laminar unavailable; local operator audit remains independent.
++    if any(get_env(key) for key in _OBSERVABILITY_ENV_KEYS) or 'lmnr' in sys.modules:
++        raise RuntimeError('Laminar unavailable in CODEN coding profile')
+     return False
+ 
+ 
+diff --git a/openhands-sdk/pyproject.toml b/openhands-sdk/pyproject.toml
+index 1304f01..92a0a21 100644
+--- a/openhands-sdk/pyproject.toml
++++ b/openhands-sdk/pyproject.toml
+@@ -23,7 +23,6 @@ dependencies = [
+     "python-json-logger>=4.2.0",
+     "tenacity>=9.1.2",
+     "websockets>=12",
+-    "lmnr>=0.7.60,<0.8.0",
+     "tree-sitter>=0.26.1",
+     "tree-sitter-bash>=0.25",
+ ]
+diff --git a/openhands-tools/pyproject.toml b/openhands-tools/pyproject.toml
+index a3dcf37..aa80db6 100644
+--- a/openhands-tools/pyproject.toml
++++ b/openhands-tools/pyproject.toml
+@@ -15,11 +15,11 @@ dependencies = [
+     "libtmux>=0.62.0",
+     "psutil>=7.2.2",
+     "pydantic>=2.14.3",
+-    "browser-use>=0.8.0",
+-    "func-timeout>=4.3.5",
+-    "tom-swe>=1.0.3",
+ ]
+ 
++[project.optional-dependencies]
++tom-consult = ["tom-swe>=1.0.3"]
++
+ [project.urls]
+ Source = "https://github.com/OpenHands/software-agent-sdk"
+ Homepage = "https://github.com/OpenHands/software-agent-sdk"
+diff --git a/pyproject.toml b/pyproject.toml
+index 89afbb8..f3132ca 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -4,6 +4,7 @@ members = ["openhands-sdk", "openhands-tools", "openhands-workspace", "openhands
+ 
+ # Security: Apply workspace-wide dependency guardrails.
+ [tool.uv]
++environments = ["sys_platform == 'linux' and platform_machine == 'x86_64' and python_version == '3.13'"]
+ exclude-newer = "7 days"  # Avoid packages uploaded in the last 7 days.
+ exclude-newer-package = { lmnr = "2026-08-23T00:00:00Z", certifi = "2026-10-21T00:00:00Z", pip = "2026-10-21T00:00:00Z" }  # lmnr: allow 0.7.60 streaming-token fix through the 7-day guardrail; certifi/pip: allow eMudhra CA distrust fix (GHSA-6q48-6c7w-9gw2) through the 7-day guardrail
+ constraint-dependencies = [
