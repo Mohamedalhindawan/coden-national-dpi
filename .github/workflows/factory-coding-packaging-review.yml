@@ -3132,3 +3132,80 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+  r2-full-source-index-verification:
+    # Static Git object/index verification only. No upstream checkout, imports,
+    # hooks, build backend, interpreter, wheel acquisition or agent execution.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '5c171bccf0a347594151016eb77559acd86b0d79' && github.event.pull_request.number == 210 && github.head_ref == 'parallel/fasttrack-integrated-20261127' && github.base_ref == 'parallel/chatgpt-r2-recovery-20261127' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 5c171bccf0a347594151016eb77559acd86b0d79
+          persist-credentials: false
+      - name: Verify pinned source and both patch trees using Git index only
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          original="$PWD/docs/evidence/openhands-077f3fad/RETAINED_R2_SOURCE_PATCH.patch"
+          amendment="$PWD/docs/evidence/openhands-077f3fad/PROPOSED_R2_NOTICE_AMENDMENT.patch"
+          echo "0609700a143b3fc8b0439f7ff2c74b75aa41c220fa9ba4294db35bac54b8f70f  $original" | sha256sum -c -
+          echo "9cc84596a0c04e261aaf30b0b59c3a5ae3c2e26854ac158fbdee512cddb7a655  $amendment" | sha256sum -c -
+          work="$(mktemp -d "$RUNNER_TEMP/coden-index.XXXXXXXX")"
+          cleanup() {
+            rc=$?
+            trap - EXIT
+            rm -rf -- "$work"
+            if test -e "$work"; then rc=1; else echo WORK_DIRECTORY_REMOVED > "$ev/cleanup.txt"; fi
+            exit "$rc"
+          }
+          trap cleanup EXIT
+          export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0 GIT_CONFIG_COUNT=0
+          git init -q --template= "$work"
+          cd "$work"
+          git -c core.hooksPath=/dev/null -c fetch.fsckObjects=true -c protocol.file.allow=never -c protocol.ext.allow=never fetch --depth=1 --no-tags --no-recurse-submodules https://github.com/OpenHands/software-agent-sdk.git 077f3fad6d31cd852be5c87176e0a93c3b446126
+          test "$(git rev-parse FETCH_HEAD)" = 077f3fad6d31cd852be5c87176e0a93c3b446126
+          base="$(git rev-parse FETCH_HEAD^{tree})"
+          test "$base" = 012b6a2fccff37b3df9416d746eee26037219049
+          git read-tree "$base"
+          test "$(git write-tree)" = "$base"
+          test "$(git ls-files | wc -l)" -eq 2297
+          git apply --cached --check "$original"
+          git apply --cached "$original"
+          r2="$(git write-tree)"
+          test "$r2" = 5a974f15a38a6f972c5cc021b45980f14a0fdbc3
+          git diff-tree --no-commit-id -r --name-status "$base" "$r2" > "$ev/r2-changes.txt"
+          test "$(wc -l < "$ev/r2-changes.txt")" -eq 7
+          git apply --cached --check "$amendment"
+          git apply --cached "$amendment"
+          combined="$(git write-tree)"
+          test "$combined" = 02271a017d25ff4c3f3dc31adaf772fde176c46f
+          test "$(git ls-files | wc -l)" -eq 2301
+          git diff-tree --no-commit-id -r --name-status "$r2" "$combined" > "$ev/notice-changes.txt"
+          test "$(wc -l < "$ev/notice-changes.txt")" -eq 8
+          for root in openhands-sdk openhands-tools openhands-workspace openhands-agent-server; do
+            test "$(git rev-parse "$combined:$root/LICENSE")" = b0bd86a6335a564bd3766666bebbf014fd6a8013
+          done
+          git apply --cached --reverse --check "$amendment"
+          git apply --cached --reverse "$amendment"
+          test "$(git write-tree)" = "$r2"
+          git apply --cached --reverse --check "$original"
+          git apply --cached --reverse "$original"
+          test "$(git write-tree)" = "$base"
+          # No upstream files checked out; only trusted Git parsed source objects.
+          test "$(find . -mindepth 1 -maxdepth 1 ! -name .git | wc -l)" -eq 0
+          jq -n --arg upstream "$(git rev-parse FETCH_HEAD)" --arg base "$base" --arg r2 "$r2" --arg combined "$combined" --arg runner_sha "$GITHUB_SHA" '{status:"R2_FULL_SOURCE_INDEX_VERIFIED_REVIEW_ONLY",upstream_commit:$upstream,original_tree:$base,r2_tree:$r2,proposed_combined_tree:$combined,original_files:2297,proposed_files:2301,r2_changes:7,notice_changes:8,reverse_verified:true,source_checkout_performed:false,source_code_executed:false,amendment_adopted:false,build_authorized:false,release_authorized:false,runner_sha:$runner_sha}' > "$ev/review.json"
+          cd "$ev"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-full-source-index-review
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
