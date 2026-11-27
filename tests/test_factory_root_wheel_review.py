@@ -12,11 +12,11 @@ ROOTS = ("openhands-sdk", "openhands-tools", "openhands-workspace", "openhands-a
 NOTICE = b"trusted synthetic notice"
 
 
-def candidate(name, version="1.63.1", notice=NOTICE, extra=None, headers=""):
+def candidate(name, version="1.63.1", notice=NOTICE, extra=None, headers="", payload_path=None):
     prefix = name.replace("-", "_") + "-" + version + ".dist-info/"
     files = {prefix + "METADATA": f"Name: {name}\nVersion: {version}\n{headers}".encode(),
              prefix + "WHEEL": b"Wheel-Version: 1.0\nTag: py3-none-any\n",
-             "openhands/fixture.py": b"# synthetic only\n"}
+             (payload_path or "openhands/" + name.removeprefix("openhands-").replace("-", "_") + "/fixture.py"): b"# synthetic only\n"}
     if notice is not None:
         files[prefix + "licenses/LICENSE"] = notice
     if extra is not None:
@@ -91,3 +91,20 @@ class RootWheelReviewTest(unittest.TestCase):
                     audit.inspect_root_wheel_outputs(rows[:3]+[candidate(ROOTS[-1], headers=headers)], lock_bytes=lock)
             with self.assertRaises(ValueError):
                 audit.inspect_root_wheel_outputs(rows, lock_bytes=lock+b"\n")
+
+
+    def test_root_install_paths_do_not_overlap(self):
+        result = audit.inspect_root_wheel_outputs(self.rows)
+        self.assertTrue(result["root_install_paths_disjoint"])
+        self.assertFalse(result["external_install_paths_verified"])
+        self.assertFalse(result["installation_authorized"])
+
+    def test_reject_cross_root_file_and_ancestor_collisions(self):
+        for path in ("openhands/sdk/fixture.py", "openhands/sdk",
+                     "openhands/sdk/fixture.py/nested.py",
+                     "OpenHands/sdk/other.py",
+                     "openhands_agent_server-1.63.1.data/purelib/openhands/sdk/fixture.py",
+                     "outside_root.py"):
+            with self.subTest(path=path), self.assertRaises(ValueError):
+                audit.inspect_root_wheel_outputs(
+                    self.rows[:3]+[candidate(ROOTS[-1], payload_path=path)])
