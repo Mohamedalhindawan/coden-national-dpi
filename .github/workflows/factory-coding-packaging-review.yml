@@ -3733,3 +3733,70 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
+
+  r2-build-tool-attestation-evidence:
+    # Public PEP 740 metadata only for exact already-retained build tools.
+    if: github.event.repository.private == false && github.event.action == 'opened' && github.head_ref == 'review/build-tool-attestation-evidence-20261128' && github.base_ref == 'fix/self001-generator-test-intake-20261128' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - name: Retain public provenance for the exact three build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/python3 -I -B - <<'PY'
+          import base64,datetime,hashlib,json,urllib.error,urllib.request
+          from pathlib import Path
+          rows=[
+              ("setuptools","84.2.1","setuptools-84.2.1-py3-none-any.whl","ca140b45d5325a9478f880e351484f62fef15f336462e449ca0c03c873d589c2","pypa/setuptools"),
+              ("wheel","0.46.3","wheel-0.46.3-py3-none-any.whl","4b399d56c9d9338230118d705d9737a2a468ccca63d5e813e2a4fc7815d8bc4d","pypa/wheel"),
+              ("packaging","26.3","packaging-26.3-py3-none-any.whl","d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c","pypa/packaging"),
+          ]
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*a,**kw): return None
+          opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+          out=Path("evidence")
+          results=[]
+          for name,version,filename,digest,repo in rows:
+              url=f"https://pypi.org/integrity/{name}/{version}/{filename}/provenance"
+              row=dict(name=name,version=version,filename=filename,wheel_sha256=digest,expected_repository=repo,url=url,status="BLOCKED",signature_verified=False,compiled_membership_verified=False)
+              try:
+                  req=urllib.request.Request(url,headers={"Accept":"application/json","Accept-Encoding":"identity"})
+                  with opener.open(req,timeout=8) as response:
+                      assert response.headers.get("Content-Encoding","identity")=="identity"
+                      raw=response.read(2*1024**2+1)
+                  if len(raw)>2*1024**2:raise ValueError("metadata cap")
+                  doc=json.loads(raw)
+                  assert isinstance(doc,dict) and isinstance(doc.get("attestation_bundles"),list)
+                  statements=[]
+                  for bundle in doc["attestation_bundles"]:
+                      publisher=bundle.get("publisher",{})
+                      for attestation in bundle["attestations"]:
+                          statement_raw=base64.b64decode(attestation["envelope"]["statement"],validate=True)
+                          statement=json.loads(statement_raw)
+                          subjects=statement.get("subject",[])
+                          statements.append(dict(predicate_type=statement.get("predicateType"),subject_digest_match=any(x.get("name")==filename and x.get("digest",{}).get("sha256")==digest for x in subjects),publisher=publisher,statement_sha256=hashlib.sha256(statement_raw).hexdigest()))
+                  row.update(status="PROVENANCE_METADATA_COLLECTED",response_sha256=hashlib.sha256(raw).hexdigest(),bytes=len(raw),statements=statements)
+                  (out/(name+".provenance.json")).write_bytes(raw)
+              except urllib.error.HTTPError as exc:
+                  row.update(status="NOT_PUBLISHED_AT_ENDPOINT" if exc.code==404 else "HTTP_BLOCKED",http_status=exc.code)
+              except Exception as exc:
+                  row.update(error_type=type(exc).__name__)
+              results.append(row)
+          receipt=dict(status="PUBLIC_PROVENANCE_DISCOVERY_ONLY",as_of_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),rows=results,distribution_downloaded=False,signature_verified=False,installation_authorized=False,release_authorized=False)
+          (out/"provenance-review.json").write_text(json.dumps(receipt,sort_keys=True,indent=2)+"\n")
+          print(json.dumps([(r["name"],r["status"],len(r.get("statements",[]))) for r in results]))
+          # A 404 is a completed discovery, not an authenticity decision.
+          if any(r["status"] not in ("PROVENANCE_METADATA_COLLECTED","NOT_PUBLISHED_AT_ENDPOINT") for r in results):raise SystemExit(1)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-build-tool-attestation-evidence
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
