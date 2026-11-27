@@ -3209,3 +3209,98 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+  r2-retain-original-source:
+    # Static public source objects only, never build, checkout, or execute them.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == 'fda4875f541ca044c09e0ed1c2550c98cf44d541' && github.event.pull_request.number == 210 && github.head_ref == 'parallel/fasttrack-integrated-20261127' && github.base_ref == 'parallel/chatgpt-r2-recovery-20261127' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Retain exact original source tree as data for independent review
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          work="$(mktemp -d "$RUNNER_TEMP/coden-source.XXXXXXXX")"
+          cleanup() {
+            rc=$?
+            trap - EXIT
+            rm -rf -- "$work"
+            if test -e "$work"; then rc=1; else echo WORK_DIRECTORY_REMOVED > "$ev/cleanup.txt"; fi
+            exit "$rc"
+          }
+          trap cleanup EXIT
+          export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_COUNT=0 GIT_TERMINAL_PROMPT=0
+          git init -q --template= "$work"
+          cd "$work"
+          git -c core.hooksPath=/dev/null -c fetch.fsckObjects=true -c protocol.file.allow=never -c protocol.ext.allow=never fetch --depth=1 --no-tags --no-recurse-submodules https://github.com/OpenHands/software-agent-sdk.git 077f3fad6d31cd852be5c87176e0a93c3b446126
+          test "$(git rev-parse FETCH_HEAD)" = 077f3fad6d31cd852be5c87176e0a93c3b446126
+          test "$(git rev-parse FETCH_HEAD^{tree})" = 012b6a2fccff37b3df9416d746eee26037219049
+          python3 -I -B - "$ev" <<'PY'
+          import gzip, hashlib, io, json, os, subprocess, sys, tarfile
+          from pathlib import Path, PurePosixPath
+          out=Path(sys.argv[1])
+          tree="012b6a2fccff37b3df9416d746eee26037219049"
+          raw=subprocess.check_output(["git","ls-tree","-r","-z",tree])
+          rows={}
+          for item in raw.rstrip(b"\0").split(b"\0"):
+              meta,path=item.split(b"\t",1)
+              mode,kind,digest=meta.decode("ascii").split()
+              name=path.decode("utf-8")
+              assert kind=="blob" and mode in ("100644","100755")
+              assert name and not name.startswith("/") and "\\" not in name
+              assert all(p not in ("",".","..",".git") for p in name.split("/"))
+              assert not any(ord(c)<32 or ord(c)==127 for c in name)
+              assert name not in rows
+              rows[name]=(mode,digest)
+          assert len(rows)==2297
+          assert len({n.casefold() for n in rows})==len(rows)
+          archive=out/"openhands-source-077f3fad-REVIEW_ONLY.tar.gz"
+          total=0
+          def blobhash(data):
+              return hashlib.sha1(b"blob "+str(len(data)).encode()+b"\0"+data).hexdigest()
+          with subprocess.Popen(["git","cat-file","--batch"],stdin=subprocess.PIPE,stdout=subprocess.PIPE) as proc:
+              with archive.open("xb") as f, gzip.GzipFile(filename="",mode="wb",fileobj=f,mtime=0,compresslevel=6) as gz, tarfile.open(fileobj=gz,mode="w|",format=tarfile.PAX_FORMAT) as tar:
+                  for name,(mode,digest) in sorted(rows.items()):
+                      proc.stdin.write((digest+"\n").encode());proc.stdin.flush()
+                      oid,kind,size=proc.stdout.readline().decode("ascii").split()
+                      size=int(size)
+                      assert oid==digest and kind=="blob" and 0<=size<=16*1024**2
+                      total+=size
+                      assert total<=64*1024**2
+                      data=proc.stdout.read(size)
+                      assert len(data)==size and proc.stdout.read(1)==b"\n" and blobhash(data)==digest
+                      entry=tarfile.TarInfo("source/"+name)
+                      entry.size=size;entry.mode=0o755 if mode=="100755" else 0o644
+                      entry.uid=entry.gid=entry.mtime=0
+                      tar.addfile(entry,io.BytesIO(data))
+              proc.stdin.close()
+              assert proc.wait(timeout=10)==0
+          assert total==28593051
+          seen=set()
+          with tarfile.open(archive,"r:gz") as tar:
+              for m in tar:
+                  assert m.isfile() and m.name.startswith("source/")
+                  name=m.name.removeprefix("source/")
+                  assert name in rows and name not in seen
+                  mode,digest=rows[name]
+                  assert m.mode==(0o755 if mode=="100755" else 0o644)
+                  assert blobhash(tar.extractfile(m).read())==digest
+                  seen.add(name)
+          assert seen==set(rows)
+          with archive.open("rb") as f: digest=hashlib.file_digest(f,"sha256").hexdigest()
+          receipt=dict(status="ORIGINAL_SOURCE_BYTES_RETAINED_REVIEW_ONLY",upstream_commit="077f3fad6d31cd852be5c87176e0a93c3b446126",source_tree=tree,files=len(rows),raw_blob_bytes=total,archive_bytes=archive.stat().st_size,archive_sha256=digest,all_archive_members_match_git_blobs=True,source_checkout_performed=False,source_code_executed=False,patch_applied=False,license_approved=False,build_authorized=False,release_authorized=False)
+          (out/"review.json").write_text(json.dumps(receipt,indent=2,sort_keys=True)+"\n")
+          PY
+          test "$(find . -mindepth 1 -maxdepth 1 ! -name .git | wc -l)" -eq 0
+          cd "$ev"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-original-source-review-only
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
