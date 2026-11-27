@@ -376,7 +376,7 @@ def _member_blocks(reader, e, span, budget):
         raise ValueError("wheel member size or CRC mismatch")
 
 
-def _inspect_record(raw, digest, budget, *, native_session=None, root_contract=None):
+def _inspect_record(raw, digest, budget, *, native_session=None, root_contract=None, root_review=False):
     budget._admit(len(raw))
     reader = _MeteredArchive(raw,budget)
     read_before = budget.archive_read_bytes
@@ -460,6 +460,16 @@ def _inspect_record(raw, digest, budget, *, native_session=None, root_contract=N
         distribution = _distribution_identity(metadata_bytes, prefix)
         root_requirement_count = (_review_root_metadata(metadata_bytes, distribution["name"], root_contract)
                                   if root_contract is not None else None)
+        generated = {}
+        if root_review:
+            # Capture only small generated metadata members during the
+            # existing metered RECORD pass, never a second decompression.
+            for suffix in ("WHEEL", "entry_points.txt"):
+                member = prefix + suffix
+                if member in files:
+                    if files[member].file_size > 64 * 1024:
+                        raise ValueError("root generated metadata size limit")
+                    generated[member] = bytearray()
         receipt = {}
         for e in entries:
             name = e.filename
@@ -477,6 +487,8 @@ def _inspect_record(raw, digest, budget, *, native_session=None, root_contract=N
             native = None
             try:
                 for block in blocks:
+                    if name in generated:
+                        generated[name].extend(block)
                     sha.update(block)
                     if verifier is not sha:
                         verifier.update(block)
@@ -508,6 +520,8 @@ def _inspect_record(raw, digest, budget, *, native_session=None, root_contract=N
                     row["native"] = native
                 budget._retain_evidence(name,row)
                 receipt[name] = row
+    console_scripts = (_review_root_generated_metadata(metadata_bytes, distribution["name"], prefix, generated)
+                       if root_review else None)
     result = {"record_verified": True, "wheel_sha256": digest,
             "distribution": distribution, "compressed_bytes": len(raw),
             "expanded_bytes": budget.expanded_bytes - before, "files": receipt,
@@ -520,23 +534,26 @@ def _inspect_record(raw, digest, budget, *, native_session=None, root_contract=N
             "legacy_signatures_verified": False, "release_authorized": False}
     if root_requirement_count is not None:
         result["metadata_requirement_count"] = root_requirement_count
+    if console_scripts is not None:
+        result["root_generated_metadata_verified"] = True
+        result["console_script_count"] = console_scripts
     return result
 
 
-def inspect_wheel(raw, digest, *, budget=None, _root_contract=None):
+def inspect_wheel(raw, digest, *, budget=None, _root_contract=None, _root_review=False):
     """Use explicit shared budget for strict RECORD evidence; never install.
 
     No-budget callers retain the historical notice-only interface. Those
     receipts cannot satisfy the new R2 admission gate.
     """
     if budget is None:
-        if _root_contract is not None:
+        if _root_contract is not None or _root_review:
             raise ValueError("root metadata review requires strict budget")
         return _inspect_legacy_notices(raw, digest)
     if type(budget) is not WheelBudget or type(raw) is not bytes:
         raise ValueError("strict wheel audit requires bytes and WheelBudget")
     try:
-        return _inspect_record(raw, digest, budget, root_contract=_root_contract)
+        return _inspect_record(raw, digest, budget, root_contract=_root_contract, root_review=_root_review)
     except BaseException as exc:
         budget._failed = True
         if isinstance(exc, (zipfile.BadZipFile, zlib.error, csv.Error, UnicodeError, struct.error)):
@@ -861,6 +878,36 @@ def _review_root_metadata(raw, name, contract):
     return len(requirements)
 
 
+def _review_root_generated_metadata(metadata, name, prefix, generated):
+    """Strict proposed output profile, not a general wheel metadata validator."""
+    meta = BytesHeaderParser().parsebytes(metadata)
+    if (meta.defects or meta.get_all("Metadata-Version", []) != ["2.4"]
+            or meta.get_all("Requires-Python", []) != [">=3.12"]
+            or meta.get_all("License-Expression", []) != ["MIT"]
+            or meta.get_all("License-File", []) != ["LICENSE"]
+            or meta.get_all("License", [])):
+        raise ValueError("unexpected root generated METADATA")
+    wheel = BytesHeaderParser().parsebytes(bytes(generated[prefix + "WHEEL"]))
+    if (wheel.defects or wheel.get_payload().strip()
+            or wheel.get_all("Wheel-Version", []) != ["1.0"]
+            or wheel.get_all("Root-Is-Purelib", []) != ["true"]
+            or wheel.get_all("Tag", []) != ["py3-none-any"]
+            or wheel.get_all("Build", [])):
+        raise ValueError("unexpected root WHEEL metadata")
+    entry = generated.get(prefix + "entry_points.txt")
+    if name == "openhands-agent-server":
+        # Narrow setuptools output grammar; refuse extra groups/options,
+        # duplicate entry points, interpolation and alternate targets.
+        if entry is None or not re.fullmatch(
+                rb"\[console_scripts\]\r?\nagent-server[ \t]*=[ \t]*openhands\.agent_server\.__main__:main\r?\n(?:\r?\n)?",
+                bytes(entry)):
+            raise ValueError("unexpected root server entry point")
+        return 1
+    if entry is not None:
+        raise ValueError("unexpected root entry points")
+    return 0
+
+
 def inspect_root_wheel_outputs(candidates, *, lock_bytes=None):
     """Review exactly four generated roots without installing or executing them.
 
@@ -887,7 +934,7 @@ def inspect_root_wheel_outputs(candidates, *, lock_bytes=None):
                 or not re.fullmatch(r"[0-9a-f]{64}", digest)
                 or digest in digests):
             raise ValueError("invalid or duplicate root output digest")
-        receipt = inspect_wheel(raw, digest, budget=budget, _root_contract=contract)
+        receipt = inspect_wheel(raw, digest, budget=budget, _root_contract=contract, _root_review=True)
         name = receipt["distribution"]["name"]
         version = receipt["distribution"]["version"]
         if name not in _ROOT_OUTPUTS or name in receipts or version != "1.63.1":
@@ -924,6 +971,8 @@ def inspect_root_wheel_outputs(candidates, *, lock_bytes=None):
             "evidence_bytes": budget.evidence_bytes,
             "record_verified": True, "source_notice_match": True,
             "root_install_paths_disjoint": True,
+            "root_generated_metadata_verified": True,
+            "console_script_count": sum(r["console_script_count"] for r in receipts.values()),
             "external_install_paths_verified": False,
             "source_to_wheel_verified": False,
             "metadata_dependencies_verified": contract is not None,
