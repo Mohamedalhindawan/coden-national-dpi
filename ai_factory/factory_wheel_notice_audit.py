@@ -894,6 +894,16 @@ def inspect_root_wheel_outputs(candidates, *, lock_bytes=None):
             raise ValueError("unexpected root output distribution")
         files = receipt["files"]
         prefix = name.replace("-", "_") + "-" + version + ".dist-info/"
+        # The four exact upstream package discovery patterns are disjoint
+        # PEP 420 namespace subtrees. Refuse .data relocation, shared
+        # namespace files, foreign metadata and ambiguous installation paths.
+        # The strict scanner already rejects per-wheel aliases and file
+        # ancestor collisions. This is NOT a pip install simulation or a
+        # collision check against the 126 external wheels or generated scripts.
+        package_prefix = "openhands/" + name.removeprefix("openhands-").replace("-", "_") + "/"
+        if (not any(path.startswith(package_prefix) for path in files)
+                or any(not path.startswith((prefix, package_prefix)) for path in files)):
+            raise ValueError("unexpected root installation path")
         notice = files.get(prefix + "licenses/LICENSE")
         if (notice is None or notice["sha256"] != ROOT_NOTICE_SHA256
                 or notice["record_hash_verified"] is not True):
@@ -913,6 +923,8 @@ def inspect_root_wheel_outputs(candidates, *, lock_bytes=None):
             "logical_io_bytes": budget.logical_io_bytes,
             "evidence_bytes": budget.evidence_bytes,
             "record_verified": True, "source_notice_match": True,
+            "root_install_paths_disjoint": True,
+            "external_install_paths_verified": False,
             "source_to_wheel_verified": False,
             "metadata_dependencies_verified": contract is not None,
             "metadata_requirement_count": sum(r.get("metadata_requirement_count", 0) for r in receipts.values()),
