@@ -3800,3 +3800,53 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+
+  r2-sigstore-trust-chain-evidence:
+    # Only public signed metadata. No executable distribution or target execution.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '43cecd89c6d23411751ed44f16f629c0c89225b5' && github.event.pull_request.number == 212 && github.head_ref == 'review/build-tool-attestation-evidence-20261128' && github.base_ref == 'fix/self001-generator-test-intake-20261128' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions: {}
+    steps:
+      - name: Retain exact public trust metadata blobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/python3 -I -B - <<'PY'
+          import base64, concurrent.futures, hashlib, json, pathlib, urllib.request
+          pins = [
+            ('13.root.json','sigstore/sigstore-python','a50bcb2335c80981d517128589e776beca62811d'),
+            ('14.root.json','sigstore/root-signing','93e19f3a081b7a5ff7ae9bba941558f923ddc143'),
+            ('15.root.json','sigstore/root-signing','55115df1025e64a6be12548bb1a1fa09451fc7f4'),
+            ('16.root.json','sigstore/root-signing','bc73a8b9bca114d357e4374324d78ec467080b6b'),
+            ('targets.json','sigstore/root-signing','5ad0d090f7f08da0031a10ef57c0de21a25b3244'),
+            ('snapshot.json','sigstore/root-signing','07325e4a220964f52265f2ce5b5d4ccdb0d78565'),
+            ('timestamp.json','sigstore/root-signing','24f95adf782c316603e6a6bccc2f1fb846231e8d'),
+            ('trusted_root.json','sigstore/root-signing','effb0a19e6a0b3f69b3f0a2c72b5c2a02a0ddeea')]
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*a,**kw): return None
+          def collect(pin):
+              name,repo,blob=pin
+              opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+              url=f'https://api.github.com/repos/{repo}/git/blobs/{blob}'
+              with opener.open(urllib.request.Request(url,headers={'Accept':'application/vnd.github+json','Accept-Encoding':'identity','User-Agent':'CODEN-static-trust-review'}),timeout=12) as response:
+                  raw=response.read(262145)
+              if len(raw)>262144: raise ValueError('response bound')
+              doc=json.loads(raw)
+              if doc['encoding']!='base64': raise ValueError('encoding')
+              data=base64.b64decode(''.join(doc['content'].split()),validate=True)
+              if len(data)>131072 or hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()!=blob or doc['sha']!=blob: raise ValueError('blob identity')
+              pathlib.Path('evidence',name).write_bytes(data)
+              return dict(filename=name,blob=blob,sha256=hashlib.sha256(data).hexdigest(),bytes=len(data))
+          with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+              records=list(pool.map(collect,pins))
+          pathlib.Path('evidence/review.json').write_text(json.dumps(dict(records=records,retention_only=True,tuf_verified=False,build_authorized=False,release_authorized=False),indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r2-sigstore-trust-chain-evidence
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
