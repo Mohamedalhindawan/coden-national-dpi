@@ -83,3 +83,19 @@ class SelfDevelopmentReviewTests(unittest.TestCase):
                 r = self.assess({"tests/test_factory_queue_alerts.py": candidate})
                 self.assertEqual(r["status"], "blocked")
                 self.assertFalse(r["execution_authorized"])
+
+
+    def test_rejects_generator_tests_that_unittest_does_not_execute(self):
+        for body in (b"        yield 1\n",
+                     b"        yield from ()\n"):
+            candidate = self.original + b"\n    def test_generated(self):\n" + body
+            with self.subTest(body=body):
+                result = self.assess({"tests/test_factory_queue_alerts.py": candidate})
+                self.assertEqual(result["status"], "blocked")
+                self.assertFalse(result["execution_authorized"])
+
+    def test_rejects_ast_valid_but_uncompilable_test(self):
+        candidate = self.original + b"\n    def test_generated(self):\n        break\n"
+        result = self.assess({"tests/test_factory_queue_alerts.py": candidate})
+        self.assertEqual(result["status"], "blocked")
+        self.assertFalse(result["execution_authorized"])

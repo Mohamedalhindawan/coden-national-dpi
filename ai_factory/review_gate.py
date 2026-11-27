@@ -77,6 +77,8 @@ def assess_self_development(*, task_id, base_commit, expected_base_commit,
         prefix, additions = new.body[:len(old.body)], new.body[len(old.body):]
         if not 1 <= len(additions) <= 4:
             return blocked
+        # Compile only: AST parsing alone accepts invalid control flow.
+        compile(after, "<self-development-review>", "exec", dont_inherit=True)
         # Comparing the entire old class, including existing method bodies,
         # also rejects suffixes that change the last existing statement.
         new.body = prefix
@@ -92,6 +94,9 @@ def assess_self_development(*, task_id, base_commit, expected_base_commit,
                     or not re.fullmatch(r"test_[a-z][a-z0-9_]{0,79}", method.name)
                     or method.name in names or method.decorator_list
                     or method.returns is not None
+                    # Generator tests can return without running assertions.
+                    or any(isinstance(node, (ast.Yield, ast.YieldFrom))
+                           for node in ast.walk(method))
                     or getattr(method, "type_params", [])
                     or ast.dump(method.args) != ast.dump(ast.parse("def f(self): pass").body[0].args)):
                 return blocked
