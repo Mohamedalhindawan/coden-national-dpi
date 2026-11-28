@@ -3979,3 +3979,215 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+  synthetic-four-root-wheel-build:
+    # Trusted generated fixture build only using preinstalled runner tools; no target distribution or agent.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == 'e5e4a63a7c1837c4b32aaa869b58d339db2f8e89' && github.event.pull_request.number == 212 && github.head_ref == 'review/build-tool-attestation-evidence-20261128' && github.base_ref == 'fix/self001-generator-test-intake-20261128' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Build four generated fixture distributions twice within the existing noninteractive boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          ev="$PWD/evidence"
+          unit="coden-exec-scratch-$GITHUB_RUN_ID.service"
+          store=""; scratch=""
+          cleanup() {
+            status=$?
+            trap - EXIT
+            sudo systemctl stop "$unit" >/dev/null 2>&1 || true
+            state="$(sudo systemctl show "$unit" -p ActiveState --value 2>/dev/null || true)"
+            case "$state" in inactive|failed) ;; *) status=1;; esac
+            printf 'SERVICE_%s\n' "$state" > "$ev/cleanup.txt"
+            for dir in "$scratch" "$store"; do
+              [[ -n "$dir" ]] || continue
+              if mountpoint -q "$dir"; then
+                sudo umount "$dir" || { status=1; continue; }
+              fi
+              sudo rmdir "$dir" || { status=1; continue; }
+              echo MOUNT_UNMOUNTED_AND_REMOVED >> "$ev/cleanup.txt"
+            done
+            exit "$status"
+          }
+          trap cleanup EXIT
+          uid="$(id -u nobody)"; gid="$(id -g nobody)"
+          host_ns="$(readlink /proc/self/ns/net)"
+          host_ipc="$(readlink /proc/self/ns/ipc)"
+          store="$(sudo mktemp -d /opt/coden-split-input.XXXXXXXX)"
+          scratch="$(sudo mktemp -d /opt/coden-split-scratch.XXXXXXXX)"
+          sudo mount -t tmpfs -o "size=512m,nr_inodes=8192,nosuid,nodev,noexec,mode=0755,uid=$(id -u),gid=$(id -g)" tmpfs "$store"
+          sudo mount -t tmpfs -o "size=960m,nr_inodes=61440,nosuid,nodev,exec,mode=0700,uid=$uid,gid=$gid" tmpfs "$scratch"
+          sudo mkdir "$scratch/home" "$scratch/tmp"
+          sudo chown "$uid:$gid" "$scratch/home" "$scratch/tmp"
+          sudo chmod 0700 "$scratch/home" "$scratch/tmp"
+          # Dense opaque bytes matching the rounded retained input estimate.
+          head -c 4096 /dev/zero > "$store/input.bin"
+          chmod 0444 "$store/input.bin"
+          printf '#!/bin/sh\nprintf "CODEN_FIXTURE_OK\\n"\n' > "$store/probe.sh"
+          chmod 0555 "$store/probe.sh"
+          sha256sum "$store/input.bin" | awk '{print $1}' > "$ev/input-before.sha256"
+          sudo mount -o remount,ro,nosuid,nodev,noexec "$store"
+          py=""
+          for candidate in /usr/bin/python3 /opt/hostedtoolcache/Python/3.12.*/x64/bin/python3 /opt/hostedtoolcache/Python/3.13.*/x64/bin/python3; do
+            if [[ -x "$candidate" ]] && "$candidate" -I -B -c 'import setuptools.build_meta; import wheel' >/dev/null 2>&1; then py="$candidate"; break; fi
+          done
+          test -n "$py"
+          script="$(cat <<'PY'
+          import ctypes,errno,hashlib,json,os,resource,socket,subprocess,sys
+          from pathlib import Path
+          root,scratch,host=Path(sys.argv[1]),Path(sys.argv[2]),sys.argv[3]
+          a,b=os.statvfs(root),os.statvfs(scratch)
+          assert a.f_frsize*a.f_blocks==536870912 and a.f_flag&os.ST_RDONLY
+          assert b.f_frsize*b.f_blocks==1006632960 and b.f_files==61440
+          assert a.f_flag&os.ST_NOEXEC and not b.f_flag&os.ST_NOEXEC
+          assert os.stat(root).st_dev!=os.stat(scratch).st_dev
+          assert all(os.stat(p).st_dev==os.stat(scratch).st_dev for p in (scratch/"home",scratch/"tmp",Path("/tmp"),Path("/var/tmp")))
+          assert os.getuid()!=0 and set(os.getgroups())<={os.getgid()}
+          st=dict(x.split(":",1) for x in Path("/proc/self/status").read_text().splitlines() if ":" in x)
+          assert int(st["CapEff"],16)==0 and st["NoNewPrivs"].strip()=="1"
+          assert os.readlink("/proc/self/ns/net")!=host
+          assert os.readlink("/proc/self/ns/ipc")!=sys.argv[4]
+          assert sorted(p.name for p in Path("/sys/class/net").iterdir())==["lo"]
+          assert len(Path("/proc/self/net/route").read_text().splitlines())==1
+          for name,expected in (("RLIMIT_CORE",0),("RLIMIT_MEMLOCK",0),("RLIMIT_NOFILE",256),("RLIMIT_MSGQUEUE",65536)):
+              assert resource.getrlimit(getattr(resource,name))==(expected,expected)
+          denials=[]
+          for family in (socket.AF_INET,socket.AF_INET6):
+              try:
+                  s=socket.socket(family,socket.SOCK_STREAM)
+              except OSError as exc:
+                  assert exc.errno in (errno.EAFNOSUPPORT,errno.EPERM,errno.EACCES)
+                  denials.append("network-family-"+str(family))
+              else:
+                  s.close(); raise AssertionError("unexpected IP socket")
+          libc=ctypes.CDLL(None,use_errno=True)
+          for name,args,remove in (("shmget",(0,4096,0o600),"shmctl"),("msgget",(0,0o600),"msgctl"),("semget",(0,1,0o600),"semctl")):
+              ctypes.set_errno(0)
+              result=getattr(libc,name)(*args)
+              if result>=0:
+                  if name=="semget": getattr(libc,remove)(result,0,0)
+                  else: getattr(libc,remove)(result,0,None)
+                  raise AssertionError("unexpected System V IPC allocation")
+              assert ctypes.get_errno() in (errno.EPERM,errno.EACCES,errno.ENOSYS)
+              denials.append(name)
+          for path in ("/dev/shm/coden-aux-fixture","/run/coden-aux-fixture"):
+              try: fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+              except OSError as exc:
+                  assert exc.errno in (errno.EROFS,errno.EACCES,errno.EPERM)
+                  denials.append(path)
+              else:
+                  os.close(fd); os.unlink(path); raise AssertionError("auxiliary write allowed")
+          assert not any(os.path.lexists(x) for x in ("/run/docker.sock","/var/run/docker.sock","/run/podman/podman.sock"))
+          cg=next(x.split(":",2)[2] for x in Path("/proc/self/cgroup").read_text().splitlines() if x.startswith("0::"))
+          p=Path("/sys/fs/cgroup")/cg.lstrip("/")
+          cpu=(p/"cpu.max").read_text().split()
+          assert int(cpu[0])==2*int(cpu[1]) and (p/"memory.max").read_text().strip()=="4294967296" and (p/"pids.max").read_text().strip()=="128" and (p/"memory.swap.max").read_text().strip()=="0"
+          # Noninteractive build only: block PTY allocation; no interactive agent tools.
+          for path in ("/dev/ptmx","/dev/pts/ptmx"):
+              try: fd=os.open(path,os.O_RDWR|os.O_NOCTTY|os.O_NONBLOCK)
+              except OSError as exc:
+                  assert exc.errno in (errno.ENOENT,errno.EACCES,errno.EPERM,errno.ENODEV)
+              else:
+                  os.close(fd); raise AssertionError("PTY allocation unexpectedly allowed")
+          try: subprocess.run([str(root/"probe.sh")],check=True,capture_output=True,timeout=3)
+          except PermissionError as exc:
+              assert exc.errno==errno.EACCES and exc.filename==str(root/"probe.sh"),exc
+          else: raise AssertionError("execution from immutable staging allowed")
+          # Explicitly exercise anonymous subprocess pipes; other IPC stays blocked.
+          readfd,writefd=os.pipe()
+          try:
+              assert os.write(writefd,b"ok")==2 and os.read(readfd,2)==b"ok"
+          finally:
+              os.close(readfd); os.close(writefd)
+          executable=scratch/"home"/"probe.sh"
+          executable.write_bytes((root/"probe.sh").read_bytes())
+          executable.chmod(0o700)
+          child=subprocess.run([str(executable)],check=True,capture_output=True,timeout=3)
+          assert child.stdout==b"CODEN_FIXTURE_OK\n"
+          for path,mode in ((root/"input.bin","ab"),(root/"new.bin","xb")):
+              try:
+                  with path.open(mode) as f: f.write(b"x")
+              except OSError as exc: assert exc.errno in (errno.EROFS,errno.EACCES,errno.EPERM)
+              else: raise AssertionError("read-only input modified")
+          with (root/"input.bin").open("rb") as f: digest=hashlib.file_digest(f,"sha256").hexdigest()
+          # Actual PEP 517 build of trusted generated fixture sources; no target artifacts.
+          import base64,csv,io,zipfile
+          from importlib.metadata import version
+          import setuptools, wheel
+          root=scratch/"home"/"builds";root.mkdir()
+          results=[];negative=0
+          def verify(raw,package):
+              with zipfile.ZipFile(io.BytesIO(raw)) as z:
+                  assert z.testzip() is None
+                  prefix=package+"-1.0.0.dist-info/"
+                  names=z.namelist()
+                  assert len(set(names))==len(names)
+                  assert set(names)=={package+"/__init__.py",prefix+"METADATA",prefix+"WHEEL",prefix+"RECORD",prefix+"top_level.txt"}
+                  rows=list(csv.reader(io.StringIO(z.read(prefix+"RECORD").decode())))
+                  assert len(rows)==len(names) and {r[0] for r in rows}==set(names)
+                  for n,h,size in rows:
+                      if n==prefix+"RECORD": assert not h and not size
+                      else:
+                          data=z.read(n)
+                          assert size==str(len(data)) and h=="sha256="+base64.urlsafe_b64encode(hashlib.sha256(data).digest()).decode().rstrip("=")
+                  assert z.read(package+"/__init__.py")==b"VALUE = 42\n"
+              return hashlib.sha256(raw).hexdigest()
+          for name in ("sdk","tools","workspace","server"):
+              package="coden_fixture_"+name
+              hashes=[]
+              for run in (1,2):
+                  work=root/f"{name}-{run}";work.mkdir()
+                  (work/package).mkdir();(work/package/"__init__.py").write_text("VALUE = 42\n")
+                  (work/"pyproject.toml").write_text('[build-system]\nrequires=["setuptools", "wheel"]\nbuild-backend="setuptools.build_meta"\n[project]\nname="'+package.replace("_","-")+'"\nversion="1.0.0"\n[tool.setuptools]\npackages=["'+package+'"]\n')
+                  out=work/"dist";out.mkdir()
+                  env={"PATH":"/usr/bin:/bin","HOME":str(scratch/"home"),"TMPDIR":"/tmp","SOURCE_DATE_EPOCH":"1700000000","PYTHONDONTWRITEBYTECODE":"1","LC_ALL":"C","PIP_NO_INDEX":"1"}
+                  proc=subprocess.run([sys.executable,"-I","-B","-c",'from setuptools.build_meta import build_wheel; print(build_wheel("dist"))'],cwd=work,env=env,capture_output=True,timeout=12,check=True)
+                  assert len(proc.stdout)+len(proc.stderr)<1024*1024
+                  wheels=list(out.glob("*.whl"));assert len(wheels)==1
+                  raw=wheels[0].read_bytes();assert len(raw)<65536
+                  hashes.append(verify(raw,package))
+                  if run==1:
+                      try: verify(raw,"wrong_package")
+                      except AssertionError: negative+=1
+                      else: raise AssertionError("wrong identity accepted")
+              assert hashes[0]==hashes[1]
+              results.append(dict(root=name,sha256=hashes[0],bytes=len(raw),reproducible=True))
+          assert negative==4
+          v=os.statvfs(scratch)
+          print(json.dumps(dict(status="SYNTHETIC_FOUR_ROOT_BUILD_PASS",roots=results,builds=8,wrong_identity_rejected=negative,python=sys.version.split()[0],setuptools=version("setuptools"),wheel=wheel.__version__,input_sha256=digest,scratch_used_bytes=v.f_frsize*(v.f_blocks-v.f_bfree),memory_peak_bytes=int((p/"memory.peak").read_text()),auxiliary_denials=denials,actual_openhands_build=False,aggregate_auxiliary_resources_proven=False,build_authorized=False,release_authorized=False),sort_keys=True))
+          PY
+          )"
+          # Fail closed if the runner's IPC group has another member not listed below.
+          python3 - <<'CHECK'
+          import subprocess
+          group={line.strip() for line in subprocess.check_output(["systemd-analyze","syscall-filter","@ipc"],text=True).splitlines() if line.strip() and not line.strip().startswith(("#","@"))}
+          denied=set("ipc memfd_create mq_getsetattr mq_notify mq_open mq_timedreceive mq_timedreceive_time64 mq_timedsend mq_timedsend_time64 mq_unlink msgctl msgget msgrcv msgsnd process_madvise process_vm_readv process_vm_writev semctl semget semop semtimedop semtimedop_time64 shmat shmctl shmdt shmget".split())
+          assert group and group-{"pipe","pipe2"}<=denied,sorted(group-denied-{"pipe","pipe2"})
+          CHECK
+          timeout --kill-after=5s 90s sudo systemd-run --unit="$unit" --wait --pipe --quiet \
+            -p "User=$uid" -p "Group=$gid" -p CPUQuota=200% -p MemoryMax=4294967296 -p MemorySwapMax=0 -p TasksMax=128 \
+            -p RuntimeMaxSec=90 -p KillMode=control-group -p NoNewPrivileges=yes \
+            -p CapabilityBoundingSet= -p AmbientCapabilities= -p PrivateNetwork=yes \
+            -p PrivateDevices=yes -p PrivateIPC=yes -p ProtectHome=tmpfs -p ProtectSystem=strict \
+            -p 'TemporaryFileSystem=/run:ro' -p 'TemporaryFileSystem=/dev/shm:ro' \
+            -p "BindPaths=$scratch/tmp:/tmp $scratch/tmp:/var/tmp" -p "ReadWritePaths=$scratch /tmp /var/tmp" \
+            -p RestrictSUIDSGID=yes -p RestrictAddressFamilies=AF_UNIX \
+            -p "InaccessiblePaths=/dev/pts" \
+            -p 'SystemCallFilter=~ipc memfd_create mq_getsetattr mq_notify mq_open mq_timedreceive mq_timedreceive_time64 mq_timedsend mq_timedsend_time64 mq_unlink msgctl msgget msgrcv msgsnd process_madvise process_vm_readv process_vm_writev semctl semget semop semtimedop semtimedop_time64 shmat shmctl shmdt shmget' -p SystemCallErrorNumber=EPERM \
+            -p LimitCORE=0 -p LimitMEMLOCK=0 -p LimitNOFILE=256 -p LimitMSGQUEUE=65536 \
+            /usr/bin/env -i PATH=/usr/bin:/bin "HOME=$scratch/home" TMPDIR=/tmp LC_ALL=C "$py" -I -B -c "$script" "$store" "$scratch" "$host_ns" "$host_ipc" > "$ev/review.json"
+          sha256sum "$store/input.bin" | awk '{print $1}' > "$ev/input-after.sha256"
+          cmp "$ev/input-before.sha256" "$ev/input-after.sha256"
+          jq -e --arg h "$(cat "$ev/input-before.sha256")" '.status=="SYNTHETIC_FOUR_ROOT_BUILD_PASS" and (.auxiliary_denials|length)==7 and .input_sha256==$h and .release_authorized==false' "$ev/review.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: synthetic-four-root-wheel-build-receipts
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
+
