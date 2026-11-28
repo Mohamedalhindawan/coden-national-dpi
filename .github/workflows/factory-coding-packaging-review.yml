@@ -3850,3 +3850,60 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+
+  r2-setuptools-source-evidence:
+    # Static quarantine only, no extraction, build, installation or execution of candidates.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == '295b90bc466cd88b2e3795f88e2c60e8180224e7' && github.event.pull_request.number == 212 && github.head_ref == 'review/build-tool-attestation-evidence-20261128' && github.base_ref == 'fix/self001-generator-test-intake-20261128' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions: {}
+    steps:
+      - name: Retain published source and exact source-commit tree metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/python3 -I -B - <<'PY'
+          import hashlib,json,pathlib,urllib.request
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*a,**kw): return None
+          op=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+          def get(url,cap):
+              with op.open(urllib.request.Request(url,headers={'User-Agent':'CODEN-static-source-review','Accept-Encoding':'identity'}),timeout=15) as res:
+                  if res.headers.get('Content-Encoding','identity')!='identity': raise ValueError('encoding')
+                  raw=res.read(cap+1)
+              if len(raw)>cap: raise ValueError('size bound')
+              return raw
+          out=pathlib.Path('evidence')
+          name='setuptools-84.2.1.tar.gz'
+          digest='3ff8b3b5492a0aa66960f4419365a86b84e013070d4313e4d4a6894f5d64d6bc'
+          url='https://files.pythonhosted.org/packages/70/b3/c19426f783614d625699a4b247faf628ea9ab1db228674491767b417f9e1/'+name
+          raw=get(url,3*1024**2)
+          if hashlib.sha256(raw).hexdigest()!=digest: raise ValueError('source digest')
+          (out/name).write_bytes(raw)
+          commit='3895f9829fc0e51882981773a823a658eb1d1636'
+          repo='pypa/setuptools'
+          commit_raw=get('https://api.github.com/repos/'+repo+'/git/commits/'+commit,262144)
+          c=json.loads(commit_raw)
+          if c['sha']!=commit: raise ValueError('commit identity')
+          (out/'commit.json').write_bytes(commit_raw)
+          tag_raw=get('https://api.github.com/repos/'+repo+'/git/tags/0bd1a74f8056b50274167982b9f1357da150afbc',262144)
+          t=json.loads(tag_raw)
+          if t['sha']!='0bd1a74f8056b50274167982b9f1357da150afbc' or t['object']['sha']!=commit: raise ValueError('tag identity')
+          (out/'tag.json').write_bytes(tag_raw)
+          tree=c['tree']['sha']
+          tree_raw=get('https://api.github.com/repos/'+repo+'/git/trees/'+tree+'?recursive=1',4*1024**2)
+          tr=json.loads(tree_raw)
+          if tr['sha']!=tree or tr['truncated']: raise ValueError('tree completeness')
+          (out/'tree.json').write_bytes(tree_raw)
+          (out/'review.json').write_text(json.dumps(dict(source_sha256=digest,source_bytes=len(raw),commit=commit,tree=tree,tree_entries=len(tr['tree']),tag_verification_reported=t.get('verification',{}).get('verified'),retention_only=True,build_authorized=False,release_authorized=False),indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-setuptools-source-evidence
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
