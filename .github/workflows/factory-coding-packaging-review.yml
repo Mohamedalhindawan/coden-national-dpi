@@ -3907,3 +3907,75 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 7
+
+
+  r2-residual-quarantine-evidence:
+    # Retention of exact pinned public bytes and signer key metadata ONLY.
+    # No extraction, installation, native inspection, or execution.
+    if: github.event.repository.private == false && github.event.action == 'synchronize' && github.event.before == 'bb6f59ef60002aaef4fa484eeebcbe50759ebc77' && github.event.pull_request.number == 212 && github.head_ref == 'review/build-tool-attestation-evidence-20261128' && github.base_ref == 'fix/self001-generator-test-intake-20261128' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions: {}
+    steps:
+      - name: Retain exact residual distributions and public signer certificates
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 evidence
+          env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/python3 -I -B - <<'PY'
+          import concurrent.futures, hashlib, json, pathlib, urllib.request, urllib.parse
+          root=pathlib.Path('evidence')
+          pins=[
+            ('jiter','0.16.0','jiter-0.16.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl',343320,'c682bea068a90b764577bdb78a60a4c1d1606daf9cd4c893832a37c7cc9d9026'),
+            ('tokenizers','0.23.2','tokenizers-0.23.2-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl',3386843,'41c2f84d172449b4dadb9cdc508e3e364076613c35b16e76ecfe47a60d1e3305'),
+            ('fastmcp-slim','4.2.0','fastmcp_slim-4.2.0-py3-none-any.whl',994236,'174239bed3ac47275afa7fe82941a65f86ad0314205195766c92b138c6dcfebe')]
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*a,**kw): return None
+          def get(url,cap):
+              op=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+              with op.open(urllib.request.Request(url,headers={'User-Agent':'CODEN-static-quarantine','Accept-Encoding':'identity'}),timeout=15) as res:
+                  if res.headers.get('Content-Encoding','identity')!='identity': raise ValueError('encoding')
+                  raw=res.read(cap+1)
+              if len(raw)>cap: raise ValueError('bound')
+              return raw
+          def collect(pin):
+              n,v,f,size,digest=pin
+              try:
+                  metadata=json.loads(get(f'https://pypi.org/pypi/{n}/{v}/json',2*1024**2))
+                  matches=[x for x in metadata['urls'] if x['filename']==f and x['size']==size and x['digests']['sha256']==digest and not x['yanked']]
+                  if len(matches)!=1: raise ValueError('identity')
+                  url=matches[0]['url']
+                  parts=urllib.parse.urlsplit(url)
+                  if parts.scheme!='https' or parts.netloc!='files.pythonhosted.org' or parts.query or parts.fragment or not parts.path.endswith('/'+f): raise ValueError('URL')
+                  raw=get(url,size)
+                  if len(raw)!=size or hashlib.sha256(raw).hexdigest()!=digest: raise ValueError('pin')
+                  (root/f).write_bytes(raw)
+                  return dict(filename=f,status='QUARANTINED_HASH_MATCH',bytes=size,sha256=digest)
+              except Exception as e:
+                  return dict(filename=f,status='BLOCKED',error=type(e).__name__)
+          def key(item):
+              name,url=item
+              try:
+                  raw=get(url,262144)
+                  (root/name).write_bytes(raw)
+                  return dict(filename=name,status='RETAINED_UNVERIFIED',bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+              except Exception as e:
+                  return dict(filename=name,status='UNAVAILABLE',error=type(e).__name__)
+          with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+              records=list(pool.map(collect,pins))
+              keys=list(pool.map(key,[
+                ('jaraco-github-keys.json','https://api.github.com/users/jaraco/gpg_keys'),
+                ('jaraco-keyserver.asc','https://keys.openpgp.org/vks/v1/by-fingerprint/CE380CF3044959B8F377DA03708E6CB181B4C47E'),
+                ('glibc-keyserver.asc','https://keys.openpgp.org/vks/v1/by-fingerprint/7273542B39962DF7B299931416792B4EA25340F8')]))
+          (root/'review.json').write_text(json.dumps(dict(records=records,keys=keys,quarantine_only=True,independent_review=False,build_authorized=False,installation_authorized=False,release_authorized=False),indent=2)+'\n')
+          print(json.dumps(dict(records=records,keys=keys)))
+          if any(x['status']!='QUARANTINED_HASH_MATCH' for x in records): raise SystemExit(1)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: r2-residual-quarantine-evidence
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
